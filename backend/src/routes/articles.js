@@ -89,7 +89,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
   const types = ['news', 'govt', 'competitor', 'evergreen'];
   const results = await Promise.all(
     types.map((t) => {
-      const q = Article.find({ ...baseQuery, type: t }).sort({ fetchedAt: -1 });
+      const q = Article.find({ ...baseQuery, type: t }).sort({ relevanceScore: -1, fetchedAt: -1 });
       if (limit && limit > 0) {
         q.limit(limit);
       }

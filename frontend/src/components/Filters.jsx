@@ -15,8 +15,8 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
     publishedOnly: '',
     ...initial,
   });
-  // Default closed on mobile, open on desktop
-  const [open, setOpen] = useState(() => window.innerWidth >= 768);
+  // Default closed on page load for all users
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     api.get('/articles/meta/filters').then((r) => setMeta(r.data)).catch(() => {});
