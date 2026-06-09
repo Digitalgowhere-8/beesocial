@@ -28,7 +28,7 @@ async function protect(req, res, next) {
 }
 
 /**
- * `requireRole('super_admin')` - middleware factory that allows only the given role(s).
+ * `requireRole('admin', 'super_admin')` - middleware factory that allows only the given role(s).
  */
 function requireRole(...roles) {
   return (req, res, next) => {

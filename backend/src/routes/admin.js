@@ -12,8 +12,17 @@ const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
-// Every route here requires super_admin
-router.use(protect, requireRole('super_admin'));
+const ADMIN_ROLES = ['admin', 'super_admin'];
+const MANAGED_ROLES = ['user', 'admin'];
+const ARTICLE_RANK_SORT = { relevanceScore: -1, effectiveDate: -1, fetchedAt: -1 };
+
+function canSeeUser(actor, target) {
+  if (!target) return false;
+  return actor.role === 'super_admin' || target.role !== 'super_admin';
+}
+
+// Every route here requires an operational admin.
+router.use(protect, requireRole(...ADMIN_ROLES));
 
 // ============== ARTICLE MANAGEMENT ==============
 
@@ -137,7 +146,12 @@ router.get('/stats', asyncHandler(async (_req, res) => {
     Article.countDocuments({ isPublished: false }),
     Article.aggregate([{ $group: { _id: '$type', count: { $sum: 1 } } }]),
     Article.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
-    Article.find({}).sort({ fetchedAt: -1 }).limit(5).select('title type source fetchedAt isPublished').lean()
+    Article.aggregate([
+      { $addFields: { effectiveDate: { $ifNull: ['$publishedAt', '$fetchedAt'] } } },
+      { $sort: ARTICLE_RANK_SORT },
+      { $limit: 5 },
+      { $project: { title: 1, type: 1, source: 1, fetchedAt: 1, publishedAt: 1, effectiveDate: 1, relevanceScore: 1, isPublished: 1 } }
+    ])
   ]);
   res.json({
     counts: { total, published, unpublished },
@@ -173,7 +187,19 @@ router.get('/users', asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
   const skip = (page - 1) * limit;
   const q = {};
-  if (req.query.role) q.role = req.query.role;
+
+  if (req.user.role !== 'super_admin') {
+    q.role = { $ne: 'super_admin' };
+  }
+  if (req.query.role) {
+    if (!['user', 'admin', 'super_admin'].includes(req.query.role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+    if (req.query.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.json({ items: [], page, limit, total: 0, pages: 0 });
+    }
+    q.role = req.query.role;
+  }
   if (req.query.q) q.email = { $regex: req.query.q, $options: 'i' };
   const [items, total] = await Promise.all([
     User.find(q).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -182,14 +208,50 @@ router.get('/users', asyncHandler(async (req, res) => {
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 }));
 
+router.post('/users', asyncHandler(async (req, res) => {
+  const { name, email, password, company = '', designation = '', role = 'user', isActive = true } = req.body || {};
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'name, email and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+  if (!MANAGED_ROLES.includes(role)) {
+    return res.status(400).json({ message: 'Only user and admin accounts can be created here' });
+  }
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const exists = await User.findOne({ email: normalizedEmail });
+  if (exists) return res.status(409).json({ message: 'Email already registered' });
+
+  const user = await User.create({
+    name,
+    email: normalizedEmail,
+    password,
+    company,
+    designation,
+    role,
+    isActive: Boolean(isActive)
+  });
+  res.status(201).json({ user: user.toPublicJSON() });
+}));
+
 router.patch('/users/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'role', 'isActive', 'company', 'designation'];
   const update = {};
   for (const k of allowed) if (k in req.body) update[k] = req.body[k];
-  if (update.role && !['user', 'super_admin'].includes(update.role)) {
+  if (update.role && !MANAGED_ROLES.includes(update.role)) {
     return res.status(400).json({ message: 'Invalid role' });
   }
-  const u = await User.findByIdAndUpdate(req.params.id, update, { new: true });
+
+  const target = await User.findById(req.params.id);
+  if (!target || !canSeeUser(req.user, target)) return res.status(404).json({ message: 'Not found' });
+  if (target.role === 'super_admin') {
+    return res.status(403).json({ message: 'Super admin is managed by the developer' });
+  }
+
+  Object.assign(target, update);
+  const u = await target.save();
   if (!u) return res.status(404).json({ message: 'Not found' });
   res.json({ user: u.toPublicJSON() });
 }));
@@ -198,8 +260,12 @@ router.delete('/users/:id', asyncHandler(async (req, res) => {
   if (String(req.user._id) === String(req.params.id)) {
     return res.status(400).json({ message: 'Cannot delete your own account' });
   }
-  const u = await User.findByIdAndDelete(req.params.id);
-  if (!u) return res.status(404).json({ message: 'Not found' });
+  const target = await User.findById(req.params.id);
+  if (!target || !canSeeUser(req.user, target)) return res.status(404).json({ message: 'Not found' });
+  if (target.role === 'super_admin') {
+    return res.status(403).json({ message: 'Super admin is managed by the developer' });
+  }
+  await target.deleteOne();
   res.json({ message: 'Deleted', id: req.params.id });
 }));
 

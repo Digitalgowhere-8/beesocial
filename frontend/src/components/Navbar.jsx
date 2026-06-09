@@ -37,6 +37,12 @@ function NavItem({ to, children, icon: Icon, onClick }) {
   );
 }
 
+const roleLabel = (role) => {
+  if (role === 'super_admin') return 'Super Admin';
+  if (role === 'admin') return 'Admin';
+  return 'Member';
+};
+
 export default function Navbar() {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
@@ -64,7 +70,7 @@ export default function Navbar() {
           <div className="hidden sm:block text-right">
             <div className="text-[13px] font-medium text-ink-700 leading-tight">{user?.name}</div>
             <div className="text-[10px] uppercase tracking-[0.14em] text-ink-400">
-              {user?.role === 'super_admin' ? 'Super Admin' : 'Member'}
+              {roleLabel(user?.role)}
             </div>
           </div>
           <button onClick={handleLogout} className="btn-ghost hidden md:flex" title="Sign out">
@@ -88,7 +94,7 @@ export default function Navbar() {
           <div className="px-3 py-2 mb-2 border-b border-ink-100">
             <div className="text-[13px] font-medium text-ink-800">{user?.name}</div>
             <div className="text-[10px] uppercase tracking-wider text-ink-400">
-              {user?.role === 'super_admin' ? 'Super Admin' : 'Member'}
+              {roleLabel(user?.role)}
             </div>
           </div>
           <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>Dashboard</NavItem>

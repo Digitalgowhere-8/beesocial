@@ -34,7 +34,7 @@ const updateSchema = Joi.object({
 
 // ---------------- Routes ----------------
 
-// POST /api/auth/register   (creates a normal user)
+// POST /api/auth/register   (creates a pending normal user)
 router.post('/register', asyncHandler(async (req, res) => {
   const { error, value } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
@@ -42,10 +42,17 @@ router.post('/register', asyncHandler(async (req, res) => {
   const exists = await User.findOne({ email: value.email.toLowerCase() });
   if (exists) return res.status(409).json({ message: 'Email already registered' });
 
-  const user = await User.create({ ...value, email: value.email.toLowerCase(), role: 'user' });
-  const token = signToken(user);
+  const user = await User.create({
+    ...value,
+    email: value.email.toLowerCase(),
+    role: 'user',
+    isActive: false
+  });
 
-  res.status(201).json({ token, user: user.toPublicJSON() });
+  res.status(201).json({
+    message: 'Registration submitted. An admin must approve your account before you can sign in.',
+    user: user.toPublicJSON()
+  });
 }));
 
 // POST /api/auth/login
@@ -54,7 +61,10 @@ router.post('/login', asyncHandler(async (req, res) => {
   if (error) return res.status(400).json({ message: error.message });
 
   const user = await User.findOne({ email: value.email.toLowerCase() }).select('+password');
-  if (!user || !user.isActive) return res.status(401).json({ message: 'Invalid credentials' });
+  if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+  if (!user.isActive) {
+    return res.status(403).json({ message: 'Your account is pending admin approval.' });
+  }
 
   const match = await user.matchPassword(value.password);
   if (!match) return res.status(401).json({ message: 'Invalid credentials' });

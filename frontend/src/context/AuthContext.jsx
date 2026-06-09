@@ -45,7 +45,9 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (payload) => {
     const { data } = await api.post('/auth/register', payload);
-    persist(data.token, data.user);
+    if (data.token && data.user) {
+      persist(data.token, data.user);
+    }
     return data.user;
   }, []);
 
@@ -67,7 +69,8 @@ export function AuthProvider({ children }) {
       value={{
         user,
         loading,
-        isAdmin: user?.role === 'super_admin',
+        isAdmin: user?.role === 'admin' || user?.role === 'super_admin',
+        isSuperAdmin: user?.role === 'super_admin',
         login, register, logout, updateProfile
       }}
     >

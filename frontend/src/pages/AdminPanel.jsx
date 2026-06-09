@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../api/axios';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
-  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight
+  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -24,16 +24,15 @@ export default function AdminPanel() {
   const [tab, setTab] = useState('articles');
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <Navbar />
-      <main className="max-w-[1600px] mx-auto px-6 py-8">
-        <div className="mb-6">
+    <Layout>
+      <div className="space-y-6 pb-10">
+        <div>
           <div className="eyebrow mb-2">Operations</div>
-          <h1 className="section-title text-4xl">Admin Panel.</h1>
+          <h1 className="section-title text-3xl font-bold">Admin Panel</h1>
         </div>
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1 mb-6 border-b border-ink-100">
+        <div className="flex items-center gap-1 mb-6 border-b border-ink-100 overflow-x-auto">
           {TABS.map((t) => {
             const active = t.key === tab;
             return (
@@ -41,11 +40,12 @@ export default function AdminPanel() {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={[
-                  'px-4 py-2.5 text-sm font-medium flex items-center gap-2 border-b-2 -mb-px transition-all',
+                  'px-3 sm:px-4 py-2.5 text-sm font-medium flex items-center gap-2 border-b-2 -mb-px transition-all whitespace-nowrap',
                   active
-                    ? 'border-navy-900 text-navy-900'
+                    ? 'border-brand-crimson text-brand-crimson font-bold'
                     : 'border-transparent text-ink-400 hover:text-ink-700'
                 ].join(' ')}
+                style={active ? { borderColor: '#D11243', color: '#D11243' } : {}}
               >
                 <t.icon size={14} />
                 {t.label}
@@ -59,8 +59,8 @@ export default function AdminPanel() {
         {tab === 'logs'     && <LogsTab />}
         {tab === 'users'    && <UsersTab />}
         {tab === 'stats'    && <StatsTab />}
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }
 
@@ -128,11 +128,11 @@ function ArticlesTab() {
       <Filters onChange={setFilters} showAdmin />
 
       {selected.size > 0 && (
-        <div className="mt-4 card p-3 flex items-center justify-between bg-brass-50 ring-brass-200">
+        <div className="mt-4 card p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-brass-50 ring-brass-200">
           <div className="text-sm text-brass-700 font-medium">
             {selected.size} selected
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => bulk('publish')} className="btn-secondary">
               <Eye size={14} /> Publish
             </button>
@@ -149,7 +149,7 @@ function ArticlesTab() {
         </div>
       )}
 
-      <div className="mt-5 flex items-center justify-between text-sm text-ink-400 mb-3">
+      <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm text-ink-400 mb-3">
         <div>
           {loading ? '…' : `${pagination.total} articles`}
           {pagination.pages > 1 && ` · Page ${pagination.page} of ${pagination.pages}`}
@@ -267,7 +267,7 @@ function FetchTab() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Trigger card */}
       <div className="card p-6 lg:col-span-2">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <div className="eyebrow mb-1">Manual fetch</div>
             <h3 className="font-display text-2xl text-ink-800">Run scrapers now</h3>
@@ -343,7 +343,7 @@ function Stat({ label, value, highlight }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-[11px] uppercase tracking-wider text-ink-400">{label}</span>
-      <span className={highlight ? 'text-navy-900 font-display text-lg' : 'text-ink-700 text-sm font-medium'}>
+      <span className={highlight ? 'text-brand-crimson font-display text-lg font-bold' : 'text-ink-700 text-sm font-medium'}>
         {value ?? '—'}
       </span>
     </div>
@@ -373,7 +373,7 @@ function LogsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
         <div className="text-sm text-ink-500">{items.length} most recent runs</div>
         <button onClick={load} className="btn-ghost">
           <RefreshCw size={14} /> Refresh
@@ -385,10 +385,10 @@ function LogsTab() {
       {items.map((log) => (
         <div key={log._id} className="card overflow-hidden">
           <div
-            className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-ink-50/50"
+            className="px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 cursor-pointer hover:bg-ink-50/50"
             onClick={() => setExpanded(expanded === log._id ? null : log._id)}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 min-w-0">
               <span className={`tag ${
                 log.status === 'success' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
                 : log.status === 'partial' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
@@ -403,7 +403,7 @@ function LogsTab() {
                 {log.triggeredByUser?.name && ` · ${log.triggeredByUser.name}`}
               </span>
             </div>
-            <div className="flex items-center gap-6 text-[12px] text-ink-500 font-mono">
+            <div className="flex flex-wrap items-center gap-3 lg:gap-6 text-[12px] text-ink-500 font-mono">
               <span>+{log.totalInserted} new</span>
               <span>{log.totalDuplicates} dup</span>
               <span>{log.totalErrors} err</span>
@@ -456,20 +456,59 @@ function LogsTab() {
 function UsersTab() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    company: '',
+    designation: '',
+    role: 'admin',
+    isActive: true
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await api.get('/admin/users', { params: { limit: 50 } });
-    setItems(data.items);
-    setLoading(false);
+    try {
+      const { data } = await api.get('/admin/users', { params: { limit: 50 } });
+      setItems(data.items);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleRole = async (u) => {
-    const newRole = u.role === 'super_admin' ? 'user' : 'super_admin';
-    if (!confirm(`Change role of ${u.email} to ${newRole}?`)) return;
-    await api.patch(`/admin/users/${u._id}`, { role: newRole });
+  const updateForm = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const createUser = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setSaving(true);
+    try {
+      await api.post('/admin/users', form);
+      setForm({
+        name: '',
+        email: '',
+        password: '',
+        company: '',
+        designation: '',
+        role: 'admin',
+        isActive: true
+      });
+      load();
+    } catch (e) {
+      setErr(e.message || 'User creation failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setRole = async (u, role) => {
+    if (u.role === role) return;
+    if (!confirm(`Change role of ${u.email} to ${role === 'admin' ? 'Admin' : 'Member'}?`)) return;
+    await api.patch(`/admin/users/${u._id}`, { role });
     load();
   };
 
@@ -491,8 +530,50 @@ function UsersTab() {
   if (loading) return <Loader />;
 
   return (
-    <div className="card overflow-hidden">
-      <table className="w-full">
+    <div className="space-y-5">
+      <form onSubmit={createUser} className="card p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <div className="eyebrow mb-1">Create account</div>
+            <h3 className="font-display text-xl text-ink-800 font-bold">Add admin or member</h3>
+          </div>
+          <UserPlus size={18} className="text-brand-crimson" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input className="input" required placeholder="Full name" value={form.name} onChange={(e) => updateForm('name', e.target.value)} />
+          <input className="input" type="email" required placeholder="Email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
+          <input className="input" type="password" required minLength={6} placeholder="Password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
+          <input className="input" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
+          <input className="input" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
+          <div className="flex gap-2">
+            <select className="input" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
+              <option value="admin">Admin</option>
+              <option value="user">Member</option>
+            </select>
+            <label className="flex items-center gap-2 text-xs text-ink-500 whitespace-nowrap px-2">
+              <input type="checkbox" checked={form.isActive} onChange={(e) => updateForm('isActive', e.target.checked)} />
+              Active
+            </label>
+          </div>
+        </div>
+
+        {err && (
+          <div className="mt-3 text-xs rounded-md px-3 py-2 bg-red-50 text-red-700 ring-1 ring-red-100">
+            {err}
+          </div>
+        )}
+
+        <div className="mt-4">
+          <button disabled={saving} className="btn-primary">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+            Create account
+          </button>
+        </div>
+      </form>
+
+      <div className="card overflow-x-auto">
+      <table className="w-full min-w-[760px]">
         <thead className="bg-ink-50/50 text-[10px] uppercase tracking-wider text-ink-500">
           <tr className="text-left">
             <th className="py-3 px-4">User</th>
@@ -512,33 +593,44 @@ function UsersTab() {
               </td>
               <td className="py-3 px-4 text-sm text-ink-600">{u.company || '—'}</td>
               <td className="py-3 px-4">
-                <span className={`tag ${u.role === 'super_admin' ? 'bg-brass-100 text-brass-700' : 'bg-ink-50 text-ink-500 ring-1 ring-ink-100'}`}>
-                  {u.role === 'super_admin' ? 'Admin' : 'Member'}
+                <span className={`tag ${
+                  u.role === 'super_admin' ? 'bg-brass-100 text-brass-700'
+                    : u.role === 'admin' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+                    : 'bg-ink-50 text-ink-500 ring-1 ring-ink-100'
+                }`}>
+                  {u.role === 'super_admin' ? 'Super Admin' : u.role === 'admin' ? 'Admin' : 'Member'}
                 </span>
               </td>
               <td className="py-3 px-4">
-                <span className={`tag ${u.isActive ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-red-50 text-red-700 ring-1 ring-red-100'}`}>
-                  {u.isActive ? 'Active' : 'Disabled'}
+                <span className={`tag ${u.isActive ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'}`}>
+                  {u.isActive ? 'Active' : 'Pending approval'}
                 </span>
               </td>
               <td className="py-3 px-4 text-sm text-ink-500">
                 {u.lastLoginAt ? formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true }) : 'Never'}
               </td>
               <td className="py-3 px-4 text-right">
-                <div className="inline-flex items-center gap-1">
-                  <button onClick={() => toggleRole(u)} className="btn-ghost text-[11px]">Role</button>
-                  <button onClick={() => toggleActive(u)} className="btn-ghost text-[11px]">
-                    {u.isActive ? 'Disable' : 'Enable'}
-                  </button>
-                  <button onClick={() => remove(u)} className="btn-ghost text-[11px] text-red-600 hover:bg-red-50">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
+                {u.role === 'super_admin' ? (
+                  <span className="text-[11px] text-ink-300">Developer managed</span>
+                ) : (
+                  <div className="inline-flex items-center gap-1">
+                    <button onClick={() => setRole(u, u.role === 'admin' ? 'user' : 'admin')} className="btn-ghost text-[11px]">
+                      Make {u.role === 'admin' ? 'Member' : 'Admin'}
+                    </button>
+                    <button onClick={() => toggleActive(u)} className="btn-ghost text-[11px]">
+                      {u.isActive ? 'Disable' : 'Approve'}
+                    </button>
+                    <button onClick={() => remove(u)} className="btn-ghost text-[11px] text-red-600 hover:bg-red-50">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -557,7 +649,7 @@ function StatsTab() {
     <div className="space-y-6">
       {/* Counts */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Total articles"  value={stats.counts.total}       accent="bg-navy-900" />
+        <StatCard label="Total articles"  value={stats.counts.total}       accent="bg-brand-crimson" />
         <StatCard label="Published"       value={stats.counts.published}   accent="bg-emerald-500" />
         <StatCard label="Drafts"          value={stats.counts.unpublished} accent="bg-amber-500" />
       </div>
@@ -565,13 +657,13 @@ function StatsTab() {
       {/* By type */}
       <div className="card p-6">
         <div className="eyebrow mb-3">By type</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {['news', 'govt', 'competitor', 'evergreen'].map((t) => (
             <div key={t} className="bg-ink-50 rounded-md p-4">
               <div className="text-[11px] uppercase tracking-wider text-ink-400 mb-1">
                 {TYPE_LABELS[t]}
               </div>
-              <div className="font-display text-3xl text-ink-800">{stats.byType[t] || 0}</div>
+              <div className="font-display text-2xl sm:text-3xl text-ink-800">{stats.byType[t] || 0}</div>
             </div>
           ))}
         </div>
@@ -585,10 +677,10 @@ function StatsTab() {
             const maxCount = stats.byCategory[0]?.count || 1;
             const pct = Math.round((c.count / maxCount) * 100);
             return (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-48 text-sm text-ink-700 font-medium truncate">{c.category}</div>
+              <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <div className="w-full sm:w-48 text-sm text-ink-700 font-medium truncate">{c.category}</div>
                 <div className="flex-1 bg-ink-100 rounded-full h-2 overflow-hidden">
-                  <div className="h-full bg-navy-900" style={{ width: `${pct}%` }} />
+                  <div className="h-full bg-brand-crimson" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="w-12 text-right text-sm text-ink-500 font-mono">{c.count}</div>
               </div>
@@ -602,7 +694,7 @@ function StatsTab() {
         <div className="eyebrow mb-3">Most recent</div>
         <ul className="divide-y divide-ink-100">
           {stats.recent.map((r) => (
-            <li key={r._id} className="py-3 flex items-center gap-3">
+            <li key={r._id} className="py-3 flex flex-wrap items-center gap-3">
               <span className="tag tag-news capitalize">{r.type}</span>
               <span className="flex-1 text-sm text-ink-700 truncate">{r.title}</span>
               <span className="text-[11px] text-ink-400">{r.source}</span>
@@ -622,7 +714,7 @@ function StatCard({ label, value, accent }) {
     <div className="card p-5 relative overflow-hidden">
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${accent}`} />
       <div className="eyebrow mb-2 pl-2">{label}</div>
-      <div className="font-display text-4xl text-ink-800 pl-2">{value}</div>
+      <div className="font-display text-3xl sm:text-4xl text-ink-800 pl-2">{value}</div>
     </div>
   );
 }

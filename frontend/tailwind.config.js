@@ -39,6 +39,13 @@ export default {
           700: '#705828',
           800: '#4A3B1B'
         },
+        brand: {
+          crimson: '#D11243',
+          darkred: '#8F0B2F',
+          pink: '#FAF0F2',
+          lightpink: '#FFF5F6',
+          hoverred: '#BE0F3C'
+        },
         canvas: '#FAF9F6'   // page background
       },
       fontFamily: {

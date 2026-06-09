@@ -24,13 +24,18 @@ async function seed() {
   if (existing) {
     if (existing.role !== 'super_admin') {
       existing.role = 'super_admin';
+      existing.isActive = true;
       await existing.save();
       console.log(`[seed] Upgraded existing user ${email} to super_admin`);
     } else {
+      if (!existing.isActive) {
+        existing.isActive = true;
+        await existing.save();
+      }
       console.log(`[seed] Super admin already exists: ${email}`);
     }
   } else {
-    const admin = await User.create({ name, email, password, role: 'super_admin' });
+    const admin = await User.create({ name, email, password, role: 'super_admin', isActive: true });
     console.log(`[seed] Created super_admin -> ${admin.email}`);
     console.log('       You can now log in with the SEED_ADMIN_PASSWORD from .env');
   }

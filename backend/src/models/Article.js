@@ -12,7 +12,7 @@ const mongoose = require('mongoose');
  *     which makes re-fetching the same article idempotent.
  *
  * Visibility:
- *   - `isPublished=false` (default): only super_admin can see it.
+ *   - `isPublished=false` (default): only admins can see it.
  *   - `isPublished=true`: visible to all logged-in users.
  *   - Super admin sets this via the Admin Panel.
  */
@@ -63,9 +63,9 @@ const articleSchema = new mongoose.Schema(
 );
 
 // Compound indexes for common filter combinations
-articleSchema.index({ type: 1, isPublished: 1, fetchedAt: -1 });
-articleSchema.index({ category: 1, type: 1, fetchedAt: -1 });
-articleSchema.index({ subcategory: 1, fetchedAt: -1 });
-articleSchema.index({ source: 1, fetchedAt: -1 });
+articleSchema.index({ type: 1, isPublished: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
+articleSchema.index({ category: 1, type: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
+articleSchema.index({ subcategory: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
+articleSchema.index({ source: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
 
 module.exports = mongoose.model('Article', articleSchema);
