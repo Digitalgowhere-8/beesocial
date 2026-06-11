@@ -60,22 +60,22 @@ function DonutChart({ data, className = '' }) {
     return seg;
   });
 
-  const r = 58;
+  const r = 54;
   const circ = 2 * Math.PI * r;
   const center = 80;
 
   return (
-    <div className={`bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+    <div className={`flex flex-col bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
       <div className="flex items-center gap-2 mb-4">
         <BarChart2 size={16} style={{ color: CRIMSON }} />
         <span className="text-sm font-bold text-gray-700">Content by Type</span>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+      <div className="grid flex-1 grid-cols-1 items-center gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
         <div className="shrink-0 relative mx-auto sm:mx-0">
-          <svg className="w-36 h-36 sm:w-40 sm:h-40" viewBox={`0 0 ${center * 2} ${center * 2}`}>
+          <svg className="h-44 w-44 sm:h-52 sm:w-52" viewBox={`0 0 ${center * 2} ${center * 2}`}>
             {/* Background circle */}
-            <circle cx={center} cy={center} r={r} fill="none" stroke="#f3f4f6" strokeWidth="16" />
+            <circle cx={center} cy={center} r={r} fill="none" stroke="#f3f4f6" strokeWidth="24" />
             {segments.map((seg, i) => (
               <circle
                 key={i}
@@ -84,7 +84,7 @@ function DonutChart({ data, className = '' }) {
                 r={r}
                 fill="none"
                 stroke={seg.color}
-                strokeWidth="16"
+                strokeWidth="24"
                 strokeDasharray={`${(seg.pct / 100) * circ} ${circ}`}
                 strokeDashoffset={-(seg.offset / 100) * circ}
                 transform={`rotate(-90 ${center} ${center})`}
@@ -93,7 +93,7 @@ function DonutChart({ data, className = '' }) {
             ))}
             {/* Center text */}
             <text x={center} y={center - 5} textAnchor="middle" dominantBaseline="middle"
-              fill="#111" fontWeight="900" fontSize="20" fontFamily='"DM Sans", system-ui, sans-serif'>
+              fill="#111" fontWeight="900" fontSize="22" fontFamily='"DM Sans", system-ui, sans-serif'>
               {total}
             </text>
             <text x={center} y={center + 14} textAnchor="middle" dominantBaseline="middle"
@@ -103,19 +103,17 @@ function DonutChart({ data, className = '' }) {
           </svg>
         </div>
 
-        <div className="flex flex-col gap-2.5 flex-1">
+        <div className="grid min-w-0 grid-cols-1 gap-3.5">
           {segments.map((seg, i) => (
-            <div key={i} className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: seg.color }} />
-                <span className="text-[12px] text-gray-600 font-medium truncate">{seg.label}</span>
+            <div key={i} className="grid grid-cols-[minmax(100px,1fr)_minmax(110px,150px)_32px] items-center gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="h-3 w-3 rounded-sm shrink-0" style={{ background: seg.color }} />
+                <span className="truncate text-[12px] font-bold text-gray-600">{seg.label}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-16 h-1.5 rounded-full bg-gray-100">
-                  <div className="h-1.5 rounded-full" style={{ width: `${seg.pct}%`, background: seg.color }} />
-                </div>
-                <span className="text-[11px] font-bold text-gray-700 w-6 text-right">{seg.value}</span>
+              <div className="h-2 rounded-full bg-gray-100">
+                <div className="h-2 rounded-full" style={{ width: `${seg.pct}%`, background: seg.color }} />
               </div>
+              <span className="text-right text-[12px] font-black text-gray-700">{seg.value}</span>
             </div>
           ))}
         </div>
@@ -442,7 +440,7 @@ function buildCategoryMomentum(items) {
   return Object.entries(buckets)
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 6);
+    .slice(0, 5);
 }
 
 function sortBySignal(items) {
@@ -458,64 +456,92 @@ function UpdateRow({ item, index }) {
   const when = item.fetchedAt || item.publishedAt
     ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
     : 'No date';
+  const score = Math.round(Number(item.relevanceScore || 0));
+  const market = item.country || item.market || 'Market n/a';
+  const category = item.category || 'General';
+  const subcategory = item.subcategory || 'Unclassified';
+  const description = item.aiSummary || item.summary || 'No description available.';
 
   return (
     <a
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-gray-100 bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-md"
+      className="group block rounded-lg border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-brand-crimson/20 hover:shadow-md"
     >
-      <span
-        className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-black"
-        style={{ color: accent, background: `${accent}12`, border: `1px solid ${accent}22` }}
-      >
-        {index + 1}
-      </span>
-      <span className="min-w-0">
-        <span className="mb-1 flex flex-wrap items-center gap-1.5">
+      <div className="mb-2 flex items-start gap-3">
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[11px] font-black"
+          style={{ color: accent, background: `${accent}12`, border: `1px solid ${accent}22` }}
+        >
+          {index + 1}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
           <span
             className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
             style={{ color: accent, background: `${accent}10` }}
           >
             {item.type === 'govt' ? 'Government' : 'News'}
           </span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{when}</span>
-        </span>
-        <span className="block text-[12px] font-black leading-snug text-gray-900 line-clamp-2 group-hover:text-brand-crimson">
-          {item.title}
-        </span>
-        <span className="mt-1 block truncate text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          {item.source || item.country || 'Current feed'}
-        </span>
-      </span>
-      <ExternalLink size={13} className="mt-1 shrink-0 text-gray-300 transition-colors group-hover:text-brand-crimson" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{when}</span>
+          </div>
+          <h4 className="text-[13px] font-black leading-snug text-gray-900 line-clamp-2 group-hover:text-brand-crimson">
+            {item.title}
+          </h4>
+        </div>
+        <ExternalLink size={13} className="mt-1 shrink-0 text-gray-300 transition-colors group-hover:text-brand-crimson" />
+      </div>
+
+      <p className="mb-2 text-[11px] leading-relaxed text-gray-500 line-clamp-2">
+        {description}
+      </p>
+
+      <div className="grid grid-cols-2 gap-1.5 text-[9px] font-black uppercase tracking-wider text-gray-500">
+        <span className="truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Market: {market}</span>
+        <span className="truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Score: {score || '-'}</span>
+        <span className="truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Category: {category}</span>
+        <span className="truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Sub: {subcategory}</span>
+      </div>
     </a>
   );
 }
 
 function TrendingUpdatesCard({ items, className = '' }) {
+  const visibleItems = items.slice(0, 10);
+  const marqueeItems = visibleItems.length > 3 ? [...visibleItems, ...visibleItems] : visibleItems;
+
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className={`relative overflow-hidden rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-pink/60 text-brand-crimson">
             <Flame size={16} />
           </span>
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-black text-gray-900">Top Trending News & Government Updates</h3>
+            <h3 className="truncate text-sm font-black text-gray-900">Today's Key Insights</h3>
             <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">Ranked by relevance and recency</p>
           </div>
         </div>
-        <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-gray-100">
-          {items.length}
+        <span className="rounded-md bg-brand-pink/70 px-2.5 py-1 text-[10px] font-black text-brand-crimson ring-1 ring-brand-crimson/10">
+          {visibleItems.length}
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
-        {items.length ? items.map((item, index) => (
-          <UpdateRow key={item._id || item.url || index} item={item} index={index} />
-        )) : (
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-gray-50/40 p-2 ring-1 ring-gray-100">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-gray-50/95 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-gray-50/95 to-transparent" />
+        {marqueeItems.length ? (
+          <div className={`space-y-2 ${visibleItems.length > 3 ? 'insight-marquee' : ''}`}>
+            {marqueeItems.map((item, index) => (
+              <UpdateRow
+                key={`${item._id || item.url || index}-${index}`}
+                item={item}
+                index={(index % visibleItems.length)}
+              />
+            ))}
+          </div>
+        ) : (
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-[12px] font-semibold text-gray-400">
             No news or government updates available in the current dataset.
           </div>
@@ -529,12 +555,12 @@ function CategoryMomentumCard({ categories, className = '' }) {
   const max = Math.max(...categories.map((item) => item.count), 1);
 
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
-      <div className="mb-4 flex items-center gap-2">
+    <section className={`rounded-lg border border-gray-100 bg-white p-3 shadow-card sm:p-4 ${className}`}>
+      <div className="mb-3 flex items-center gap-2">
         <Sparkles size={16} className="text-brand-crimson" />
         <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-hidden">
         {categories.length ? categories.map((item) => (
           <div key={item.label}>
             <div className="mb-1 flex items-center justify-between gap-2">
@@ -568,7 +594,7 @@ function buildMarketDistribution(items) {
   return rows
     .map((row) => ({ ...row, types: [...row.types] }))
     .sort((a, b) => b.count - a.count || b.latest - a.latest)
-    .slice(0, 7);
+    .slice(0, 3);
 }
 
 function MarketDistributionCard({ markets, className = '' }) {
@@ -576,8 +602,8 @@ function MarketDistributionCard({ markets, className = '' }) {
   const total = markets.reduce((sum, market) => sum + market.count, 0);
 
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
-      <div className="mb-4 flex items-center justify-between gap-2">
+    <section className={`rounded-lg border border-gray-100 bg-white p-3 shadow-card sm:p-4 ${className}`}>
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Globe size={16} className="text-brand-crimson" />
           <h3 className="truncate text-sm font-black text-gray-900">Market Distribution</h3>
@@ -586,12 +612,12 @@ function MarketDistributionCard({ markets, className = '' }) {
           {total} signals
         </span>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div className="grid min-h-0 flex-1 grid-rows-3 gap-2 overflow-hidden">
         {markets.length ? markets.map((market, index) => {
           const pct = Math.round((market.count / max) * 100);
           return (
-            <div key={market.market} className="rounded-lg border border-gray-100 p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
+            <div key={market.market} className="flex min-h-0 flex-col justify-center rounded-lg border border-gray-100 px-3 py-2">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-[12px] font-black text-gray-800">{market.market}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -600,9 +626,9 @@ function MarketDistributionCard({ markets, className = '' }) {
                 </div>
                 <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-gray-100">{market.count}</span>
               </div>
-              <div className="h-2 rounded-full bg-gray-100">
+              <div className="h-2.5 rounded-full bg-gray-100">
                 <div
-                  className="h-2 rounded-full"
+                  className="h-2.5 rounded-full"
                   style={{
                     width: `${pct}%`,
                     background: index === 0 ? CRIMSON : index === 1 ? '#10b981' : index === 2 ? '#3b82f6' : '#f59e0b',
@@ -619,17 +645,16 @@ function MarketDistributionCard({ markets, className = '' }) {
   );
 }
 
-function TodayDashboard({ total, donutData, trendingUpdates, signalData, categoryMomentum, marketDistribution }) {
+function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution }) {
   return (
-    <div className="space-y-4 xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-4 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-rows-2">
-        <DonutChart data={donutData} className="xl:h-full xl:min-h-0" />
-        <SignalChart data={signalData} mode="today" className="xl:h-full xl:min-h-0" />
-        <CategoryMomentumCard categories={categoryMomentum} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
-        <MarketDistributionCard markets={marketDistribution} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+    <div className="grid h-full min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 xl:grid-cols-2 xl:overflow-hidden xl:pb-0">
+      <div className="grid min-h-0 grid-cols-1 gap-3 xl:grid-rows-[1fr_0.9fr_0.9fr]">
+        <DonutChart data={donutData} className="min-h-[200px] xl:h-full xl:min-h-0" />
+        <MarketDistributionCard markets={marketDistribution} className="min-h-[180px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+        <CategoryMomentumCard categories={categoryMomentum} className="min-h-[180px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
       </div>
 
-      <TrendingUpdatesCard items={trendingUpdates} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[360px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
 
       {!total && (
         <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
@@ -725,7 +750,7 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
   );
 
   const trendingUpdates = useMemo(
-    () => sortBySignal(visibleArticles.filter((item) => item.type === 'news' || item.type === 'govt')).slice(0, 5),
+    () => sortBySignal(visibleArticles.filter((item) => item.type === 'news' || item.type === 'govt')).slice(0, 10),
     [visibleArticles]
   );
 
@@ -843,7 +868,6 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
           total={total}
           donutData={donutData}
           trendingUpdates={trendingUpdates}
-          signalData={signalData}
           categoryMomentum={categoryMomentum}
           marketDistribution={marketDistribution}
         />

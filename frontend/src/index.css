@@ -156,3 +156,11 @@
   background-size: 1000px 100%;
   animation: shimmer 1.6s infinite linear;
 }
+
+@keyframes insightMarquee {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+.insight-marquee {
+  animation: insightMarquee 36s linear infinite;
+}
