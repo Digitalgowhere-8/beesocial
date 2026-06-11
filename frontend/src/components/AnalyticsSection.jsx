@@ -1,10 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe, Sparkles, ExternalLink, Clock3, MapPin, Tag } from 'lucide-react';
+import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe, Sparkles, ExternalLink, Clock3, MapPin, Tag, Flame } from 'lucide-react';
 
 const CRIMSON = '#D11243';
-const DARK_RED = '#8F0B2F';
 const DASHBOARD_TIMEZONE = 'Asia/Singapore';
+const TYPE_ACCENTS = {
+  news: '#3b82f6',
+  govt: '#10b981',
+  competitor: '#f59e0b',
+  evergreen: '#8b5cf6',
+};
 
 function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
   return (
@@ -45,7 +50,7 @@ function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
   );
 }
 
-function DonutChart({ data }) {
+function DonutChart({ data, className = '' }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   let cumulative = 0;
   const segments = data.map(d => {
@@ -60,7 +65,7 @@ function DonutChart({ data }) {
   const center = 80;
 
   return (
-    <div className="bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0" style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+    <div className={`bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
       <div className="flex items-center gap-2 mb-4">
         <BarChart2 size={16} style={{ color: CRIMSON }} />
         <span className="text-sm font-bold text-gray-700">Content by Type</span>
@@ -119,7 +124,7 @@ function DonutChart({ data }) {
   );
 }
 
-function SignalChart({ data, mode }) {
+function SignalChart({ data, mode, className = '' }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const W = 100, H = 80, PLOT_PAD = 4;
   const xForIndex = (i) => {
@@ -141,7 +146,7 @@ function SignalChart({ data, mode }) {
   const areaD = pathD + ` L${pts[pts.length - 1].x},${H} L${pts[0].x},${H} Z`;
 
   return (
-    <div className="bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0" style={{ animationDelay: '0.4s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+    <div className={`bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.4s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
           <Activity size={16} style={{ color: CRIMSON }} />
@@ -427,13 +432,261 @@ function InsightsCard({ topArticles }) {
   );
 }
 
-export default function AnalyticsSection({ data, velocityData = [], loading }) {
-  const [viewMode, setViewMode] = useState('all');
+function buildCategoryMomentum(items) {
+  const buckets = items.reduce((acc, item) => {
+    const key = item.category || item.subcategory || 'General';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(buckets)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+}
+
+function sortBySignal(items) {
+  return [...items].sort((a, b) => {
+    const scoreDiff = Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0);
+    if (scoreDiff) return scoreDiff;
+    return getArticleTime(b) - getArticleTime(a);
+  });
+}
+
+function UpdateRow({ item, index }) {
+  const accent = TYPE_ACCENTS[item.type] || CRIMSON;
+  const when = item.fetchedAt || item.publishedAt
+    ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
+    : 'No date';
+
+  return (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-gray-100 bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <span
+        className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-black"
+        style={{ color: accent, background: `${accent}12`, border: `1px solid ${accent}22` }}
+      >
+        {index + 1}
+      </span>
+      <span className="min-w-0">
+        <span className="mb-1 flex flex-wrap items-center gap-1.5">
+          <span
+            className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
+            style={{ color: accent, background: `${accent}10` }}
+          >
+            {item.type === 'govt' ? 'Government' : 'News'}
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{when}</span>
+        </span>
+        <span className="block text-[12px] font-black leading-snug text-gray-900 line-clamp-2 group-hover:text-brand-crimson">
+          {item.title}
+        </span>
+        <span className="mt-1 block truncate text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          {item.source || item.country || 'Current feed'}
+        </span>
+      </span>
+      <ExternalLink size={13} className="mt-1 shrink-0 text-gray-300 transition-colors group-hover:text-brand-crimson" />
+    </a>
+  );
+}
+
+function TrendingUpdatesCard({ items, className = '' }) {
+  return (
+    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-pink/60 text-brand-crimson">
+            <Flame size={16} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-black text-gray-900">Top Trending News & Government Updates</h3>
+            <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">Ranked by relevance and recency</p>
+          </div>
+        </div>
+        <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-gray-100">
+          {items.length}
+        </span>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+        {items.length ? items.map((item, index) => (
+          <UpdateRow key={item._id || item.url || index} item={item} index={index} />
+        )) : (
+          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-[12px] font-semibold text-gray-400">
+            No news or government updates available in the current dataset.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CategoryMomentumCard({ categories, className = '' }) {
+  const max = Math.max(...categories.map((item) => item.count), 1);
+
+  return (
+    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
+      <div className="mb-4 flex items-center gap-2">
+        <Sparkles size={16} className="text-brand-crimson" />
+        <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
+      </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {categories.length ? categories.map((item) => (
+          <div key={item.label}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="truncate text-[12px] font-bold text-gray-700">{item.label}</span>
+              <span className="text-[10px] font-black text-gray-400">{item.count}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-100">
+              <div className="h-1.5 rounded-full bg-brand-crimson" style={{ width: `${Math.round((item.count / max) * 100)}%` }} />
+            </div>
+          </div>
+        )) : (
+          <p className="text-[12px] font-semibold text-gray-400">No category data available.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function buildMarketDistribution(items) {
+  const rows = Object.values(items.reduce((acc, item) => {
+    const market = item.country || item.market || 'Unspecified';
+    if (!acc[market]) {
+      acc[market] = { market, count: 0, latest: 0, types: new Set() };
+    }
+    acc[market].count += 1;
+    acc[market].latest = Math.max(acc[market].latest, getArticleTime(item));
+    if (item.type) acc[market].types.add(item.type);
+    return acc;
+  }, {}));
+
+  return rows
+    .map((row) => ({ ...row, types: [...row.types] }))
+    .sort((a, b) => b.count - a.count || b.latest - a.latest)
+    .slice(0, 7);
+}
+
+function MarketDistributionCard({ markets, className = '' }) {
+  const max = Math.max(...markets.map((market) => market.count), 1);
+  const total = markets.reduce((sum, market) => sum + market.count, 0);
+
+  return (
+    <section className={`rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Globe size={16} className="text-brand-crimson" />
+          <h3 className="truncate text-sm font-black text-gray-900">Market Distribution</h3>
+        </div>
+        <span className="shrink-0 rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
+          {total} signals
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {markets.length ? markets.map((market, index) => {
+          const pct = Math.round((market.count / max) * 100);
+          return (
+            <div key={market.market} className="rounded-lg border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-black text-gray-800">{market.market}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    {market.types.length ? market.types.join(' / ') : 'Unclassified'}
+                  </div>
+                </div>
+                <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-gray-100">{market.count}</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-100">
+                <div
+                  className="h-2 rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    background: index === 0 ? CRIMSON : index === 1 ? '#10b981' : index === 2 ? '#3b82f6' : '#f59e0b',
+                  }}
+                />
+              </div>
+            </div>
+          );
+        }) : (
+          <p className="text-[12px] font-semibold text-gray-400">No market data available.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TodayDashboard({ total, donutData, trendingUpdates, signalData, categoryMomentum, marketDistribution }) {
+  return (
+    <div className="space-y-4 xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-4 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-rows-2">
+        <DonutChart data={donutData} className="xl:h-full xl:min-h-0" />
+        <SignalChart data={signalData} mode="today" className="xl:h-full xl:min-h-0" />
+        <CategoryMomentumCard categories={categoryMomentum} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+        <MarketDistributionCard markets={marketDistribution} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+      </div>
+
+      <TrendingUpdatesCard items={trendingUpdates} className="xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+
+      {!total && (
+        <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
+          No live signals found for today. Once the fetch job indexes fresh articles, these charts will update automatically.
+        </section>
+      )}
+    </div>
+  );
+}
+
+function AllDataDashboard({ total, counts, categoryCount, donutData, signalData, topArticles, dynamicSources }) {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard icon={TrendingUp} label="Total Signals" value={total} sub={`${categoryCount} categories`} color={CRIMSON} delay={0.05} />
+        <StatCard icon={Landmark} label="Gov't Updates" value={counts.govt} sub="Policy and public-sector signals" color="#10b981" delay={0.1} />
+        <StatCard icon={Newspaper} label="News Items" value={counts.news} sub="Market coverage indexed" color="#3b82f6" delay={0.15} />
+        <StatCard icon={Building2} label="Competitor Intel" value={counts.competitor} sub="Competitive movement tracked" color="#f59e0b" delay={0.2} />
+      </div>
+
+      <InsightsCard topArticles={topArticles} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <DonutChart data={donutData} />
+        <SignalChart data={signalData} mode="all" />
+      </div>
+
+      <div className="bg-white rounded-xl p-4 sm:p-5 fade-in" style={{ animationDelay: '0.5s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Globe size={16} style={{ color: CRIMSON }} />
+          <span className="text-sm font-bold text-gray-700">Data Source Health</span>
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+            style={{
+              background: total > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+              color: total > 0 ? '#059669' : '#b45309',
+            }}>
+            {total > 0 ? 'Data Loaded' : 'No Data'}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+          {dynamicSources.map((s, i) => <SourceCard key={i} {...s} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AnalyticsSection({ data, velocityData = [], loading, isAdmin = false, viewMode = 'today', onViewModeChange }) {
   const allArticles = useMemo(
     () => Object.values(data || {}).flat().filter(Boolean),
     [data]
   );
   const todayKey = formatDashboardDateKey(new Date());
+
+  useEffect(() => {
+    if (!isAdmin && viewMode !== 'today') onViewModeChange?.('today');
+  }, [isAdmin, onViewModeChange, viewMode]);
 
   const visibleArticles = useMemo(
     () => viewMode === 'today'
@@ -471,6 +724,21 @@ export default function AnalyticsSection({ data, velocityData = [], loading }) {
     [visibleArticles]
   );
 
+  const trendingUpdates = useMemo(
+    () => sortBySignal(visibleArticles.filter((item) => item.type === 'news' || item.type === 'govt')).slice(0, 5),
+    [visibleArticles]
+  );
+
+  const categoryMomentum = useMemo(
+    () => buildCategoryMomentum(visibleArticles),
+    [visibleArticles]
+  );
+
+  const marketDistribution = useMemo(
+    () => buildMarketDistribution(visibleArticles),
+    [visibleArticles]
+  );
+
   const categoryCount = useMemo(
     () => new Set(visibleArticles.map((item) => item.category).filter(Boolean)).size,
     [visibleArticles]
@@ -482,11 +750,6 @@ export default function AnalyticsSection({ data, velocityData = [], loading }) {
     { label: 'Competitors', value: counts.competitor, color: '#f59e0b' },
     { label: 'Evergreen', value: counts.evergreen, color: '#8b5cf6' },
   ];
-
-  const signalData = useMemo(() => {
-    if (viewMode === 'all' && velocityData.length) return velocityData;
-    return buildSignalData(visibleArticles);
-  }, [velocityData, viewMode, visibleArticles]);
 
   const dynamicSources = [
     {
@@ -514,6 +777,11 @@ export default function AnalyticsSection({ data, velocityData = [], loading }) {
       count: `${counts.evergreen} articles`,
     },
   ];
+
+  const signalData = useMemo(() => {
+    if (viewMode === 'all' && velocityData.length) return velocityData;
+    return buildSignalData(visibleArticles);
+  }, [velocityData, viewMode, visibleArticles]);
 
   if (loading) {
     return (
@@ -568,80 +836,28 @@ export default function AnalyticsSection({ data, velocityData = [], loading }) {
   }
 
   return (
-    <div className="space-y-5 fade-in">
-      {/* Eyebrow */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.18em] font-bold" style={{ color: CRIMSON }}>
-            {viewMode === 'today' ? 'Today only' : 'Current dataset'}
-          </p>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tight animate-pulse"
-            style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
-            Intelligence Overview
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-full bg-white border border-brand-crimson/10 p-1 shadow-sm">
-            {[
-              { key: 'all', label: 'All Data' },
-              { key: 'today', label: 'Today' },
-            ].map((mode) => (
-              <button
-                key={mode.key}
-                type="button"
-                onClick={() => setViewMode(mode.key)}
-                className="px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all"
-                style={{
-                  background: viewMode === mode.key ? CRIMSON : 'transparent',
-                  color: viewMode === mode.key ? 'white' : '#9ca3af',
-                }}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
-            style={{ background: 'rgba(209,18,67,0.08)', color: CRIMSON }}>
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 absolute" />
-            {total > 0 ? 'Live Signals' : 'No Signals'}
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard icon={TrendingUp} label="Total Signals" value={total} sub={`${categoryCount} categories`} color={CRIMSON} delay={0.05} />
-        <StatCard icon={Landmark} label="Gov't Updates" value={counts.govt} sub={uniqueLabels(articlesByType.govt, 'source', 'No government data')} color="#10b981" delay={0.1} />
-        <StatCard icon={Newspaper} label="News Items" value={counts.news} sub={uniqueLabels(articlesByType.news, 'source', 'No news data')} color="#3b82f6" delay={0.15} />
-        <StatCard icon={Building2} label="Competitor Intel" value={counts.competitor} sub={uniqueLabels(articlesByType.competitor, 'source', 'No competitor data')} color="#f59e0b" delay={0.2} />
-      </div>
-
-      {/* NEW: Executive Briefing & Strategic Insights section */}
-      <InsightsCard topArticles={topArticles} />
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <DonutChart data={donutData} />
-        <SignalChart data={signalData} mode={viewMode} />
-      </div>
-
-      {/* Source Health */}
-      <div className="bg-white rounded-xl p-4 sm:p-5 fade-in" style={{ animationDelay: '0.5s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <Globe size={16} style={{ color: CRIMSON }} />
-          <span className="text-sm font-bold text-gray-700">Data Source Health</span>
-          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-            style={{
-              background: total > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-              color: total > 0 ? '#059669' : '#b45309',
-            }}>
-            {total > 0 ? 'Data Loaded' : 'No Data'}
-          </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-          {dynamicSources.map((s, i) => <SourceCard key={i} {...s} />)}
-        </div>
+    <div className="flex h-full min-h-0 flex-col fade-in">
+      <div className="min-h-0 flex-1">
+      {viewMode === 'today' ? (
+        <TodayDashboard
+          total={total}
+          donutData={donutData}
+          trendingUpdates={trendingUpdates}
+          signalData={signalData}
+          categoryMomentum={categoryMomentum}
+          marketDistribution={marketDistribution}
+        />
+      ) : (
+        <AllDataDashboard
+          total={total}
+          counts={counts}
+          categoryCount={categoryCount}
+          donutData={donutData}
+          signalData={signalData}
+          topArticles={topArticles}
+          dynamicSources={dynamicSources}
+        />
+      )}
       </div>
     </div>
   );

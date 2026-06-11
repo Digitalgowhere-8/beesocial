@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Filters from '../components/Filters';
@@ -7,11 +7,12 @@ import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp, ArrowUpRight, MapPin, Clock3, Folder
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const CRIMSON = '#D11243';
+const DASHBOARD_TIMEZONE = 'Asia/Singapore';
 
 const FEED_COLUMNS = [
   { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
@@ -42,87 +43,8 @@ function EmptyState({ icon: Icon, isAdmin }) {
     <div className="bg-white rounded-xl p-8 text-center flex flex-col items-center gap-2 border border-gray-100 w-full">
       <Icon size={24} className="text-gray-200" />
       <span className="text-sm font-semibold text-gray-400">Nothing here yet.</span>
-      {isAdmin && <span className="text-[11px] text-gray-300">Go to Admin → trigger a fetch.</span>}
+      {isAdmin && <span className="text-[11px] text-gray-300">Go to Admin to trigger a fetch.</span>}
     </div>
-  );
-}
-
-function TopSignalsRail({ items }) {
-  if (!items.length) return null;
-
-  return (
-    <section className="mb-4 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-card">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 px-4 py-3 border-b border-gray-100">
-        <div>
-          <div className="eyebrow mb-1">Priority queue</div>
-          <h2 className="font-black text-[18px] text-gray-900 tracking-tight">Top 5 Signals</h2>
-        </div>
-        <span className="text-[10px] uppercase tracking-[0.16em] text-gray-400 font-black">Latest first - score ranked</span>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-        {items.map((item, index) => {
-          const meta = TYPE_LABELS[item.type] || TYPE_LABELS.news;
-          const Icon = meta.icon;
-          const score = Math.round(Number(item.relevanceScore || 0));
-          const when = item.fetchedAt || item.publishedAt
-            ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
-            : '';
-
-          return (
-            <a
-              key={item._id}
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group min-w-0 p-3.5 hover:bg-gray-50 transition-all"
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0"
-                    style={{ color: meta.color, background: meta.tint }}
-                  >
-                    {index + 1}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 truncate">
-                    <Icon size={11} style={{ color: meta.color }} />
-                    {meta.label}
-                  </span>
-                </div>
-                {score > 0 && (
-                  <span className="rounded-md px-2 py-1 text-[10px] font-black text-brand-crimson bg-brand-pink/70 ring-1 ring-brand-crimson/10">
-                    {score}
-                  </span>
-                )}
-              </div>
-              <h3 className="font-black text-[13px] leading-snug text-gray-900 line-clamp-2 group-hover:text-brand-crimson transition-colors">
-                {item.title}
-              </h3>
-              <div className="mt-3 space-y-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                <div className="flex items-center gap-1.5">
-                  <MapPin size={11} className="shrink-0" />
-                  <span className="truncate">{item.country || 'Not specified'}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Folder size={11} className="shrink-0" />
-                  <span className="truncate">{item.category || 'General'}</span>
-                </div>
-              </div>
-              <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-gray-400">
-                <span className="truncate font-semibold">{item.source || 'Unknown source'}</span>
-                {when && (
-                  <span className="flex shrink-0 items-center gap-1">
-                    <Clock3 size={11} /> {when}
-                  </span>
-                )}
-                <ArrowUpRight size={13} className="shrink-0 opacity-50 group-hover:opacity-100" />
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -133,11 +55,25 @@ function getEffectiveTime(item) {
 function getEffectiveDateKey(item) {
   const time = getEffectiveTime(item);
   if (!time) return '';
-  const date = new Date(time);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DASHBOARD_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(time));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getTodayDateKey() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DASHBOARD_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function dateScoreRanked(items = []) {
@@ -158,7 +94,7 @@ function FeedColumn({ column, items, loading, isAdmin }) {
 
   return (
     <section className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
-      <div className="px-4 py-3 border-b border-gray-100 bg-white">
+      <div className="px-4 py-3.5 border-b border-gray-100 bg-white">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: column.tint }}>
@@ -177,7 +113,7 @@ function FeedColumn({ column, items, loading, isAdmin }) {
         </div>
       </div>
 
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/40 p-3">
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-gray-50/40 p-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
@@ -188,13 +124,14 @@ function FeedColumn({ column, items, loading, isAdmin }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ initialTab = 'analytics' }) {
   const { user, isAdmin } = useAuth();
   const [data, setData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
   const [analyticsData, setAnalyticsData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
   const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dashTab, setDashTab] = useState('analytics');
+  const dashTab = initialTab;
+  const [analyticsViewMode, setAnalyticsViewMode] = useState('today');
   const [filters, setFilters] = useState(() => {
     if (!user?._id) return {};
     try {
@@ -246,53 +183,91 @@ export default function Dashboard() {
       if (scoreDiff) return scoreDiff;
       return getEffectiveTime(b) - getEffectiveTime(a);
     });
-  const topSignals = mobileFeedItems.slice(0, 5);
+  const todaySignalTotal = useMemo(() => {
+    const todayKey = getTodayDateKey();
+    return Object.values(analyticsData || {})
+      .flat()
+      .filter((item) => getEffectiveDateKey(item) === todayKey)
+      .length;
+  }, [analyticsData]);
 
   return (
     <Layout>
-      <div className="flex flex-col min-h-full">
-        {/* Sub-tabs header with refresh button */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 shrink-0 rounded-xl border border-gray-100 bg-white px-3 py-3 shadow-card">
-          <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-lg bg-gray-50 p-1">
-            {[{ key: 'analytics', label: 'Analytics', icon: TrendingUp }, { key: 'feed', label: 'Intel Desk', icon: Newspaper }].map(t => (
-              <button key={t.key} onClick={() => setDashTab(t.key)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap"
-                style={{
-                  background: dashTab === t.key ? 'white' : 'transparent',
-                  color: dashTab === t.key ? CRIMSON : '#9ca3af',
-                  boxShadow: dashTab === t.key ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
-                }}>
-                <t.icon size={14} />
-                {t.label}
-              </button>
-            ))}
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Dashboard header with refresh button */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 shrink-0 rounded-lg border border-gray-100 bg-white px-4 py-3 shadow-card">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={16} style={{ color: CRIMSON }} />
+              <h1 className="truncate text-base font-black text-gray-900">
+                {dashTab === 'feed' ? 'Intel Desk' : 'Today Intelligence Dashboard'}
+              </h1>
+            </div>
+            <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              {dashTab === 'feed' ? 'All indexed feeds' : 'Today intelligence workspace'}
+            </p>
           </div>
 
-          <button onClick={() => setRefreshKey(k => k + 1)}
-            className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg transition-all hover:shadow-sm sm:w-auto w-full"
-            style={{ color: CRIMSON, background: 'rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.12)' }}>
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {dashTab === 'analytics' && (
+              <>
+                <div className="inline-flex rounded-md bg-gray-50 border border-gray-100 p-1 shadow-sm">
+                  {[
+                    { key: 'today', label: 'Today' },
+                    ...(isAdmin ? [{ key: 'all', label: 'All Data' }] : []),
+                  ].map((mode) => (
+                    <button
+                      key={mode.key}
+                      type="button"
+                      onClick={() => setAnalyticsViewMode(mode.key)}
+                      className="px-3 py-1.5 rounded-md text-[11px] font-black uppercase tracking-wider transition-all"
+                      style={{
+                        background: analyticsViewMode === mode.key ? CRIMSON : 'transparent',
+                        color: analyticsViewMode === mode.key ? 'white' : '#9ca3af',
+                      }}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
+                  style={{ background: 'rgba(209,18,67,0.08)', color: CRIMSON }}>
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-400" />
+                  </span>
+                  {todaySignalTotal > 0 ? 'Live Signals' : 'No Signals'}
+                </div>
+              </>
+            )}
+            <button onClick={() => setRefreshKey(k => k + 1)}
+              className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg transition-all hover:shadow-sm sm:w-auto w-full"
+              style={{ color: CRIMSON, background: 'rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.12)' }}>
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {dashTab === 'analytics' ? (
-          <div className="pb-6">
-            <AnalyticsSection data={analyticsData} velocityData={analyticsVelocityData} loading={loading} />
+          <div className="min-h-0 flex-1">
+            <AnalyticsSection
+              data={analyticsData}
+              velocityData={analyticsVelocityData}
+              loading={loading}
+              isAdmin={isAdmin}
+              viewMode={analyticsViewMode}
+              onViewModeChange={setAnalyticsViewMode}
+            />
           </div>
         ) : (
-          <div className="flex flex-col">
-            {/* Filters */}
-            {!loading && topSignals.length > 0 && (
-              <TopSignalsRail items={topSignals} />
-            )}
-
-            <div className="sticky top-0 z-20 mb-5 bg-canvas/95 py-2 backdrop-blur">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="mb-4 shrink-0">
               <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} />
             </div>
 
             {activeType ? (
-              <div className="flex flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
                 {(() => {
                   const col = visibleColumns[0];
                   if (!col) return null;
@@ -305,10 +280,10 @@ export default function Dashboard() {
                           <h2 className="font-bold text-[15px] text-gray-800">{col.label}</h2>
                         </div>
                         <span className="text-[11px] text-gray-400 uppercase tracking-wider font-mono">
-                          {loading ? '…' : rankedData[col.key]?.length || 0}
+                          {loading ? '...' : rankedData[col.key]?.length || 0}
                         </span>
                       </div>
-                      <div className="pb-6 pr-1">
+                      <div>
                         {loading ? (
                             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -327,14 +302,14 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-              <div className="xl:hidden space-y-4 pb-8">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-8 xl:hidden">
                 {loading
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                   : mobileFeedItems.length
                     ? mobileFeedItems.map(item => <ArticleCard key={item._id} item={item} />)
                     : <EmptyState icon={Newspaper} isAdmin={isAdmin} />}
               </div>
-              <div className="hidden xl:grid h-[calc(100vh-190px)] min-h-[520px] grid-cols-4 gap-3 2xl:gap-4 pb-8">
+              <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5">
                 {visibleColumns.map(col => (
                   <FeedColumn key={col.key} column={col} items={rankedData[col.key] || []} loading={loading} isAdmin={isAdmin} />
                 ))}
@@ -347,7 +322,7 @@ export default function Dashboard() {
                         <h2 className="font-bold text-[15px] text-gray-800">{col.label}</h2>
                       </div>
                       <span className="text-[11px] text-gray-400 uppercase tracking-wider font-mono">
-                        {loading ? '…' : rankedData[col.key]?.length || 0}
+                        {loading ? '...' : rankedData[col.key]?.length || 0}
                       </span>
                     </div>
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pr-1">
