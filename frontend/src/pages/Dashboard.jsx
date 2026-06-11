@@ -200,12 +200,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} style={{ color: CRIMSON }} />
               <h1 className="truncate text-base font-black text-gray-900">
-                {dashTab === 'feed' ? 'Intel Desk' : 'Daily Intelligence Briefing'}
+                {dashTab === 'feed' ? 'Intel Desk' : 'Intelligence Briefing'}
               </h1>
             </div>
-            <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
-              {dashTab === 'feed' ? 'All indexed feeds' : 'Daily intelligence workspace'}
-            </p>
+            {dashTab === 'feed' && (
+              <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                All indexed feeds
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

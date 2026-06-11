@@ -164,3 +164,6 @@
 .insight-marquee {
   animation: insightMarquee 36s linear infinite;
 }
+.insight-marquee:hover {
+  animation-play-state: paused;
+}
