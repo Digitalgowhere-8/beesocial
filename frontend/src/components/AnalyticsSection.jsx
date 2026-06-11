@@ -610,7 +610,7 @@ function CategoryMomentumCard({ categories, className = '' }) {
   const max = Math.max(...categories.map((item) => item.count), 1);
 
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white p-3 shadow-card lg:p-[clamp(0.65rem,1.4vh,1rem)] ${className}`}>
+    <section className={`rounded-lg border border-gray-100 bg-white px-3 py-3 shadow-card sm:px-4 sm:py-4 lg:py-[clamp(0.65rem,1.4vh,1rem)] ${className}`}>
       <div className="mb-[clamp(0.35rem,1vh,0.75rem)] flex shrink-0 items-center gap-2">
         <Sparkles size={15} className="shrink-0 text-brand-crimson" />
         <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
