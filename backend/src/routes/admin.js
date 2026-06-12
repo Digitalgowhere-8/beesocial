@@ -15,6 +15,7 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 const ADMIN_ROLES = ['admin', 'super_admin'];
 const MANAGED_ROLES = ['user', 'admin'];
+const ONLINE_WINDOW_MS = 90 * 1000;
 const ARTICLE_RANK_SORT = { effectiveDay: -1, relevanceScore: -1, effectiveDate: -1 };
 
 function canSeeUser(actor, target) {
@@ -362,10 +363,15 @@ router.get('/users', asyncHandler(async (req, res) => {
     q.role = req.query.role;
   }
   if (req.query.q) q.email = { $regex: req.query.q, $options: 'i' };
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     User.find(q).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     User.countDocuments(q)
   ]);
+  const onlineSince = Date.now() - ONLINE_WINDOW_MS;
+  const items = rawItems.map((user) => ({
+    ...user,
+    isOnline: Boolean(user.lastSeenAt && new Date(user.lastSeenAt).getTime() >= onlineSince)
+  }));
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 }));
 

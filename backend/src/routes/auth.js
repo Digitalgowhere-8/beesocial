@@ -70,6 +70,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
   user.lastLoginAt = new Date();
+  user.lastSeenAt = user.lastLoginAt;
   await user.save();
 
   const token = signToken(user);
@@ -80,6 +81,13 @@ router.post('/login', asyncHandler(async (req, res) => {
 router.get('/me', protect, (req, res) => {
   res.json({ user: req.user.toPublicJSON() });
 });
+
+// POST /api/auth/logout
+router.post('/logout', protect, asyncHandler(async (req, res) => {
+  req.user.lastSeenAt = null;
+  await req.user.save();
+  res.json({ message: 'Logged out' });
+}));
 
 // PATCH /api/auth/me
 router.patch('/me', protect, asyncHandler(async (req, res) => {

@@ -479,6 +479,10 @@ function shuffleSignals(items) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+function sortByLatest(items) {
+  return [...items].sort((a, b) => getArticleTime(b) - getArticleTime(a));
+}
+
 function UpdateRow({ item }) {
   const accent = TYPE_ACCENTS[item.type] || CRIMSON;
   const when = item.fetchedAt || item.publishedAt
@@ -530,8 +534,8 @@ function UpdateRow({ item }) {
 }
 
 function TrendingUpdatesCard({ items, className = '' }) {
-  const visibleItems = useMemo(() => shuffleSignals(items.slice(0, 20)), [items]);
-  const marqueeItems = visibleItems.length > 3 ? [...visibleItems, ...shuffleSignals(visibleItems)] : visibleItems;
+  const visibleItems = useMemo(() => sortByLatest(items).slice(0, 20), [items]);
+  const marqueeItems = visibleItems.length > 3 ? [...visibleItems, ...visibleItems] : visibleItems;
   const scrollRef = useRef(null);
   const pausedRef = useRef(false);
 
@@ -806,7 +810,7 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
   );
 
   const trendingUpdates = useMemo(
-    () => buildMixedSignalFeed(allArticles, 5),
+    () => allArticles,
     [allArticles]
   );
 

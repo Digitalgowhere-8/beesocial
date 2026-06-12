@@ -541,17 +541,21 @@ function UsersTab() {
     isActive: true
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await api.get('/admin/users', { params: { limit: 50 } });
       setItems(data.items);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const id = window.setInterval(() => load({ silent: true }), 30 * 1000);
+    return () => window.clearInterval(id);
+  }, [load]);
 
   const updateForm = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -639,9 +643,11 @@ function UsersTab() {
             <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Company</div>
             <div className="truncate text-sm font-black text-gray-900">{displayCurrent?.company || '-'}</div>
           </div>
-          <div className="rounded-md bg-emerald-50 px-3 py-2 ring-1 ring-emerald-100">
+          <div className={`rounded-md px-3 py-2 ring-1 ${displayCurrent?.isOnline === false ? 'bg-gray-50 ring-gray-100' : 'bg-emerald-50 ring-emerald-100'}`}>
             <div className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Status</div>
-            <div className="text-sm font-black text-emerald-700">{displayCurrent?.isActive === false ? 'Inactive' : 'Active'}</div>
+            <div className={`text-sm font-black ${displayCurrent?.isOnline === false ? 'text-gray-600' : 'text-emerald-700'}`}>
+              {displayCurrent?.isActive === false ? 'Inactive' : displayCurrent?.isOnline === false ? 'Active' : 'Live now'}
+            </div>
           </div>
         </div>
       </div>
@@ -701,13 +707,14 @@ function UsersTab() {
         <Users size={17} className="text-gray-400" />
       </div>
       <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px]">
+      <table className="w-full min-w-[860px]">
         <thead className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
           <tr className="text-left">
             <th className="py-3 px-4">User</th>
             <th className="py-3 px-4">Company</th>
             <th className="py-3 px-4">Role</th>
             <th className="py-3 px-4">Status</th>
+            <th className="py-3 px-4">Live</th>
             <th className="py-3 px-4">Last login</th>
             <th className="py-3 px-4 text-right">Actions</th>
           </tr>
@@ -734,6 +741,19 @@ function UsersTab() {
                   {u.isActive ? 'Active' : 'Pending approval'}
                 </span>
               </td>
+              <td className="py-3 px-4">
+                <div className="flex flex-col gap-1">
+                  <span className={`tag ${u.isOnline ? 'bg-green-50 text-green-700 ring-1 ring-green-100' : 'bg-gray-50 text-gray-400 ring-1 ring-gray-100'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${u.isOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    {u.isOnline ? 'Live now' : 'Offline'}
+                  </span>
+                  {u.lastSeenAt && !u.isOnline && (
+                    <span className="text-[10px] font-medium text-gray-400">
+                      Seen {formatDistanceToNow(new Date(u.lastSeenAt), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+              </td>
               <td className="py-3 px-4 text-sm font-medium text-gray-500">
                 {u.lastLoginAt ? formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true }) : 'Never'}
               </td>
@@ -758,7 +778,7 @@ function UsersTab() {
           ))}
           {managedUsers.length === 0 && (
             <tr className="border-t border-gray-100">
-              <td colSpan={6} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
+              <td colSpan={7} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
                 No other users to manage.
               </td>
             </tr>

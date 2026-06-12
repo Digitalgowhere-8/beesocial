@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const PRESENCE_TOUCH_INTERVAL_MS = 30 * 1000;
+
 /**
  * `protect` - verifies the JWT in `Authorization: Bearer <token>`
  *  and attaches `req.user`.
@@ -20,6 +22,17 @@ async function protect(req, res, next) {
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'User not found or inactive' });
     }
+
+    const now = Date.now();
+    const lastSeen = user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
+    const shouldTouchPresence = req.path !== '/logout' && !req.originalUrl.endsWith('/auth/logout');
+    if (shouldTouchPresence && (!lastSeen || now - lastSeen > PRESENCE_TOUCH_INTERVAL_MS)) {
+      user.lastSeenAt = new Date(now);
+      User.updateOne({ _id: user._id }, { $set: { lastSeenAt: user.lastSeenAt } }).catch((err) => {
+        console.error('[auth] failed to update presence:', err.message);
+      });
+    }
+
     req.user = user;
     next();
   } catch (err) {

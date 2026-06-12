@@ -31,6 +31,22 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const heartbeat = () => {
+      api.get('/auth/me')
+        .then((r) => {
+          setUser(r.data.user);
+          localStorage.setItem('ascentium_user', JSON.stringify(r.data.user));
+        })
+        .catch(() => {});
+    };
+
+    const id = window.setInterval(heartbeat, 45 * 1000);
+    return () => window.clearInterval(id);
+  }, [user]);
+
   const persist = (token, user) => {
     localStorage.setItem('ascentium_token', token);
     localStorage.setItem('ascentium_user', JSON.stringify(user));
@@ -52,6 +68,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    const token = localStorage.getItem('ascentium_token');
+    api.post('/auth/logout', null, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined).catch(() => {});
     localStorage.removeItem('ascentium_token');
     localStorage.removeItem('ascentium_user');
     setUser(null);

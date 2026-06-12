@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema(
     avatar: { type: String, default: '' },  // optional URL
 
     lastLoginAt: { type: Date },
+    lastSeenAt: { type: Date },
     isActive: { type: Boolean, default: false }
   },
   { timestamps: true }
