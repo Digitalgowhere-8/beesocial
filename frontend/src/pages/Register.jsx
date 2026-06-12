@@ -75,12 +75,12 @@ export default function Register() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/login_logo.png" style={{ filter: 'brightness(0) invert(1)', height: '52px', width: 'auto' }} alt="BoostUp Logo" />
+          <img src="/logo.png" style={{ filter: 'brightness(0) invert(1)', height: '52px', width: 'auto' }} alt="Bee Social Logo" />
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-center fade-in py-10 -translate-y-10 xl:-translate-y-14" style={{ animationDelay: '0.1s' }}>
+        <div className="relative z-10 flex-1 flex flex-col justify-start fade-in pt-40 xl:pt-44 ml-6 xl:ml-10" style={{ animationDelay: '0.1s' }}>
           <div
-            className="inline-flex items-center gap-2 mb-7 w-fit px-3.5 py-1.5 rounded-full text-[12px] font-semibold"
+            className="inline-flex items-center gap-2 mb-8 w-fit px-3.5 py-1.5 rounded-full text-[12px] font-semibold"
             style={{ background: 'rgba(255,255,255,0.18)', color: 'white', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.25)' }}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-green-300 inline-block" style={{ boxShadow: '0 0 4px #86efac' }} />
@@ -88,7 +88,7 @@ export default function Register() {
           </div>
 
           <h1
-            className="max-w-[800px] text-white font-black leading-[0.98] mb-7"
+            className="max-w-[800px] text-white font-black leading-[1.08] mb-8"
             style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"DM Sans", system-ui, sans-serif' }}
           >
             The Market Intelligence<br />
@@ -96,7 +96,7 @@ export default function Register() {
             Pipeline, On Autopilot.
           </h1>
 
-          <div className="max-w-[720px] text-white/70 text-[11px] font-semibold uppercase tracking-[0.14em] leading-relaxed">
+          <div className="max-w-[720px] text-white/70 text-[11px] font-semibold uppercase tracking-[0.14em] leading-[1.9]">
             100+ TRUSTED SOURCES &nbsp;&middot;&nbsp; GOVERNMENT PORTALS &nbsp;&middot;&nbsp; INDUSTRY PUBLICATIONS &nbsp;&middot;&nbsp; MARKET BRIEFINGS
           </div>
         </div>
@@ -108,7 +108,7 @@ export default function Register() {
 
       <div className="flex-1 min-h-screen flex items-center justify-center px-4 py-24 sm:p-10 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
         <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
-          <img src="/boostup_logo.png" style={{ height: '38px', width: 'auto' }} alt="BoostUp Logo" />
+          <img src="/logo.png" style={{ height: '38px', width: 'auto' }} alt="Bee Social Logo" />
         </div>
 
         <div className="relative z-10 w-full max-w-md fade-in mt-12 lg:mt-0">

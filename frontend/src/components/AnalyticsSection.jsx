@@ -547,7 +547,7 @@ function TrendingUpdatesCard({ items, className = '' }) {
 
       const loopHeight = scroller.scrollHeight / 2;
       if (!pausedRef.current && loopHeight > 0) {
-        const pixelsPerMillisecond = loopHeight / 36000;
+        const pixelsPerMillisecond = loopHeight / 60000;
         scroller.scrollTop += (time - previousTime) * pixelsPerMillisecond;
 
         if (scroller.scrollTop >= loopHeight) {

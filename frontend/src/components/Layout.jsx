@@ -8,35 +8,6 @@ import {
 const CRIMSON = '#D11243';
 const DARK_RED = '#8F0B2F';
 
-function BoostUpRocketIcon({ className = 'w-5 h-5' }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} xmlns="http://www.w3.org/2000/svg">
-      <g transform="translate(6, 6)">
-        {/* Flame / trailing pixels */}
-        <rect x="-8" y="14" width="4" height="4" fill="#FBBF24" />
-        <rect x="-13" y="10" width="3" height="3" fill="#F59E0B" />
-        <rect x="-4" y="10" width="4" height="4" fill="#EF4444" />
-        <rect x="-9" y="6" width="4" height="4" fill="#D11243" />
-        <rect x="-5" y="5" width="3" height="3" fill="#F59E0B" />
-
-        {/* Rocket Body tilted 45 deg */}
-        <g transform="rotate(45, 12, 12)">
-          {/* Fins */}
-          <path d="M4,18 L0,22 L4,24 Z" fill={CRIMSON} />
-          <path d="M18,4 L22,0 L24,4 Z" fill={CRIMSON} />
-          <path d="M4,4 L1,10 L10,1 Z" fill={CRIMSON} />
-          {/* Main body */}
-          <path d="M6,6 L18,6 C22,6 24,8 24,12 L24,18 L6,18 Z" fill={CRIMSON} />
-          {/* Nosecone */}
-          <path d="M24,6 L32,12 L24,18 Z" fill={CRIMSON} />
-          {/* Window */}
-          <circle cx="16" cy="12" r="3.5" fill="white" />
-        </g>
-      </g>
-    </svg>
-  );
-}
-
 function SideNavItem({ icon: Icon, label, to, onActiveClick }) {
   return (
     <NavLink
@@ -227,7 +198,7 @@ export default function Layout({ children }) {
     <div className="h-screen flex flex-col md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
       <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <img src="/boostup_logo.png" className="h-7 object-contain shrink-0" alt="BoostUp Logo" />
+          <img src="/logo.png" className="h-7 object-contain shrink-0" alt="Bee Social Logo" />
           <span className="text-sm font-bold text-gray-800 truncate">{getPageTitle()}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -259,15 +230,15 @@ export default function Layout({ children }) {
           {!collapsed ? (
             <div className="flex-1 flex justify-start pl-2">
               <img 
-                src="/boostup_logo.png" 
+                src="/logo.png" 
                 className="h-8 cursor-pointer object-contain" 
                 onClick={() => navigate('/dashboard')} 
-                alt="BoostUp Logo" 
+                alt="Bee Social Logo" 
               />
             </div>
           ) : (
             <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigate('/dashboard')}>
-              <BoostUpRocketIcon className="w-5 h-5" />
+              <img src="/favicon.png" className="h-6 w-6 object-contain" alt="Bee Social Logo" />
             </div>
           )}
           <button
