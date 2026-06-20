@@ -11,5 +11,20 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — cached separately, rarely changes
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // UI icons — large library, cache separately
+          'vendor-icons': ['lucide-react'],
+          // Utility libraries
+          'vendor-utils': ['axios', 'date-fns']
+        }
+      }
+    }
   }
 });
