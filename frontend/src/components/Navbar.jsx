@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, LayoutDashboard, Shield, User as UserIcon, Menu, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, Shield, User as UserIcon, Menu, X, BookOpenText, Newspaper } from 'lucide-react';
 
 function Logo() {
   return (
     <div className="flex items-center gap-2.5 select-none">
       <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-md bg-navy-900 flex items-center justify-center shadow-lift">
-        <span className="font-display text-brass-400 text-lg sm:text-xl font-semibold leading-none">A</span>
+        <span className="font-display text-brass-400 text-lg sm:text-xl font-semibold leading-none">O</span>
       </div>
       <div>
-        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">Ascentium</div>
-        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Intelligence</div>
+        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">OpportunityOS AI</div>
+        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Opportunity Radar</div>
       </div>
     </div>
   );
@@ -44,9 +44,10 @@ const roleLabel = (role) => {
 };
 
 export default function Navbar() {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isSuperAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
 
   const handleLogout = () => {
     logout();
@@ -60,9 +61,18 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1">
-          <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
-          {isAdmin && <NavItem to="/admin" icon={Shield}>Admin</NavItem>}
-          <NavItem to="/profile" icon={UserIcon}>Profile</NavItem>
+          {isSuperAdmin ? (
+            <NavItem to="/admin" icon={Shield}>Owner Console</NavItem>
+          ) : (
+            <>
+              <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
+              <NavItem to="/intel-desk" icon={Newspaper}>Intel Desk</NavItem>
+              <NavItem to="/blogs" icon={BookOpenText}>Blog</NavItem>
+              {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText}>Social Media Studio</NavItem>}
+              {isAdmin && <NavItem to="/admin" icon={Shield}>Admin</NavItem>}
+              <NavItem to="/profile" icon={UserIcon}>Profile</NavItem>
+            </>
+          )}
         </nav>
 
         {/* Right side */}
@@ -97,9 +107,18 @@ export default function Navbar() {
               {roleLabel(user?.role)}
             </div>
           </div>
-          <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>Dashboard</NavItem>
-          {isAdmin && <NavItem to="/admin" icon={Shield} onClick={() => setMobileOpen(false)}>Admin</NavItem>}
-          <NavItem to="/profile" icon={UserIcon} onClick={() => setMobileOpen(false)}>Profile</NavItem>
+          {isSuperAdmin ? (
+            <NavItem to="/admin" icon={Shield} onClick={() => setMobileOpen(false)}>Owner Console</NavItem>
+          ) : (
+            <>
+              <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>Dashboard</NavItem>
+              <NavItem to="/intel-desk" icon={Newspaper} onClick={() => setMobileOpen(false)}>Intel Desk</NavItem>
+              <NavItem to="/blogs" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Blog</NavItem>
+              {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Social Media Studio</NavItem>}
+              {isAdmin && <NavItem to="/admin" icon={Shield} onClick={() => setMobileOpen(false)}>Admin</NavItem>}
+              <NavItem to="/profile" icon={UserIcon} onClick={() => setMobileOpen(false)}>Profile</NavItem>
+            </>
+          )}
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 transition-all"

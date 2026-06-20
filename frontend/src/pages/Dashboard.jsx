@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Filters from '../components/Filters';
@@ -7,12 +8,12 @@ import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp, BookOpenText, MessageSquareText, Sparkles
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const CRIMSON = '#D11243';
-const DASHBOARD_TIMEZONE = 'Asia/Singapore';
+const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 
 const FEED_COLUMNS = [
   { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
@@ -22,6 +23,11 @@ const FEED_COLUMNS = [
 ];
 
 const TYPE_LABELS = Object.fromEntries(FEED_COLUMNS.map((col) => [col.key, col]));
+
+function withoutRegion(value = {}) {
+  const { region: _region, ...rest } = value || {};
+  return rest;
+}
 
 function SkeletonCard() {
   return (
@@ -88,7 +94,7 @@ function dateScoreRanked(items = []) {
   });
 }
 
-function FeedColumn({ column, items, loading, isAdmin }) {
+function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
   const Icon = column.icon;
   const countries = [...new Set(items.map((item) => item.country).filter(Boolean))].slice(0, 3);
 
@@ -117,7 +123,7 @@ function FeedColumn({ column, items, loading, isAdmin }) {
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
-            ? items.map(item => <ArticleCard key={item._id} item={item} compact />)
+            ? items.map(item => renderArticle(item, { compact: true }))
             : <EmptyState icon={Icon} isAdmin={isAdmin} />}
       </div>
     </section>
@@ -126,6 +132,7 @@ function FeedColumn({ column, items, loading, isAdmin }) {
 
 export default function Dashboard({ initialTab = 'analytics' }) {
   const { user, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
   const [analyticsData, setAnalyticsData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
   const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
@@ -136,21 +143,24 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     if (!user?._id) return {};
     try {
       const saved = localStorage.getItem(`dashboard_filters_${user._id}`);
-      return saved ? JSON.parse(saved) : {};
+      return saved ? withoutRegion(JSON.parse(saved)) : {};
     } catch { return {}; }
   });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [draggedArticle, setDraggedArticle] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [savingArticleIds, setSavingArticleIds] = useState(new Set());
 
   useEffect(() => {
     if (user?._id)
-      localStorage.setItem(`dashboard_filters_${user._id}`, JSON.stringify(filters));
+      localStorage.setItem(`dashboard_filters_${user._id}`, JSON.stringify(withoutRegion(filters)));
   }, [filters, user?._id]);
 
   const load = useCallback(async (f) => {
     setLoading(true);
     try {
-      const params = {};
-      for (const [k, v] of Object.entries(f || {})) if (v) params[k] = v;
+      const params = { personalized: 'true' };
+      for (const [k, v] of Object.entries(withoutRegion(f))) if (v) params[k] = v;
       const [dashboardRes, analyticsRes, analyticsVelocityRes] = await Promise.all([
         api.get('/articles/dashboard', { params }),
         api.get('/articles/dashboard'),
@@ -191,6 +201,84 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       .length;
   }, [analyticsData]);
 
+  const startArticleDrag = (event, item) => {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', item._id);
+    setDraggedArticle(item);
+    setComposerOpen(true);
+  };
+
+  const endArticleDrag = () => {
+    window.setTimeout(() => {
+      setDraggedArticle(null);
+      setComposerOpen(false);
+    }, 180);
+  };
+
+  const openStudioWithArticle = (mode) => {
+    if (!draggedArticle?._id) return;
+    navigate('/social-media-studio', {
+      state: {
+        articleId: draggedArticle._id,
+        article: draggedArticle,
+        contentType: mode,
+        socialPlatform: 'linkedin'
+      }
+    });
+  };
+
+  const patchArticleSavedState = (articleId, isSaved) => {
+    const updateBuckets = (prev) => Object.fromEntries(
+      Object.entries(prev || {}).map(([type, items]) => [
+        type,
+        (items || []).map((item) => item._id === articleId ? { ...item, isSaved } : item)
+      ])
+    );
+    setData(updateBuckets);
+    setAnalyticsData(updateBuckets);
+  };
+
+  const toggleSaveArticle = async (item) => {
+    if (!item?._id || savingArticleIds.has(item._id)) return;
+    setSavingArticleIds((prev) => new Set(prev).add(item._id));
+    const nextSaved = !item.isSaved;
+    patchArticleSavedState(item._id, nextSaved);
+    try {
+      if (nextSaved) {
+        await api.post(`/articles/${item._id}/save`);
+      } else {
+        await api.delete(`/articles/${item._id}/save`);
+      }
+    } catch (error) {
+      patchArticleSavedState(item._id, item.isSaved);
+      console.error(error);
+    } finally {
+      setSavingArticleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item._id);
+        return next;
+      });
+    }
+  };
+
+  const renderDraggableArticle = (item, options = {}) => (
+    <div
+      key={item._id}
+      draggable
+      onDragStart={(event) => startArticleDrag(event, item)}
+      onDragEnd={endArticleDrag}
+      className="cursor-grab active:cursor-grabbing"
+      title="Drag to create blog or social post"
+    >
+      <ArticleCard
+        item={item}
+        {...options}
+        onSaveToggle={toggleSaveArticle}
+        saving={savingArticleIds.has(item._id)}
+      />
+    </div>
+  );
+
   return (
     <Layout>
       <div className="flex h-full min-h-0 flex-col">
@@ -200,12 +288,12 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} style={{ color: CRIMSON }} />
               <h1 className="truncate text-base font-black text-gray-900">
-                {dashTab === 'feed' ? 'Intel Desk' : 'Intelligence Briefing'}
+                {dashTab === 'feed' ? 'My Intelligence' : 'Intelligence Briefing'}
               </h1>
             </div>
             {dashTab === 'feed' && (
               <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                All indexed feeds
+                Personalized by market, service category and profile
               </p>
             )}
           </div>
@@ -292,7 +380,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                           </div>
                         ) : rankedData[col.key]?.length ? (
                           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {rankedData[col.key].map(item => <ArticleCard key={item._id} item={item} />)}
+                            {rankedData[col.key].map(item => renderDraggableArticle(item))}
                           </div>
                         ) : (
                           <EmptyState icon={col.icon} isAdmin={isAdmin} />
@@ -308,12 +396,19 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 {loading
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                   : mobileFeedItems.length
-                    ? mobileFeedItems.map(item => <ArticleCard key={item._id} item={item} />)
+                    ? mobileFeedItems.map(item => renderDraggableArticle(item))
                     : <EmptyState icon={Newspaper} isAdmin={isAdmin} />}
               </div>
               <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5">
                 {visibleColumns.map(col => (
-                  <FeedColumn key={col.key} column={col} items={rankedData[col.key] || []} loading={loading} isAdmin={isAdmin} />
+                  <FeedColumn
+                    key={col.key}
+                    column={col}
+                    items={rankedData[col.key] || []}
+                    loading={loading}
+                    isAdmin={isAdmin}
+                    renderArticle={renderDraggableArticle}
+                  />
                 ))}
                 {false && visibleColumns.map(col => (
                   <div key={col.key} className="flex min-h-0 flex-col">
@@ -342,6 +437,129 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </div>
         )}
       </div>
+      {dashTab === 'feed' && (
+        <ComposerDropTray
+          open={composerOpen}
+          article={draggedArticle}
+          onDropMode={openStudioWithArticle}
+        />
+      )}
     </Layout>
+  );
+}
+
+function ComposerDropTray({ open, article, onDropMode }) {
+  const [activeTarget, setActiveTarget] = useState('');
+  const targets = [
+    {
+      mode: 'blog',
+      title: 'Blog Generator',
+      subtitle: 'Draft a polished long-form article',
+      icon: BookOpenText,
+      tint: 'from-rose-500 to-pink-500',
+    },
+    {
+      mode: 'social',
+      title: 'Social Media Post',
+      subtitle: 'Create a LinkedIn-ready post',
+      icon: MessageSquareText,
+      tint: 'from-sky-500 to-cyan-500',
+    },
+  ];
+
+  return (
+    <>
+      <div
+        className={[
+          'pointer-events-none fixed inset-0 z-30 bg-gray-950/10 backdrop-blur-[2px] transition-opacity duration-300',
+          open ? 'opacity-100' : 'opacity-0',
+        ].join(' ')}
+      />
+      <div
+        className={[
+          'pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-3 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:px-6 sm:pb-5',
+          open ? 'translate-y-0 opacity-100' : 'translate-y-[115%] opacity-0',
+        ].join(' ')}
+      >
+        <div className={`pointer-events-auto mx-auto max-w-5xl overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_-22px_70px_rgba(15,23,42,0.22)] backdrop-blur-2xl ${open ? 'composer-pop' : ''}`}>
+          <div className="h-1.5 bg-[linear-gradient(90deg,#D11243,#38bdf8,#8b5cf6,#D11243)] bg-[length:220%_100%] composer-gradient" />
+          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(260px,0.85fr)_minmax(0,1.35fr)] lg:p-5">
+            <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+              <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-brand-crimson shadow-sm">
+                <Sparkles size={18} className="composer-spark" />
+              </div>
+              <div className="pr-12">
+                <div className="text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                  Selected intelligence
+                </div>
+                <h3 className="mt-2 line-clamp-3 text-base font-black leading-snug text-gray-950">
+                  {article?.title || 'Drag a topic into a composer'}
+                </h3>
+                <p className="mt-3 line-clamp-3 text-xs font-semibold leading-relaxed text-gray-500">
+                  {article?.summary || article?.aiSummary || 'Choose where this source should become content.'}
+                </p>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {article?.type && (
+                  <span className="rounded-md bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
+                    {TYPE_LABELS[article.type]?.label || article.type}
+                  </span>
+                )}
+                <span className="rounded-md bg-brand-pink/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-crimson ring-1 ring-brand-crimson/10">
+                  Drop to continue
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {targets.map((target) => {
+                const Icon = target.icon;
+                const active = activeTarget === target.mode;
+                return (
+                  <button
+                    key={target.mode}
+                    type="button"
+                    onDragEnter={() => setActiveTarget(target.mode)}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'copy';
+                      setActiveTarget(target.mode);
+                    }}
+                    onDragLeave={() => setActiveTarget('')}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setActiveTarget('');
+                      onDropMode(target.mode);
+                    }}
+                    className={[
+                      'group relative flex min-h-[148px] overflow-hidden rounded-xl border-2 border-dashed px-4 py-4 text-left transition-all duration-300 sm:px-5',
+                      active
+                        ? 'scale-[1.025] border-brand-crimson bg-brand-pink/50 shadow-[0_18px_45px_rgba(209,18,67,0.18)]'
+                        : 'border-gray-200 bg-white hover:-translate-y-1 hover:border-brand-crimson/40 hover:shadow-lg',
+                    ].join(' ')}
+                  >
+                    <span className={`absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br ${target.tint} opacity-10 blur-2xl transition-all duration-300 group-hover:scale-125 group-hover:opacity-20`} />
+                    <span className="relative flex h-full min-w-0 flex-col justify-between gap-5">
+                      <span className="flex items-start gap-3">
+                        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${target.tint} text-white shadow-lg transition-transform duration-300 ${active ? 'scale-110 rotate-3' : 'group-hover:scale-105'}`}>
+                          <Icon size={21} />
+                        </span>
+                        <span className="min-w-0 pt-0.5">
+                          <span className="block text-base font-black text-gray-950">{target.title}</span>
+                          <span className="mt-1 block text-xs font-semibold leading-relaxed text-gray-500">{target.subtitle}</span>
+                        </span>
+                      </span>
+                      <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-brand-crimson text-white' : 'bg-gray-50 text-gray-400 group-hover:bg-brand-pink group-hover:text-brand-crimson'}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-brand-crimson'}`} />
+                        {active ? 'Release to open' : 'Drop here'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

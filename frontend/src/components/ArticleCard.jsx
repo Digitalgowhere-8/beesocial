@@ -1,11 +1,11 @@
-import { ExternalLink, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
+import { Bookmark, Check, ExternalLink, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const TYPE_STYLES = {
-  news:       { label: 'News',       accent: '#3b82f6' },
-  govt:       { label: 'Government', accent: '#10b981' },
-  competitor: { label: 'Competitor', accent: '#f59e0b' },
-  evergreen:  { label: 'Evergreen',  accent: '#8b5cf6' },
+  news:       { label: 'News Articles', accent: '#3b82f6' },
+  govt:       { label: 'Government Updates', accent: '#10b981' },
+  competitor: { label: 'Competitor Intel', accent: '#f59e0b' },
+  evergreen:  { label: 'Evergreen Guides',  accent: '#8b5cf6' },
 };
 
 function formatDateTime(value) {
@@ -50,6 +50,8 @@ export default function ArticleCard({
   selectable = false,
   selected = false,
   onSelect,
+  onSaveToggle,
+  saving = false,
   adminActions = null,
 }) {
   const typeStyle = TYPE_STYLES[item.type] || TYPE_STYLES.news;
@@ -63,6 +65,8 @@ export default function ArticleCard({
   const summary = item.summary || item.aiSummary;
   const source = item.source || sourceHost(item.url) || 'Unknown source';
   const country = item.country || item.market || 'Not specified';
+  const region = item.region || '';
+  const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
 
   return (
@@ -117,6 +121,14 @@ export default function ArticleCard({
               className="mt-0.5 rounded border-gray-200 text-brand-crimson focus:ring-brand-crimson/30"
             />
           )}
+          {item.isSaved && !selectable && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100"
+              title="Saved"
+            >
+              <Check size={11} /> Saved
+            </span>
+          )}
         </div>
       </div>
 
@@ -154,9 +166,20 @@ export default function ArticleCard({
 
       <div className="mt-auto border-t border-gray-100 pl-3 pt-3">
         <div className="mb-2 grid grid-cols-2 gap-2">
-          <MetaPill icon={MapPin} title="Country">{country}</MetaPill>
+          <MetaPill icon={MapPin} title="Country or region">{[region, country].filter(Boolean).join(', ')}</MetaPill>
           <MetaPill icon={Globe} title={`Source: ${source}`}>{source}</MetaPill>
         </div>
+        {(item.sector || opportunityType) && (
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <MetaPill icon={Folder} title="Service focus">{item.sector}</MetaPill>
+            <MetaPill icon={Tag} title="Opportunity type">{opportunityType}</MetaPill>
+          </div>
+        )}
+        {item.relevanceReason && (
+          <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-[11px] font-semibold leading-snug text-emerald-700 ring-1 ring-emerald-100">
+            {item.relevanceReason}
+          </div>
+        )}
         <div className="mb-3">
           <MetaPill icon={Clock3} title={updatedAt ? `Updated ${updatedAt}` : updatedLabel} relaxed>
             {updatedLabel}
@@ -168,16 +191,41 @@ export default function ArticleCard({
             <div className="text-[9px] font-black uppercase tracking-wider text-gray-400">Source domain</div>
             <div className="truncate text-[11px] font-bold text-gray-500">{host || item.url}</div>
           </div>
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all hover:bg-brand-pink/50"
-            style={{ color: typeStyle.accent }}
-            title="Open source article"
-          >
-            Source <ExternalLink size={12} />
-          </a>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onSaveToggle && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSaveToggle(item);
+                }}
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all',
+                  item.isSaved
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                    : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+                  saving ? 'cursor-wait opacity-70' : ''
+                ].join(' ')}
+                title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+              >
+                {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
+                {saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}
+              </button>
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all hover:bg-brand-pink/50"
+              style={{ color: typeStyle.accent }}
+              title="Open source article"
+              onClick={(event) => event.stopPropagation()}
+            >
+              Source <ExternalLink size={12} />
+            </a>
+          </div>
         </div>
       </div>
 

@@ -11,7 +11,7 @@ const { matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; AscentiumIntelBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
 
 function extractLinks(html, source) {
   const $ = cheerio.load(html);

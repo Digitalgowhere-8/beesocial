@@ -5,14 +5,31 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
+import Maintenance from './pages/Maintenance';
+import SocialMediaStudio from './pages/BlogStudio';
+import BlogLibrary from './pages/BlogLibrary';
+import { useAuth } from './context/AuthContext';
+
+function HomeRedirect() {
+  const { isSuperAdmin } = useAuth();
+  return <Navigate to={isSuperAdmin ? '/admin' : '/dashboard'} replace />;
+}
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/maintenance" element={<Maintenance />} />
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <HomeRedirect />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/dashboard"
@@ -39,6 +56,30 @@ export default function App() {
         }
       />
       <Route
+        path="/social-media-studio"
+        element={
+          <ProtectedRoute requireAccess="canUseBlogStudio">
+            <SocialMediaStudio />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/content-studio"
+        element={<Navigate to="/social-media-studio" replace />}
+      />
+      <Route
+        path="/blog-studio"
+        element={<Navigate to="/social-media-studio" replace />}
+      />
+      <Route
+        path="/blogs"
+        element={
+          <ProtectedRoute>
+            <BlogLibrary />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/profile"
         element={
           <ProtectedRoute>
@@ -47,7 +88,14 @@ export default function App() {
         }
       />
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="*"
+        element={
+          <ProtectedRoute>
+            <HomeRedirect />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }

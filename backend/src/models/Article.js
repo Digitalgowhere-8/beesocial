@@ -44,20 +44,32 @@ const articleSchema = new mongoose.Schema(
     publishedAt: { type: Date, default: null, index: true }, // date article appeared at source (best-effort)
     fetchedAt:   { type: Date, default: Date.now, index: true },
 
-    // Geography (extensible — default Singapore)
-    country: { type: String, default: 'Singapore', index: true },
+    // Geography (extensible across countries and regions)
+    country: { type: String, default: 'India', index: true },
+    region: { type: String, default: '', index: true },
+    sector: { type: String, default: '', index: true },
+    opportunityType: { type: String, default: 'market_news', index: true },
+    targetUserTypes: [{ type: String }],
+    matchedInterests: [{ type: String }],
+    sourceQuery: { type: String, default: '' },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+    savedSearchId: { type: mongoose.Schema.Types.ObjectId, ref: 'SavedSearch', index: true },
+    language: { type: String, default: 'en', index: true },
 
     // AI / relevance
-    relevanceScore: { type: Number, default: 0 },   // 0-100, populated by Tavily / OpenAI when available
-    aiSummary:      { type: String, default: '' },  // AI-generated short summary (optional)
+    relevanceScore: { type: Number, default: 0 },
+    relevanceReason: { type: String, default: '', maxlength: 500 },
+    aiSummary:      { type: String, default: '', maxlength: 2000 },
+
+    // Useful context snippets (trimmed — no full raw payload)
+    blogContext:  { type: String, default: '', maxlength: 3000 },
+    tavilyAnswer: { type: String, default: '', maxlength: 1200 },
 
     // Workflow
     isPublished: { type: Boolean, default: true, index: true },
     publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    publishedAtAdmin: { type: Date },
-
-    // Raw payload (optional, useful for debugging)
-    raw: { type: mongoose.Schema.Types.Mixed }
+    publishedAtAdmin: { type: Date }
+    // raw field removed — saves significant storage per article
   },
   { timestamps: true }
 );
@@ -67,5 +79,7 @@ articleSchema.index({ type: 1, isPublished: 1, relevanceScore: -1, publishedAt: 
 articleSchema.index({ category: 1, type: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
 articleSchema.index({ subcategory: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
 articleSchema.index({ source: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
+articleSchema.index({ userId: 1, savedSearchId: 1, relevanceScore: -1 });
+articleSchema.index({ region: 1, sector: 1, opportunityType: 1 });
 
 module.exports = mongoose.model('Article', articleSchema);

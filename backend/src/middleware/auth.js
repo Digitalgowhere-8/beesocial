@@ -23,6 +23,13 @@ async function protect(req, res, next) {
       return res.status(401).json({ message: 'User not found or inactive' });
     }
 
+    if (user.passwordChangedAt) {
+      const changedTime = Math.floor(user.passwordChangedAt.getTime() / 1000);
+      if (decoded.iat < changedTime) {
+        return res.status(401).json({ message: 'Password recently changed. Please log in again.' });
+      }
+    }
+
     const now = Date.now();
     const lastSeen = user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
     const shouldTouchPresence = req.path !== '/logout' && !req.originalUrl.endsWith('/auth/logout');

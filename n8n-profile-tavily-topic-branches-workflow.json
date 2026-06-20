@@ -1,0 +1,1077 @@
+{
+  "name": "Profile Tavily Intelligence - Topic Branches",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "user-profile-trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0f59bfaf-0f59-bfaf-0f59-0f59bfaf0f59",
+      "name": "Profile Search Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "user-profile-search"
+    },
+    {
+      "parameters": {
+        "jsCode": "const incoming = $json.body || $json;\nconst now = new Date().toISOString();\nfunction text(value, fallback = '') { return String(value ?? fallback).trim(); }\nfunction list(value) {\n  if (Array.isArray(value)) return value.map((v) => text(v)).filter(Boolean);\n  if (typeof value === 'string') return value.split(',').map((v) => text(v)).filter(Boolean);\n  return [];\n}\nfunction unique(values) { return [...new Set(values.filter(Boolean))]; }\nconst allowedTopics = ['news', 'govt', 'competitor', 'evergreen'];\nconst topics = unique(list(incoming.topics)).filter((topic) => allowedTopics.includes(String(topic).toLowerCase())).map((topic) => String(topic).toLowerCase());\nconst selectedTopics = topics.length ? topics : allowedTopics;\nconst profile = {\n  userId: text(incoming.userId),\n  savedSearchId: text(incoming.savedSearchId),\n  logId: text(incoming.logId),\n  trigger: text(incoming.trigger, 'manual'),\n  country: text(incoming.country, 'India'),\n  region: text(incoming.region),\n  location: text(incoming.location) || [incoming.country, incoming.region].map((v) => text(v)).filter(Boolean).join(' '),\n  category: text(incoming.category, 'Corporate Services'),\n  subcategory: text(incoming.subcategory || incoming.sub_category),\n  subcategoryOptions: unique(list(incoming.subcategoryOptions || incoming.categoryOptions)),\n  topics: selectedTopics,\n  topicEnabled: Object.fromEntries(allowedTopics.map((topic) => [topic, selectedTopics.includes(topic)])),\n  queries: incoming.queries && typeof incoming.queries === 'object' ? incoming.queries : {},\n  queryVariants: incoming.queryVariants && typeof incoming.queryVariants === 'object' ? incoming.queryVariants : {},\n  preferredDomains: unique(list(incoming.preferredDomains || incoming.includeDomains || incoming.sources)),\n  strictSources: Boolean(incoming.strictSources || incoming.strict_sources),\n  competitors: unique(list(incoming.competitors)),\n  days: Math.max(1, Math.min(365, Number(incoming.days || 30) || 30)),\n  targetPerTopic: Math.max(1, Math.min(20, Number(incoming.targetPerTopic || incoming.maxPerTopic || 10) || 10)),\n  minTavilyScore: incoming.minTavilyScore,\n  language: text(incoming.language, 'en'),\n  timezone: text(incoming.timezone, 'Asia/Kolkata'),\n  callbackUrl: text(incoming.callbackUrl),\n  callbackSecret: text(incoming.callbackSecret || incoming.secret),\n  startedAt: incoming.startedAt || now\n};\nif (!profile.userId) throw new Error('userId is required');\nif (!profile.callbackUrl) throw new Error('callbackUrl is required');\nreturn [{ json: { profile, topicEnabled: profile.topicEnabled } }];"
+      },
+      "id": "5ef57be1-5ef5-7be1-5ef5-5ef57be15ef5",
+      "name": "Normalize Profile Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7afbd90d-7afb-d90d-7afb-7afbd90d7afb",
+              "leftValue": "={{ $json.topicEnabled.govt }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "90a5ffbd-90a5-ffbd-90a5-90a5ffbd90a5",
+      "name": "Govt Topic Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        -520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $json.profile || $json;\nconst topic = 'govt';\nfunction text(value, fallback = '') { return String(value ?? fallback).trim(); }\nfunction unique(values) { return [...new Set(values.filter(Boolean))]; }\nfunction daysToTimeRange(value) {\n  const days = Math.max(1, Math.min(365, Number(value || 30) || 30));\n  if (days <= 1) return 'day';\n  if (days <= 7) return 'week';\n  if (days <= 31) return 'month';\n  return 'year';\n}\nconst variants = Array.isArray(profile.queryVariants?.[topic])\n  ? profile.queryVariants[topic].map((v) => text(v)).filter(Boolean)\n  : [];\nconst fallback = text(profile.queries?.[topic]);\nconst queries = unique(variants.length ? variants : [fallback].filter(Boolean)).slice(0, 8);\nif (!queries.length) throw new Error('No query variants found for govt topic.');\nreturn queries.map((query, variantIndex) => {\n  const tavilyBody = {\n    query,\n    topic: 'news',\n    search_depth: 'advanced',\n    max_results: 8,\n    include_answer: false,\n    include_raw_content: true\n  };\n  tavilyBody.time_range = daysToTimeRange(profile.days);\n  if (profile.strictSources && profile.preferredDomains.length) tavilyBody.include_domains = profile.preferredDomains;\n  return { json: {\n    profile,\n    topic,\n    variantIndex,\n    type: topic,\n    opportunityType: \"policy\",\n    sourceQuery: query,\n    minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 10) || 10)),\n    tavilyBody\n  } };\n});"
+      },
+      "id": "39d4c201-39d4-c201-39d4-39d4c20139d4",
+      "name": "Build Govt Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tavilyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavilyBody) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1f9defac-1f9d-efac-1f9d-1f9defac1f9d",
+      "name": "Tavily Govt Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        -560
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function hashString(input) {\n  let hash = 2166136261;\n  for (let i = 0; i < String(input).length; i += 1) {\n    hash ^= String(input).charCodeAt(i);\n    hash = Math.imul(hash, 16777619) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\nfunction hostFromUrl(url) {\n  const value = String(url || '').trim();\n  try { return new URL(value).hostname.replace(/^www\\./, ''); }\n  catch (_e) {\n    const match = value.match(/^https?:\\/\\/(?:www\\.)?([^/]+)/i);\n    return match ? match[1].toLowerCase() : 'dynamic-search';\n  }\n}\nconst requestItems = $('Build Govt Queries').all();\nconst branchTopic = 'govt';\nconst out = [];\nfor (let i = 0; i < $input.all().length; i += 1) {\n  const response = $input.all()[i].json || {};\n  const request = requestItems[i]?.json || {};\n  const profile = request.profile || {};\n  if (request.topic && request.topic !== branchTopic) continue;\n  const results = Array.isArray(response.results) ? response.results : Array.isArray(response.data?.results) ? response.data.results : [];\n  for (const row of results) {\n    const title = String(row.title || '').trim();\n    const url = String(row.url || '').trim();\n    const snippet = String(row.content || row.snippet || row.summary || '').trim();\n    const rawContent = String(row.raw_content || row.rawContent || '').trim();\n    const summary = [snippet, rawContent].filter(Boolean).join('\\n\\n').trim();\n    if (!title || !url) continue;\n    const tavilyScore = typeof row.score === 'number' ? Math.round(row.score * 100) : 50;\n    if (tavilyScore < (request.minTavilyScore || 0)) continue;\n    const sourceType = hostFromUrl(url);\n    out.push({ json: {\n      profile,\n      userId: profile.userId,\n      savedSearchId: profile.savedSearchId,\n      logId: profile.logId,\n      country: profile.country,\n      region: profile.region,\n      location: profile.location,\n      language: profile.language,\n      type: request.type,\n      topic: request.topic,\n      variantIndex: request.variantIndex,\n      opportunityType: request.opportunityType,\n      category: profile.category,\n      subcategory: profile.subcategory,\n      subcategoryOptions: profile.subcategoryOptions || [],\n      competitors: profile.competitors || [],\n      days: profile.days,\n      title: title.slice(0, 500),\n      summary: summary.slice(0, 3000),\n      aiSummary: summary.slice(0, 3000),\n      tavilyScore,\n      relevanceScore: tavilyScore,\n      relevance_reason: 'Tavily relevance score ' + tavilyScore + ' for ' + request.topic + ' query variant ' + request.variantIndex + '.',\n      url,\n      urlHash: hashString(url.toLowerCase().replace(/\\/$/, '')),\n      source: sourceType,\n      sourceId: sourceType,\n      sourceType,\n      sourceQuery: request.sourceQuery,\n      fetched_at: new Date().toISOString(),\n      publishedAt: row.published_date || row.publishedAt || new Date().toISOString()\n    } });\n  }\n}\nreturn out.length ? out : [{ json: { _skip: true, profile: requestItems[0]?.json?.profile || {}, type: requestItems[0]?.json?.type || '' } }];"
+      },
+      "id": "509e9760-509e-9760-509e-509e9760509e",
+      "name": "Process Govt Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a practical government/regulatory business-intelligence relevance filter. Decide whether this search result should be stored in the database for the user's profile.\n\nReturn ONLY valid JSON. No markdown. No explanation outside JSON.\n\nCURRENT DATE CONTEXT\nCurrent year is 2026. Treat 2026 current/upcoming rules, announcements, investments, market-entry activity, funding, expansion, tax changes, compliance changes, workforce policy, grants, business schemes, licensing, and regulatory developments as relevant when they may affect companies, advisors, or professional-services clients.\n\nUSER PROFILE\nMarket: {{ $json.location || [$json.country, $json.region].filter(Boolean).join(' ') }}\nCountry: {{ $json.country }}\nRegion/state: {{ $json.region || 'All regions' }}\nCategory: {{ $json.category }}\nSelected sub-category: {{ $json.subcategory || 'All sub-categories' }}\nValid sub-categories: {{ ($json.subcategoryOptions || []).join(', ') || 'No fixed list provided' }}\nTopic/type: {{ $json.type }}\nTracked competitors: {{ ($json.competitors || []).join(', ') || 'None' }}\nMaximum age preference: {{ $json.days }} days\n\nCountry rule: national, central-government, regulator, tax authority, investment agency, company registry, immigration/labour authority, courts/tribunals, official gazettes, and nationwide business updates in {{ $json.country }} are relevant even when a region/state is present. Region/state-specific business updates are also relevant when they are in the selected market.\n\nTOPIC RULE\nSTORE government, regulatory, policy, tax, compliance, grant, scheme, rule, court/tribunal, filing, licensing, budget, immigration, employment, or official guidance updates when they may affect business obligations, advisory work, market entry, operations, accounting, tax, payroll, governance, or professional-services clients. Credible news/professional summaries of official updates are acceptable.\n\nBe practical, not overly strict. If the article is country-relevant and category-adjacent, STORE with a moderate score instead of ignoring. Prefer STORE when the result gives a real market, compliance, advisory, regulatory, operational, competitor, or client-opportunity signal.\n\nReject and return IGNORE only if:\n- It is clearly unrelated to the country/region and has no country-wide relevance.\n- It is clearly unrelated to business, regulation, compliance, investment, company operations, professional services, or the selected category.\n- It is purely lifestyle, sports, entertainment, celebrity, crime-only, generic politics with no business impact, stock price-only, product promotion, directory/listing/homepage, job-only, or award/event recap with no useful business signal.\n- It has too little information to identify a business, regulatory, advisory, or market signal.\n\nSUB-CATEGORY CLASSIFICATION RULE\nAlways decide which sub-category the article belongs under before scoring.\n- Use only one exact value from Valid sub-categories when Valid sub-categories are provided.\n- If Selected sub-category is All sub-categories or All, choose the best matching Valid sub-category for every STORE decision. Use an empty string only when the valid list is missing or none reasonably fits.\n- If a specific sub-category is selected, keep that exact sub-category for STORE decisions unless the article should be ignored.\n- Mention the sub-category fit briefly in relevance_reason.\n\nScoring guide:\n- 80-100: direct government/regulatory item with clear category and business impact.\n- 60-79: country-relevant business/regulatory/market item with likely category or advisory impact.\n- 40-59: category-adjacent but still useful business intelligence. STORE if it gives a real market/regulatory/client signal.\n- Below 40: weak, generic, or unrelated.\n\nOutput shape:\n{\"decision\":\"STORE\"|\"IGNORE\",\"category\":\"{{ $json.category }}\"|\"IGNORE\",\"subcategory\":\"<best sub-category or empty>\",\"summary\":\"<2 short sentences about what happened and why it matters>\",\"relevance_score\":0-100,\"relevance_reason\":\"<specific reason>\"}\n\nARTICLE\nTitle: {{ $json.title }}\nURL: {{ $json.url }}\nSource: {{ $json.sourceType }}\nContent/summary/raw excerpt: {{ $json.summary }}",
+        "options": {
+          "systemMessage": "You are a precise relevance classifier. Return valid JSON only."
+        }
+      },
+      "id": "1b6fd208-1b6f-d208-1b6f-1b6fd2081b6f",
+      "name": "AI Govt Relevance Filter",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiItems = $input.all();\nconst articles = $('Process Govt Results').all();\nconst output = [];\nconst MIN_STORE_SCORE = 40;\n\nfunction stripFence(value) {\n  let clean = String(value || '').trim();\n  const fence = String.fromCharCode(96, 96, 96);\n  if (clean.startsWith(fence + 'json')) clean = clean.slice(7).trim();\n  else if (clean.startsWith(fence)) clean = clean.slice(3).trim();\n  if (clean.endsWith(fence)) clean = clean.slice(0, -3).trim();\n  return clean;\n}\n\nfunction parseAi(raw) {\n  const fallback = {\n    decision: 'IGNORE',\n    category: 'IGNORE',\n    subcategory: '',\n    summary: '',\n    relevance_score: 0,\n    relevance_reason: 'AI parse failed'\n  };\n  try { return { ...fallback, ...JSON.parse(stripFence(raw)) }; }\n  catch (_e) { return fallback; }\n}\n\nfunction isAllPlaceholder(value) {\n  const text = String(value || '').trim().toLowerCase();\n  if (!text) return false;\n  return [\n    'all',\n    'all category',\n    'all categories',\n    'all subcategory',\n    'all sub-category',\n    'all subcategories',\n    'all sub-categories',\n    'all sub categories'\n  ].includes(text);\n}\n\nfunction aiSubcategory(ai) {\n  return String(\n    ai?.subcategory ||\n    ai?.sub_category ||\n    ai?.subCategory ||\n    ai?.['sub-category'] ||\n    ai?.['sub category'] ||\n    ''\n  ).trim();\n}\n\nfunction bestSubcategory(articleSubcategory, ai) {\n  const existing = String(articleSubcategory || '').trim();\n  const fromAi = aiSubcategory(ai);\n  return isAllPlaceholder(existing) ? fromAi : (existing || fromAi);\n}\n\nfunction workflowProfile(profile = {}) {\n  return {\n    userId: profile.userId || '',\n    savedSearchId: profile.savedSearchId || '',\n    logId: profile.logId || '',\n    callbackUrl: profile.callbackUrl || '',\n    callbackSecret: profile.callbackSecret || '',\n    country: profile.country || '',\n    region: profile.region || '',\n    category: profile.category || '',\n    language: profile.language || 'en',\n    startedAt: profile.startedAt || '',\n    targetPerTopic: profile.targetPerTopic || 10\n  };\n}\n\nfor (let i = 0; i < aiItems.length; i += 1) {\n  const article = articles[i]?.json || {};\n  if (!article || article._skip) continue;\n\n  const raw = aiItems[i].json.output || aiItems[i].json.text || aiItems[i].json.content || '';\n  const ai = parseAi(raw);\n  const score = Math.max(0, Math.min(100, parseInt(ai.relevance_score, 10) || 0));\n  const decision = String(ai.decision || '').toUpperCase();\n  const ignored = decision !== 'STORE' || score < MIN_STORE_SCORE || String(ai.category || '').toUpperCase() === 'IGNORE';\n  if (ignored) continue;\n\n  output.push({\n    json: {\n      profile: workflowProfile(article.profile),\n      title: article.title,\n      summary: ai.summary || article.summary || '',\n      url: article.url,\n      urlHash: article.urlHash,\n      type: 'govt',\n      category: article.category || article.profile?.category || 'General',\n      subcategory: bestSubcategory(article.subcategory, ai),\n      source: article.source || 'dynamic-search',\n      sourceId: article.sourceId || article.source || 'dynamic-search',\n      sourceType: article.sourceType || '',\n      country: article.country || article.profile?.country || '',\n      region: article.region || article.profile?.region || '',\n      opportunityType: article.opportunityType || 'policy',\n      language: article.language || article.profile?.language || 'en',\n      relevanceScore: score,\n      relevance_score: score,\n      relevanceReason: ai.relevance_reason || '',\n      relevance_reason: ai.relevance_reason || '',\n      aiSummary: ai.summary || article.aiSummary || '',\n      sourceQuery: article.sourceQuery || '',\n      fetched_at: article.fetched_at || new Date().toISOString(),\n      publishedAt: article.publishedAt || new Date().toISOString()\n    }\n  });\n}\n\nreturn output.length\n  ? output\n  : [{ json: { _skip: true, profile: workflowProfile(articles[0]?.json?.profile || {}), type: 'govt' } }];"
+      },
+      "id": "d14b1799-d14b-1799-d14b-d14b1799d14b",
+      "name": "Parse Govt AI Relevance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $json.profile || {};\nconst profile = {\n  userId: source.userId || '',\n  savedSearchId: source.savedSearchId || '',\n  logId: source.logId || '',\n  callbackUrl: source.callbackUrl || '',\n  callbackSecret: source.callbackSecret || '',\n  country: source.country || '',\n  region: source.region || '',\n  category: source.category || '',\n  language: source.language || 'en',\n  startedAt: source.startedAt || '',\n  targetPerTopic: source.targetPerTopic || 10\n};\nreturn [{ json: { _skip: true, type: 'govt', profile } }];"
+      },
+      "id": "b5be2fd1-b5be-2fd1-b5be-b5be2fd1b5be",
+      "name": "Govt Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -430
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5671d7f2-5671-d7f2-5671-5671d7f25671",
+              "leftValue": "={{ $json.topicEnabled.news }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c0638dba-c063-8dba-c063-c0638dbac063",
+      "name": "News Topic Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        -170
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $json.profile || $json;\nconst topic = 'news';\nfunction text(value, fallback = '') { return String(value ?? fallback).trim(); }\nfunction unique(values) { return [...new Set(values.filter(Boolean))]; }\nfunction daysToTimeRange(value) {\n  const days = Math.max(1, Math.min(365, Number(value || 30) || 30));\n  if (days <= 1) return 'day';\n  if (days <= 7) return 'week';\n  if (days <= 31) return 'month';\n  return 'year';\n}\nconst variants = Array.isArray(profile.queryVariants?.[topic])\n  ? profile.queryVariants[topic].map((v) => text(v)).filter(Boolean)\n  : [];\nconst fallback = text(profile.queries?.[topic]);\nconst queries = unique(variants.length ? variants : [fallback].filter(Boolean)).slice(0, 8);\nif (!queries.length) throw new Error('No query variants found for news topic.');\nreturn queries.map((query, variantIndex) => {\n  const tavilyBody = {\n    query,\n    topic: 'news',\n    search_depth: 'advanced',\n    max_results: 8,\n    include_answer: false,\n    include_raw_content: true\n  };\n  tavilyBody.time_range = daysToTimeRange(profile.days);\n  if (profile.strictSources && profile.preferredDomains.length) tavilyBody.include_domains = profile.preferredDomains;\n  return { json: {\n    profile,\n    topic,\n    variantIndex,\n    type: topic,\n    opportunityType: \"market_news\",\n    sourceQuery: query,\n    minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 10) || 10)),\n    tavilyBody\n  } };\n});"
+      },
+      "id": "306c699a-306c-699a-306c-306c699a306c",
+      "name": "Build News Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -210
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tavilyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavilyBody) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "d0008add-d000-8add-d000-d0008addd000",
+      "name": "Tavily News Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        -210
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function hashString(input) {\n  let hash = 2166136261;\n  for (let i = 0; i < String(input).length; i += 1) {\n    hash ^= String(input).charCodeAt(i);\n    hash = Math.imul(hash, 16777619) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\nfunction hostFromUrl(url) {\n  const value = String(url || '').trim();\n  try { return new URL(value).hostname.replace(/^www\\./, ''); }\n  catch (_e) {\n    const match = value.match(/^https?:\\/\\/(?:www\\.)?([^/]+)/i);\n    return match ? match[1].toLowerCase() : 'dynamic-search';\n  }\n}\nconst requestItems = $('Build News Queries').all();\nconst branchTopic = 'news';\nconst out = [];\nfor (let i = 0; i < $input.all().length; i += 1) {\n  const response = $input.all()[i].json || {};\n  const request = requestItems[i]?.json || {};\n  const profile = request.profile || {};\n  if (request.topic && request.topic !== branchTopic) continue;\n  const results = Array.isArray(response.results) ? response.results : Array.isArray(response.data?.results) ? response.data.results : [];\n  for (const row of results) {\n    const title = String(row.title || '').trim();\n    const url = String(row.url || '').trim();\n    const snippet = String(row.content || row.snippet || row.summary || '').trim();\n    const rawContent = String(row.raw_content || row.rawContent || '').trim();\n    const summary = [snippet, rawContent].filter(Boolean).join('\\n\\n').trim();\n    if (!title || !url) continue;\n    const tavilyScore = typeof row.score === 'number' ? Math.round(row.score * 100) : 50;\n    if (tavilyScore < (request.minTavilyScore || 0)) continue;\n    const sourceType = hostFromUrl(url);\n    out.push({ json: {\n      profile,\n      userId: profile.userId,\n      savedSearchId: profile.savedSearchId,\n      logId: profile.logId,\n      country: profile.country,\n      region: profile.region,\n      location: profile.location,\n      language: profile.language,\n      type: request.type,\n      topic: request.topic,\n      variantIndex: request.variantIndex,\n      opportunityType: request.opportunityType,\n      category: profile.category,\n      subcategory: profile.subcategory,\n      subcategoryOptions: profile.subcategoryOptions || [],\n      competitors: profile.competitors || [],\n      days: profile.days,\n      title: title.slice(0, 500),\n      summary: summary.slice(0, 3000),\n      aiSummary: summary.slice(0, 3000),\n      tavilyScore,\n      relevanceScore: tavilyScore,\n      relevance_reason: 'Tavily relevance score ' + tavilyScore + ' for ' + request.topic + ' query variant ' + request.variantIndex + '.',\n      url,\n      urlHash: hashString(url.toLowerCase().replace(/\\/$/, '')),\n      source: sourceType,\n      sourceId: sourceType,\n      sourceType,\n      sourceQuery: request.sourceQuery,\n      fetched_at: new Date().toISOString(),\n      publishedAt: row.published_date || row.publishedAt || new Date().toISOString()\n    } });\n  }\n}\nreturn out.length ? out : [{ json: { _skip: true, profile: requestItems[0]?.json?.profile || {}, type: requestItems[0]?.json?.type || '' } }];"
+      },
+      "id": "1505abfb-1505-abfb-1505-1505abfb1505",
+      "name": "Process News Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        -210
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a practical news business-intelligence relevance filter. Decide whether this search result should be stored in the database for the user's profile.\n\nReturn ONLY valid JSON. No markdown. No explanation outside JSON.\n\nCURRENT DATE CONTEXT\nCurrent year is 2026. Treat 2026 current/upcoming rules, announcements, investments, market-entry activity, funding, expansion, tax changes, compliance changes, workforce policy, grants, business schemes, licensing, and regulatory developments as relevant when they may affect companies, advisors, or professional-services clients.\n\nUSER PROFILE\nMarket: {{ $json.location || [$json.country, $json.region].filter(Boolean).join(' ') }}\nCountry: {{ $json.country }}\nRegion/state: {{ $json.region || 'All regions' }}\nCategory: {{ $json.category }}\nSelected sub-category: {{ $json.subcategory || 'All sub-categories' }}\nValid sub-categories: {{ ($json.subcategoryOptions || []).join(', ') || 'No fixed list provided' }}\nTopic/type: {{ $json.type }}\nTracked competitors: {{ ($json.competitors || []).join(', ') || 'None' }}\nMaximum age preference: {{ $json.days }} days\n\nCountry rule: national, central-government, regulator, tax authority, investment agency, company registry, immigration/labour authority, courts/tribunals, official gazettes, and nationwide business updates in {{ $json.country }} are relevant even when a region/state is present. Region/state-specific business updates are also relevant when they are in the selected market.\n\nTOPIC RULE\nSTORE news if it has a reasonable business-intelligence use for this profile. This includes tax, compliance, accounting, filing, grants, schemes, budget, licensing, immigration, employment, fund, fiduciary, FDI, market-entry, trade, investment, expansion, M&A, restructuring, business setup, professional-services developments, or credible market news that signals demand, opportunity, regulatory change, client advisory opportunity, or market movement for the selected category.\n\nBe practical, not overly strict. If the article is country-relevant and category-adjacent, STORE with a moderate score instead of ignoring. Prefer STORE when the result gives a real market, compliance, advisory, regulatory, operational, competitor, or client-opportunity signal.\n\nReject and return IGNORE only if:\n- It is clearly unrelated to the country/region and has no country-wide relevance.\n- It is clearly unrelated to business, regulation, compliance, investment, company operations, professional services, or the selected category.\n- It is purely lifestyle, sports, entertainment, celebrity, crime-only, generic politics with no business impact, stock price-only, product promotion, directory/listing/homepage, job-only, or award/event recap with no useful business signal.\n- It has too little information to identify a business, regulatory, advisory, or market signal.\n\nSUB-CATEGORY CLASSIFICATION RULE\nAlways decide which sub-category the article belongs under before scoring.\n- Use only one exact value from Valid sub-categories when Valid sub-categories are provided.\n- If Selected sub-category is All sub-categories or All, choose the best matching Valid sub-category for every STORE decision. Use an empty string only when the valid list is missing or none reasonably fits.\n- If a specific sub-category is selected, keep that exact sub-category for STORE decisions unless the article should be ignored.\n- Mention the sub-category fit briefly in relevance_reason.\n\nScoring guide:\n- 80-100: direct category news item with clear category and business impact.\n- 60-79: country-relevant business/regulatory/market item with likely category or advisory impact.\n- 40-59: category-adjacent but still useful business intelligence. STORE if it gives a real market/regulatory/client signal.\n- Below 40: weak, generic, or unrelated.\n\nOutput shape:\n{\"decision\":\"STORE\"|\"IGNORE\",\"category\":\"{{ $json.category }}\"|\"IGNORE\",\"subcategory\":\"<best sub-category or empty>\",\"summary\":\"<2 short sentences about what happened and why it matters>\",\"relevance_score\":0-100,\"relevance_reason\":\"<specific reason>\"}\n\nARTICLE\nTitle: {{ $json.title }}\nURL: {{ $json.url }}\nSource: {{ $json.sourceType }}\nContent/summary/raw excerpt: {{ $json.summary }}",
+        "options": {
+          "systemMessage": "You are a precise relevance classifier. Return valid JSON only."
+        }
+      },
+      "id": "916b46cd-916b-46cd-916b-916b46cd916b",
+      "name": "AI News Relevance Filter",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        -210
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiItems = $input.all();\nconst articles = $('Process News Results').all();\nconst output = [];\nconst MIN_STORE_SCORE = 40;\n\nfunction stripFence(value) {\n  let clean = String(value || '').trim();\n  const fence = String.fromCharCode(96, 96, 96);\n  if (clean.startsWith(fence + 'json')) clean = clean.slice(7).trim();\n  else if (clean.startsWith(fence)) clean = clean.slice(3).trim();\n  if (clean.endsWith(fence)) clean = clean.slice(0, -3).trim();\n  return clean;\n}\n\nfunction parseAi(raw) {\n  const fallback = {\n    decision: 'IGNORE',\n    category: 'IGNORE',\n    subcategory: '',\n    summary: '',\n    relevance_score: 0,\n    relevance_reason: 'AI parse failed'\n  };\n  try { return { ...fallback, ...JSON.parse(stripFence(raw)) }; }\n  catch (_e) { return fallback; }\n}\n\nfunction isAllPlaceholder(value) {\n  const text = String(value || '').trim().toLowerCase();\n  if (!text) return false;\n  return [\n    'all',\n    'all category',\n    'all categories',\n    'all subcategory',\n    'all sub-category',\n    'all subcategories',\n    'all sub-categories',\n    'all sub categories'\n  ].includes(text);\n}\n\nfunction aiSubcategory(ai) {\n  return String(\n    ai?.subcategory ||\n    ai?.sub_category ||\n    ai?.subCategory ||\n    ai?.['sub-category'] ||\n    ai?.['sub category'] ||\n    ''\n  ).trim();\n}\n\nfunction bestSubcategory(articleSubcategory, ai) {\n  const existing = String(articleSubcategory || '').trim();\n  const fromAi = aiSubcategory(ai);\n  return isAllPlaceholder(existing) ? fromAi : (existing || fromAi);\n}\n\nfunction workflowProfile(profile = {}) {\n  return {\n    userId: profile.userId || '',\n    savedSearchId: profile.savedSearchId || '',\n    logId: profile.logId || '',\n    callbackUrl: profile.callbackUrl || '',\n    callbackSecret: profile.callbackSecret || '',\n    country: profile.country || '',\n    region: profile.region || '',\n    category: profile.category || '',\n    language: profile.language || 'en',\n    startedAt: profile.startedAt || '',\n    targetPerTopic: profile.targetPerTopic || 10\n  };\n}\n\nfor (let i = 0; i < aiItems.length; i += 1) {\n  const article = articles[i]?.json || {};\n  if (!article || article._skip) continue;\n\n  const raw = aiItems[i].json.output || aiItems[i].json.text || aiItems[i].json.content || '';\n  const ai = parseAi(raw);\n  const score = Math.max(0, Math.min(100, parseInt(ai.relevance_score, 10) || 0));\n  const decision = String(ai.decision || '').toUpperCase();\n  const ignored = decision !== 'STORE' || score < MIN_STORE_SCORE || String(ai.category || '').toUpperCase() === 'IGNORE';\n  if (ignored) continue;\n\n  output.push({\n    json: {\n      profile: workflowProfile(article.profile),\n      title: article.title,\n      summary: ai.summary || article.summary || '',\n      url: article.url,\n      urlHash: article.urlHash,\n      type: 'news',\n      category: article.category || article.profile?.category || 'General',\n      subcategory: bestSubcategory(article.subcategory, ai),\n      source: article.source || 'dynamic-search',\n      sourceId: article.sourceId || article.source || 'dynamic-search',\n      sourceType: article.sourceType || '',\n      country: article.country || article.profile?.country || '',\n      region: article.region || article.profile?.region || '',\n      opportunityType: article.opportunityType || 'market_news',\n      language: article.language || article.profile?.language || 'en',\n      relevanceScore: score,\n      relevance_score: score,\n      relevanceReason: ai.relevance_reason || '',\n      relevance_reason: ai.relevance_reason || '',\n      aiSummary: ai.summary || article.aiSummary || '',\n      sourceQuery: article.sourceQuery || '',\n      fetched_at: article.fetched_at || new Date().toISOString(),\n      publishedAt: article.publishedAt || new Date().toISOString()\n    }\n  });\n}\n\nreturn output.length\n  ? output\n  : [{ json: { _skip: true, profile: workflowProfile(articles[0]?.json?.profile || {}), type: 'news' } }];"
+      },
+      "id": "8d002d04-8d00-2d04-8d00-8d002d048d00",
+      "name": "Parse News AI Relevance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        -210
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $json.profile || {};\nconst profile = {\n  userId: source.userId || '',\n  savedSearchId: source.savedSearchId || '',\n  logId: source.logId || '',\n  callbackUrl: source.callbackUrl || '',\n  callbackSecret: source.callbackSecret || '',\n  country: source.country || '',\n  region: source.region || '',\n  category: source.category || '',\n  language: source.language || 'en',\n  startedAt: source.startedAt || '',\n  targetPerTopic: source.targetPerTopic || 10\n};\nreturn [{ json: { _skip: true, type: 'news', profile } }];"
+      },
+      "id": "a279f76a-a279-f76a-a279-a279f76aa279",
+      "name": "News Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "95e06a5f-95e0-6a5f-95e0-95e06a5f95e0",
+              "leftValue": "={{ $json.topicEnabled.competitor }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0a64aa5f-0a64-aa5f-0a64-0a64aa5f0a64",
+      "name": "Competitor Topic Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $json.profile || $json;\nconst topic = 'competitor';\nfunction text(value, fallback = '') { return String(value ?? fallback).trim(); }\nfunction unique(values) { return [...new Set(values.filter(Boolean))]; }\nfunction daysToTimeRange(value) {\n  const days = Math.max(1, Math.min(365, Number(value || 30) || 30));\n  if (days <= 1) return 'day';\n  if (days <= 7) return 'week';\n  if (days <= 31) return 'month';\n  return 'year';\n}\nconst variants = Array.isArray(profile.queryVariants?.[topic])\n  ? profile.queryVariants[topic].map((v) => text(v)).filter(Boolean)\n  : [];\nconst fallback = text(profile.queries?.[topic]);\nconst queries = unique(variants.length ? variants : [fallback].filter(Boolean)).slice(0, 4);\nif (!queries.length) throw new Error('No query variants found for competitor topic.');\nreturn queries.map((query, variantIndex) => {\n  const tavilyBody = {\n    query,\n    topic: 'news',\n    search_depth: 'advanced',\n    max_results: 6,\n    include_answer: false,\n    include_raw_content: true\n  };\n  tavilyBody.time_range = daysToTimeRange(profile.days);\n  if (profile.strictSources && profile.preferredDomains.length) tavilyBody.include_domains = profile.preferredDomains;\n  return { json: {\n    profile,\n    topic,\n    variantIndex,\n    type: topic,\n    opportunityType: \"competitors\",\n    sourceQuery: query,\n    minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 8) || 8)),\n    tavilyBody\n  } };\n});"
+      },
+      "id": "c690967b-c690-967b-c690-c690967bc690",
+      "name": "Build Competitor Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tavilyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavilyBody) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "659bdfaa-659b-dfaa-659b-659bdfaa659b",
+      "name": "Tavily Competitor Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        140
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function hashString(input) {\n  let hash = 2166136261;\n  for (let i = 0; i < String(input).length; i += 1) {\n    hash ^= String(input).charCodeAt(i);\n    hash = Math.imul(hash, 16777619) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\nfunction hostFromUrl(url) {\n  const value = String(url || '').trim();\n  try { return new URL(value).hostname.replace(/^www\\./, ''); }\n  catch (_e) {\n    const match = value.match(/^https?:\\/\\/(?:www\\.)?([^/]+)/i);\n    return match ? match[1].toLowerCase() : 'dynamic-search';\n  }\n}\nconst requestItems = $('Build Competitor Queries').all();\nconst branchTopic = 'competitor';\nconst out = [];\nfor (let i = 0; i < $input.all().length; i += 1) {\n  const response = $input.all()[i].json || {};\n  const request = requestItems[i]?.json || {};\n  const profile = request.profile || {};\n  if (request.topic && request.topic !== branchTopic) continue;\n  const results = Array.isArray(response.results) ? response.results : Array.isArray(response.data?.results) ? response.data.results : [];\n  for (const row of results) {\n    const title = String(row.title || '').trim();\n    const url = String(row.url || '').trim();\n    const snippet = String(row.content || row.snippet || row.summary || '').trim();\n    const rawContent = String(row.raw_content || row.rawContent || '').trim();\n    const summary = [snippet, rawContent].filter(Boolean).join('\\n\\n').trim();\n    if (!title || !url) continue;\n    const tavilyScore = typeof row.score === 'number' ? Math.round(row.score * 100) : 50;\n    if (tavilyScore < (request.minTavilyScore || 0)) continue;\n    const sourceType = hostFromUrl(url);\n    out.push({ json: {\n      profile,\n      userId: profile.userId,\n      savedSearchId: profile.savedSearchId,\n      logId: profile.logId,\n      country: profile.country,\n      region: profile.region,\n      location: profile.location,\n      language: profile.language,\n      type: request.type,\n      topic: request.topic,\n      variantIndex: request.variantIndex,\n      opportunityType: request.opportunityType,\n      category: profile.category,\n      subcategory: profile.subcategory,\n      subcategoryOptions: profile.subcategoryOptions || [],\n      competitors: profile.competitors || [],\n      days: profile.days,\n      title: title.slice(0, 500),\n      summary: summary.slice(0, 3000),\n      aiSummary: summary.slice(0, 3000),\n      tavilyScore,\n      relevanceScore: tavilyScore,\n      relevance_reason: 'Tavily relevance score ' + tavilyScore + ' for ' + request.topic + ' query variant ' + request.variantIndex + '.',\n      url,\n      urlHash: hashString(url.toLowerCase().replace(/\\/$/, '')),\n      source: sourceType,\n      sourceId: sourceType,\n      sourceType,\n      sourceQuery: request.sourceQuery,\n      fetched_at: new Date().toISOString(),\n      publishedAt: row.published_date || row.publishedAt || new Date().toISOString()\n    } });\n  }\n}\nreturn out.length ? out : [{ json: { _skip: true, profile: requestItems[0]?.json?.profile || {}, type: requestItems[0]?.json?.type || '' } }];"
+      },
+      "id": "d3033fbe-d303-3fbe-d303-d3033fbed303",
+      "name": "Process Competitor Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a practical competitor business-intelligence relevance filter. Decide whether this search result should be stored in the database for the user's profile.\n\nReturn ONLY valid JSON. No markdown. No explanation outside JSON.\n\nCURRENT DATE CONTEXT\nCurrent year is 2026. Treat 2026 current/upcoming rules, announcements, investments, market-entry activity, funding, expansion, tax changes, compliance changes, workforce policy, grants, business schemes, licensing, and regulatory developments as relevant when they may affect companies, advisors, or professional-services clients.\n\nUSER PROFILE\nMarket: {{ $json.location || [$json.country, $json.region].filter(Boolean).join(' ') }}\nCountry: {{ $json.country }}\nRegion/state: {{ $json.region || 'All regions' }}\nCategory: {{ $json.category }}\nSelected sub-category: {{ $json.subcategory || 'All sub-categories' }}\nValid sub-categories: {{ ($json.subcategoryOptions || []).join(', ') || 'No fixed list provided' }}\nTopic/type: {{ $json.type }}\nTracked competitors: {{ ($json.competitors || []).join(', ') || 'None' }}\nMaximum age preference: {{ $json.days }} days\n\nCountry rule: national, central-government, regulator, tax authority, investment agency, company registry, immigration/labour authority, courts/tribunals, official gazettes, and nationwide business updates in {{ $json.country }} are relevant even when a region/state is present. Region/state-specific business updates are also relevant when they are in the selected market.\n\nTOPIC RULE\nSTORE competitor intelligence when the article mentions a tracked competitor and describes expansion, acquisition, launch, partnership, office, hiring, investment, service launch, product/service change, leadership move, or business update. If tracked competitors are missing or the article is strongly competitor-market relevant to the selected category/country, STORE with a moderate score instead of ignoring.\n\nBe practical, not overly strict. If the article is country-relevant and category-adjacent, STORE with a moderate score instead of ignoring. Prefer STORE when the result gives a real market, compliance, advisory, regulatory, operational, competitor, or client-opportunity signal.\n\nReject and return IGNORE only if:\n- It is clearly unrelated to the country/region and has no country-wide relevance.\n- It is clearly unrelated to business, regulation, compliance, investment, company operations, professional services, or the selected category.\n- It is purely lifestyle, sports, entertainment, celebrity, crime-only, generic politics with no business impact, stock price-only, product promotion, directory/listing/homepage, job-only, or award/event recap with no useful business signal.\n- It has too little information to identify a business, regulatory, advisory, or market signal.\n\nSUB-CATEGORY CLASSIFICATION RULE\nAlways decide which sub-category the article belongs under before scoring.\n- Use only one exact value from Valid sub-categories when Valid sub-categories are provided.\n- If Selected sub-category is All sub-categories or All, choose the best matching Valid sub-category for every STORE decision. Use an empty string only when the valid list is missing or none reasonably fits.\n- If a specific sub-category is selected, keep that exact sub-category for STORE decisions unless the article should be ignored.\n- Mention the sub-category fit briefly in relevance_reason.\n\nScoring guide:\n- 80-100: direct competitor or competitor-market item with clear category and business impact.\n- 60-79: country-relevant business/regulatory/market item with likely category or advisory impact.\n- 40-59: category-adjacent but still useful business intelligence. STORE if it gives a real market/regulatory/client signal.\n- Below 40: weak, generic, or unrelated.\n\nOutput shape:\n{\"decision\":\"STORE\"|\"IGNORE\",\"category\":\"{{ $json.category }}\"|\"IGNORE\",\"subcategory\":\"<best sub-category or empty>\",\"summary\":\"<2 short sentences about what happened and why it matters>\",\"relevance_score\":0-100,\"relevance_reason\":\"<specific reason>\"}\n\nARTICLE\nTitle: {{ $json.title }}\nURL: {{ $json.url }}\nSource: {{ $json.sourceType }}\nContent/summary/raw excerpt: {{ $json.summary }}",
+        "options": {
+          "systemMessage": "You are a precise relevance classifier. Return valid JSON only."
+        }
+      },
+      "id": "0c1a3b8e-0c1a-3b8e-0c1a-0c1a3b8e0c1a",
+      "name": "AI Competitor Relevance Filter",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiItems = $input.all();\nconst articles = $('Process Competitor Results').all();\nconst output = [];\nconst MIN_STORE_SCORE = 40;\n\nfunction stripFence(value) {\n  let clean = String(value || '').trim();\n  const fence = String.fromCharCode(96, 96, 96);\n  if (clean.startsWith(fence + 'json')) clean = clean.slice(7).trim();\n  else if (clean.startsWith(fence)) clean = clean.slice(3).trim();\n  if (clean.endsWith(fence)) clean = clean.slice(0, -3).trim();\n  return clean;\n}\n\nfunction parseAi(raw) {\n  const fallback = {\n    decision: 'IGNORE',\n    category: 'IGNORE',\n    subcategory: '',\n    summary: '',\n    relevance_score: 0,\n    relevance_reason: 'AI parse failed'\n  };\n  try { return { ...fallback, ...JSON.parse(stripFence(raw)) }; }\n  catch (_e) { return fallback; }\n}\n\nfunction isAllPlaceholder(value) {\n  const text = String(value || '').trim().toLowerCase();\n  if (!text) return false;\n  return [\n    'all',\n    'all category',\n    'all categories',\n    'all subcategory',\n    'all sub-category',\n    'all subcategories',\n    'all sub-categories',\n    'all sub categories'\n  ].includes(text);\n}\n\nfunction aiSubcategory(ai) {\n  return String(\n    ai?.subcategory ||\n    ai?.sub_category ||\n    ai?.subCategory ||\n    ai?.['sub-category'] ||\n    ai?.['sub category'] ||\n    ''\n  ).trim();\n}\n\nfunction bestSubcategory(articleSubcategory, ai) {\n  const existing = String(articleSubcategory || '').trim();\n  const fromAi = aiSubcategory(ai);\n  return isAllPlaceholder(existing) ? fromAi : (existing || fromAi);\n}\n\nfunction workflowProfile(profile = {}) {\n  return {\n    userId: profile.userId || '',\n    savedSearchId: profile.savedSearchId || '',\n    logId: profile.logId || '',\n    callbackUrl: profile.callbackUrl || '',\n    callbackSecret: profile.callbackSecret || '',\n    country: profile.country || '',\n    region: profile.region || '',\n    category: profile.category || '',\n    language: profile.language || 'en',\n    startedAt: profile.startedAt || '',\n    targetPerTopic: profile.targetPerTopic || 10\n  };\n}\n\nfor (let i = 0; i < aiItems.length; i += 1) {\n  const article = articles[i]?.json || {};\n  if (!article || article._skip) continue;\n\n  const raw = aiItems[i].json.output || aiItems[i].json.text || aiItems[i].json.content || '';\n  const ai = parseAi(raw);\n  const score = Math.max(0, Math.min(100, parseInt(ai.relevance_score, 10) || 0));\n  const decision = String(ai.decision || '').toUpperCase();\n  const ignored = decision !== 'STORE' || score < MIN_STORE_SCORE || String(ai.category || '').toUpperCase() === 'IGNORE';\n  if (ignored) continue;\n\n  output.push({\n    json: {\n      profile: workflowProfile(article.profile),\n      title: article.title,\n      summary: ai.summary || article.summary || '',\n      url: article.url,\n      urlHash: article.urlHash,\n      type: 'competitor',\n      category: article.category || article.profile?.category || 'General',\n      subcategory: bestSubcategory(article.subcategory, ai),\n      source: article.source || 'dynamic-search',\n      sourceId: article.sourceId || article.source || 'dynamic-search',\n      sourceType: article.sourceType || '',\n      country: article.country || article.profile?.country || '',\n      region: article.region || article.profile?.region || '',\n      opportunityType: article.opportunityType || 'competitors',\n      language: article.language || article.profile?.language || 'en',\n      relevanceScore: score,\n      relevance_score: score,\n      relevanceReason: ai.relevance_reason || '',\n      relevance_reason: ai.relevance_reason || '',\n      aiSummary: ai.summary || article.aiSummary || '',\n      sourceQuery: article.sourceQuery || '',\n      fetched_at: article.fetched_at || new Date().toISOString(),\n      publishedAt: article.publishedAt || new Date().toISOString()\n    }\n  });\n}\n\nreturn output.length\n  ? output\n  : [{ json: { _skip: true, profile: workflowProfile(articles[0]?.json?.profile || {}), type: 'competitor' } }];"
+      },
+      "id": "9ed3782b-9ed3-782b-9ed3-9ed3782b9ed3",
+      "name": "Parse Competitor AI Relevance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $json.profile || {};\nconst profile = {\n  userId: source.userId || '',\n  savedSearchId: source.savedSearchId || '',\n  logId: source.logId || '',\n  callbackUrl: source.callbackUrl || '',\n  callbackSecret: source.callbackSecret || '',\n  country: source.country || '',\n  region: source.region || '',\n  category: source.category || '',\n  language: source.language || 'en',\n  startedAt: source.startedAt || '',\n  targetPerTopic: source.targetPerTopic || 10\n};\nreturn [{ json: { _skip: true, type: 'competitor', profile } }];"
+      },
+      "id": "e6307d5b-e630-7d5b-e630-e6307d5be630",
+      "name": "Competitor Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        270
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cb878800-cb87-8800-cb87-cb878800cb87",
+              "leftValue": "={{ $json.topicEnabled.evergreen }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5016808-e501-6808-e501-e5016808e501",
+      "name": "Evergreen Topic Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        530
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $json.profile || $json;\nconst topic = 'evergreen';\nfunction text(value, fallback = '') { return String(value ?? fallback).trim(); }\nfunction unique(values) { return [...new Set(values.filter(Boolean))]; }\nfunction daysToTimeRange(value) {\n  const days = Math.max(1, Math.min(365, Number(value || 30) || 30));\n  if (days <= 1) return 'day';\n  if (days <= 7) return 'week';\n  if (days <= 31) return 'month';\n  return 'year';\n}\nconst variants = Array.isArray(profile.queryVariants?.[topic])\n  ? profile.queryVariants[topic].map((v) => text(v)).filter(Boolean)\n  : [];\nconst fallback = text(profile.queries?.[topic]);\nconst queries = unique(variants.length ? variants : [fallback].filter(Boolean)).slice(0, 8);\nif (!queries.length) throw new Error('No query variants found for evergreen topic.');\nreturn queries.map((query, variantIndex) => {\n  const tavilyBody = {\n    query,\n    topic: 'news',\n    search_depth: 'basic',\n    max_results: 6,\n    include_answer: false,\n    include_raw_content: true\n  };\n  \n  if (profile.strictSources && profile.preferredDomains.length) tavilyBody.include_domains = profile.preferredDomains;\n  return { json: {\n    profile,\n    topic,\n    variantIndex,\n    type: topic,\n    opportunityType: \"evergreen\",\n    sourceQuery: query,\n    minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 8) || 8)),\n    tavilyBody\n  } };\n});"
+      },
+      "id": "1fdc52e0-1fdc-52e0-1fdc-1fdc52e01fdc",
+      "name": "Build Evergreen Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        490
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tavilyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavilyBody) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "75e62f49-75e6-2f49-75e6-75e62f4975e6",
+      "name": "Tavily Evergreen Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        490
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function hashString(input) {\n  let hash = 2166136261;\n  for (let i = 0; i < String(input).length; i += 1) {\n    hash ^= String(input).charCodeAt(i);\n    hash = Math.imul(hash, 16777619) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\nfunction hostFromUrl(url) {\n  const value = String(url || '').trim();\n  try { return new URL(value).hostname.replace(/^www\\./, ''); }\n  catch (_e) {\n    const match = value.match(/^https?:\\/\\/(?:www\\.)?([^/]+)/i);\n    return match ? match[1].toLowerCase() : 'dynamic-search';\n  }\n}\nconst requestItems = $('Build Evergreen Queries').all();\nconst branchTopic = 'evergreen';\nconst out = [];\nfor (let i = 0; i < $input.all().length; i += 1) {\n  const response = $input.all()[i].json || {};\n  const request = requestItems[i]?.json || {};\n  const profile = request.profile || {};\n  if (request.topic && request.topic !== branchTopic) continue;\n  const results = Array.isArray(response.results) ? response.results : Array.isArray(response.data?.results) ? response.data.results : [];\n  for (const row of results) {\n    const title = String(row.title || '').trim();\n    const url = String(row.url || '').trim();\n    const snippet = String(row.content || row.snippet || row.summary || '').trim();\n    const rawContent = String(row.raw_content || row.rawContent || '').trim();\n    const summary = [snippet, rawContent].filter(Boolean).join('\\n\\n').trim();\n    if (!title || !url) continue;\n    const tavilyScore = typeof row.score === 'number' ? Math.round(row.score * 100) : 50;\n    if (tavilyScore < (request.minTavilyScore || 0)) continue;\n    const sourceType = hostFromUrl(url);\n    out.push({ json: {\n      profile,\n      userId: profile.userId,\n      savedSearchId: profile.savedSearchId,\n      logId: profile.logId,\n      country: profile.country,\n      region: profile.region,\n      location: profile.location,\n      language: profile.language,\n      type: request.type,\n      topic: request.topic,\n      variantIndex: request.variantIndex,\n      opportunityType: request.opportunityType,\n      category: profile.category,\n      subcategory: profile.subcategory,\n      subcategoryOptions: profile.subcategoryOptions || [],\n      competitors: profile.competitors || [],\n      days: profile.days,\n      title: title.slice(0, 500),\n      summary: summary.slice(0, 3000),\n      aiSummary: summary.slice(0, 3000),\n      tavilyScore,\n      relevanceScore: tavilyScore,\n      relevance_reason: 'Tavily relevance score ' + tavilyScore + ' for ' + request.topic + ' query variant ' + request.variantIndex + '.',\n      url,\n      urlHash: hashString(url.toLowerCase().replace(/\\/$/, '')),\n      source: sourceType,\n      sourceId: sourceType,\n      sourceType,\n      sourceQuery: request.sourceQuery,\n      fetched_at: new Date().toISOString(),\n      publishedAt: row.published_date || row.publishedAt || new Date().toISOString()\n    } });\n  }\n}\nreturn out.length ? out : [{ json: { _skip: true, profile: requestItems[0]?.json?.profile || {}, type: requestItems[0]?.json?.type || '' } }];"
+      },
+      "id": "0efc7feb-0efc-7feb-0efc-0efc7feb0efc",
+      "name": "Process Evergreen Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        490
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a practical evergreen business-intelligence relevance filter. Decide whether this search result should be stored in the database for the user's profile.\n\nReturn ONLY valid JSON. No markdown. No explanation outside JSON.\n\nCURRENT DATE CONTEXT\nCurrent year is 2026. Treat 2026 current/upcoming rules, announcements, investments, market-entry activity, funding, expansion, tax changes, compliance changes, workforce policy, grants, business schemes, licensing, and regulatory developments as relevant when they may affect companies, advisors, or professional-services clients.\n\nUSER PROFILE\nMarket: {{ $json.location || [$json.country, $json.region].filter(Boolean).join(' ') }}\nCountry: {{ $json.country }}\nRegion/state: {{ $json.region || 'All regions' }}\nCategory: {{ $json.category }}\nSelected sub-category: {{ $json.subcategory || 'All sub-categories' }}\nValid sub-categories: {{ ($json.subcategoryOptions || []).join(', ') || 'No fixed list provided' }}\nTopic/type: {{ $json.type }}\nTracked competitors: {{ ($json.competitors || []).join(', ') || 'None' }}\nMaximum age preference: {{ $json.days }} days\n\nCountry rule: national, central-government, regulator, tax authority, investment agency, company registry, immigration/labour authority, courts/tribunals, official gazettes, and nationwide business updates in {{ $json.country }} are relevant even when a region/state is present. Region/state-specific business updates are also relevant when they are in the selected market.\n\nTOPIC RULE\nSTORE useful guides, requirements, explainers, checklists, how-to pages, official guidance, compliance resources, tax/accounting filing pages, licensing requirements, regulatory explainers, and durable business resources relevant to the category. Do not reject only because it is not breaking news; evergreen content is useful when it explains practical requirements or client advisory context.\n\nBe practical, not overly strict. If the article is country-relevant and category-adjacent, STORE with a moderate score instead of ignoring. Prefer STORE when the result gives a real market, compliance, advisory, regulatory, operational, competitor, or client-opportunity signal.\n\nReject and return IGNORE only if:\n- It is clearly unrelated to the country/region and has no country-wide relevance.\n- It is clearly unrelated to business, regulation, compliance, investment, company operations, professional services, or the selected category.\n- It is purely lifestyle, sports, entertainment, celebrity, crime-only, generic politics with no business impact, stock price-only, product promotion, directory/listing/homepage, job-only, or award/event recap with no useful business signal.\n- It has too little information to identify a business, regulatory, advisory, or market signal.\n\nSUB-CATEGORY CLASSIFICATION RULE\nAlways decide which sub-category the article belongs under before scoring.\n- Use only one exact value from Valid sub-categories when Valid sub-categories are provided.\n- If Selected sub-category is All sub-categories or All, choose the best matching Valid sub-category for every STORE decision. Use an empty string only when the valid list is missing or none reasonably fits.\n- If a specific sub-category is selected, keep that exact sub-category for STORE decisions unless the article should be ignored.\n- Mention the sub-category fit briefly in relevance_reason.\n\nScoring guide:\n- 80-100: direct evergreen guide/resource item with clear category and business impact.\n- 60-79: country-relevant business/regulatory/market item with likely category or advisory impact.\n- 40-59: category-adjacent but still useful business intelligence. STORE if it gives a real market/regulatory/client signal.\n- Below 40: weak, generic, or unrelated.\n\nOutput shape:\n{\"decision\":\"STORE\"|\"IGNORE\",\"category\":\"{{ $json.category }}\"|\"IGNORE\",\"subcategory\":\"<best sub-category or empty>\",\"summary\":\"<2 short sentences about what happened and why it matters>\",\"relevance_score\":0-100,\"relevance_reason\":\"<specific reason>\"}\n\nARTICLE\nTitle: {{ $json.title }}\nURL: {{ $json.url }}\nSource: {{ $json.sourceType }}\nContent/summary/raw excerpt: {{ $json.summary }}",
+        "options": {
+          "systemMessage": "You are a precise relevance classifier. Return valid JSON only."
+        }
+      },
+      "id": "89af5927-89af-5927-89af-89af592789af",
+      "name": "AI Evergreen Relevance Filter",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        490
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiItems = $input.all();\nconst articles = $('Process Evergreen Results').all();\nconst output = [];\nconst MIN_STORE_SCORE = 40;\n\nfunction stripFence(value) {\n  let clean = String(value || '').trim();\n  const fence = String.fromCharCode(96, 96, 96);\n  if (clean.startsWith(fence + 'json')) clean = clean.slice(7).trim();\n  else if (clean.startsWith(fence)) clean = clean.slice(3).trim();\n  if (clean.endsWith(fence)) clean = clean.slice(0, -3).trim();\n  return clean;\n}\n\nfunction parseAi(raw) {\n  const fallback = {\n    decision: 'IGNORE',\n    category: 'IGNORE',\n    subcategory: '',\n    summary: '',\n    relevance_score: 0,\n    relevance_reason: 'AI parse failed'\n  };\n  try { return { ...fallback, ...JSON.parse(stripFence(raw)) }; }\n  catch (_e) { return fallback; }\n}\n\nfunction isAllPlaceholder(value) {\n  const text = String(value || '').trim().toLowerCase();\n  if (!text) return false;\n  return [\n    'all',\n    'all category',\n    'all categories',\n    'all subcategory',\n    'all sub-category',\n    'all subcategories',\n    'all sub-categories',\n    'all sub categories'\n  ].includes(text);\n}\n\nfunction aiSubcategory(ai) {\n  return String(\n    ai?.subcategory ||\n    ai?.sub_category ||\n    ai?.subCategory ||\n    ai?.['sub-category'] ||\n    ai?.['sub category'] ||\n    ''\n  ).trim();\n}\n\nfunction bestSubcategory(articleSubcategory, ai) {\n  const existing = String(articleSubcategory || '').trim();\n  const fromAi = aiSubcategory(ai);\n  return isAllPlaceholder(existing) ? fromAi : (existing || fromAi);\n}\n\nfunction workflowProfile(profile = {}) {\n  return {\n    userId: profile.userId || '',\n    savedSearchId: profile.savedSearchId || '',\n    logId: profile.logId || '',\n    callbackUrl: profile.callbackUrl || '',\n    callbackSecret: profile.callbackSecret || '',\n    country: profile.country || '',\n    region: profile.region || '',\n    category: profile.category || '',\n    language: profile.language || 'en',\n    startedAt: profile.startedAt || '',\n    targetPerTopic: profile.targetPerTopic || 10\n  };\n}\n\nfor (let i = 0; i < aiItems.length; i += 1) {\n  const article = articles[i]?.json || {};\n  if (!article || article._skip) continue;\n\n  const raw = aiItems[i].json.output || aiItems[i].json.text || aiItems[i].json.content || '';\n  const ai = parseAi(raw);\n  const score = Math.max(0, Math.min(100, parseInt(ai.relevance_score, 10) || 0));\n  const decision = String(ai.decision || '').toUpperCase();\n  const ignored = decision !== 'STORE' || score < MIN_STORE_SCORE || String(ai.category || '').toUpperCase() === 'IGNORE';\n  if (ignored) continue;\n\n  output.push({\n    json: {\n      profile: workflowProfile(article.profile),\n      title: article.title,\n      summary: ai.summary || article.summary || '',\n      url: article.url,\n      urlHash: article.urlHash,\n      type: 'evergreen',\n      category: article.category || article.profile?.category || 'General',\n      subcategory: bestSubcategory(article.subcategory, ai),\n      source: article.source || 'dynamic-search',\n      sourceId: article.sourceId || article.source || 'dynamic-search',\n      sourceType: article.sourceType || '',\n      country: article.country || article.profile?.country || '',\n      region: article.region || article.profile?.region || '',\n      opportunityType: article.opportunityType || 'evergreen',\n      language: article.language || article.profile?.language || 'en',\n      relevanceScore: score,\n      relevance_score: score,\n      relevanceReason: ai.relevance_reason || '',\n      relevance_reason: ai.relevance_reason || '',\n      aiSummary: ai.summary || article.aiSummary || '',\n      sourceQuery: article.sourceQuery || '',\n      fetched_at: article.fetched_at || new Date().toISOString(),\n      publishedAt: article.publishedAt || new Date().toISOString()\n    }\n  });\n}\n\nreturn output.length\n  ? output\n  : [{ json: { _skip: true, profile: workflowProfile(articles[0]?.json?.profile || {}), type: 'evergreen' } }];"
+      },
+      "id": "6e691278-6e69-1278-6e69-6e6912786e69",
+      "name": "Parse Evergreen AI Relevance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        490
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $json.profile || {};\nconst profile = {\n  userId: source.userId || '',\n  savedSearchId: source.savedSearchId || '',\n  logId: source.logId || '',\n  callbackUrl: source.callbackUrl || '',\n  callbackSecret: source.callbackSecret || '',\n  country: source.country || '',\n  region: source.region || '',\n  category: source.category || '',\n  language: source.language || 'en',\n  startedAt: source.startedAt || '',\n  targetPerTopic: source.targetPerTopic || 10\n};\nreturn [{ json: { _skip: true, type: 'evergreen', profile } }];"
+      },
+      "id": "59c98ee8-59c9-8ee8-59c9-59c98ee859c9",
+      "name": "Evergreen Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      },
+      "id": "e587b8b2-e587-b8b2-e587-e587b8b2e587",
+      "name": "Merge Topic Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map((item) => item.json || {});\nconst profile = items.find((item) => item.profile)?.profile || {};\nconst seen = new Set();\nconst byTopic = {};\nconst topicLimit = Math.max(1, Math.min(20, Number(profile.targetPerTopic || 10) || 10));\n\nfunction cleanSubcategory(value) {\n  const text = String(value || '').trim();\n  const lower = text.toLowerCase();\n  if (!text) return '';\n  if ([\n    'all',\n    'all category',\n    'all categories',\n    'all subcategory',\n    'all sub-category',\n    'all subcategories',\n    'all sub-categories',\n    'all sub categories'\n  ].includes(lower)) return '';\n  return text;\n}\n\nfor (const d of items) {\n  if (d._skip || !d.url || !d.title) continue;\n\n  const key = String(d.urlHash || d.url).toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n\n  const result = {\n    title: d.title,\n    summary: d.summary || '',\n    url: d.url,\n    urlHash: d.urlHash,\n    type: d.type || 'news',\n    category: d.category || profile.category || 'General',\n    subcategory: cleanSubcategory(d.subcategory),\n    source: d.source || 'dynamic-search',\n    sourceId: d.sourceId || d.source || 'dynamic-search',\n    sourceType: d.sourceType || '',\n    country: d.country || profile.country || '',\n    region: d.region || profile.region || '',\n    opportunityType: d.opportunityType || 'market_news',\n    language: d.language || profile.language || 'en',\n    relevanceScore: Number(d.relevanceScore || d.relevance_score || 0),\n    relevance_score: Number(d.relevance_score || d.relevanceScore || 0),\n    relevanceReason: d.relevanceReason || d.relevance_reason || '',\n    relevance_reason: d.relevance_reason || d.relevanceReason || '',\n    aiSummary: d.aiSummary || d.summary || '',\n    sourceQuery: d.sourceQuery || '',\n    fetched_at: d.fetched_at || new Date().toISOString(),\n    publishedAt: d.publishedAt || new Date().toISOString()\n  };\n\n  byTopic[result.type] = byTopic[result.type] || [];\n  byTopic[result.type].push(result);\n}\n\nconst results = [];\nfor (const topic of ['govt', 'news', 'competitor', 'evergreen']) {\n  const rows = (byTopic[topic] || [])\n    .sort((a, b) => (b.relevanceScore - a.relevanceScore) || String(b.publishedAt).localeCompare(String(a.publishedAt)))\n    .slice(0, topicLimit);\n  results.push(...rows);\n}\n\nreturn [{\n  json: {\n    userId: profile.userId || '',\n    savedSearchId: profile.savedSearchId || '',\n    logId: profile.logId || '',\n    callbackUrl: profile.callbackUrl || '',\n    callbackSecret: profile.callbackSecret || '',\n    country: profile.country || '',\n    region: profile.region || '',\n    startedAt: profile.startedAt || new Date().toISOString(),\n    finishedAt: new Date().toISOString(),\n    resultCount: results.length,\n    totalFetched: results.length,\n    results\n  }\n}];"
+      },
+      "id": "674a565a-674a-565a-674a-674a565a674a",
+      "name": "Build Backend Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ userId: $json.userId, savedSearchId: $json.savedSearchId, logId: $json.logId, country: $json.country, region: $json.region, startedAt: $json.startedAt, finishedAt: $json.finishedAt, resultCount: $json.resultCount, totalFetched: $json.totalFetched, results: $json.results }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1d0cab65-1d0c-ab65-1d0c-1d0cab651d0c",
+      "name": "Send Backend Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, resultCount: $('Build Backend Callback').first().json.resultCount }) }}",
+        "options": {}
+      },
+      "id": "d5a58966-d5a5-8966-d5a5-d5a58966d5a5",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "65d2411a-65d2-411a-65d2-65d2411a65d2",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1480,
+        880
+      ]
+    }
+  ],
+  "connections": {
+    "Profile Search Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Profile Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Profile Input": {
+      "main": [
+        [
+          {
+            "node": "Govt Topic Enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "News Topic Enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Competitor Topic Enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evergreen Topic Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Topic Results": {
+      "main": [
+        [
+          {
+            "node": "Build Backend Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Backend Callback": {
+      "main": [
+        [
+          {
+            "node": "Send Backend Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Backend Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Govt Relevance Filter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI News Relevance Filter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Competitor Relevance Filter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Evergreen Relevance Filter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Govt Topic Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Build Govt Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Govt Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Govt Queries": {
+      "main": [
+        [
+          {
+            "node": "Tavily Govt Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tavily Govt Search": {
+      "main": [
+        [
+          {
+            "node": "Process Govt Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Govt Results": {
+      "main": [
+        [
+          {
+            "node": "AI Govt Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Govt Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "Parse Govt AI Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Govt AI Relevance": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Govt Skipped": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "News Topic Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Build News Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "News Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build News Queries": {
+      "main": [
+        [
+          {
+            "node": "Tavily News Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tavily News Search": {
+      "main": [
+        [
+          {
+            "node": "Process News Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process News Results": {
+      "main": [
+        [
+          {
+            "node": "AI News Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI News Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "Parse News AI Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse News AI Relevance": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "News Skipped": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Competitor Topic Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Build Competitor Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Competitor Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Competitor Queries": {
+      "main": [
+        [
+          {
+            "node": "Tavily Competitor Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tavily Competitor Search": {
+      "main": [
+        [
+          {
+            "node": "Process Competitor Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Competitor Results": {
+      "main": [
+        [
+          {
+            "node": "AI Competitor Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Competitor Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "Parse Competitor AI Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Competitor AI Relevance": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Competitor Skipped": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Evergreen Topic Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Build Evergreen Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Evergreen Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Evergreen Queries": {
+      "main": [
+        [
+          {
+            "node": "Tavily Evergreen Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tavily Evergreen Search": {
+      "main": [
+        [
+          {
+            "node": "Process Evergreen Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Evergreen Results": {
+      "main": [
+        [
+          {
+            "node": "AI Evergreen Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Evergreen Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "Parse Evergreen AI Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Evergreen AI Relevance": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Evergreen Skipped": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

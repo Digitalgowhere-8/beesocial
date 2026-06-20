@@ -1,0 +1,1502 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import api from '../api/axios';
+import Layout from '../components/Layout';
+import ArticleCard from '../components/ArticleCard';
+import { useAuth } from '../context/AuthContext';
+import { BookOpenText, Check, ChevronDown, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Trash2, Square, CheckSquare } from 'lucide-react';
+
+const TYPE_OPTIONS = [
+  { value: '', label: 'All types' },
+  { value: 'news', label: 'News Articles' },
+  { value: 'govt', label: 'Government Updates' },
+  { value: 'competitor', label: 'Competitor Intel' },
+  { value: 'evergreen', label: 'Evergreen Guides' }
+];
+
+const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
+
+const STYLE_OPTIONS = {
+  tone: [
+    ['professional', 'Professional'],
+    ['conversational', 'Conversational'],
+    ['authoritative', 'Authoritative'],
+    ['friendly', 'Friendly'],
+    ['educational', 'Educational'],
+    ['persuasive', 'Persuasive'],
+    ['technical', 'Technical'],
+    ['thought_leadership', 'Thought Leadership']
+  ],
+  format: [
+    ['insight_article', 'Insight Article'],
+    ['how_to_guide', 'How-to Guide'],
+    ['case_study', 'Case Study'],
+    ['news_updates', 'News & Updates'],
+    ['comparison_article', 'Comparison Article'],
+    ['beginners_guide', "Beginner's Guide"],
+    ['editorial', 'Editorial'],
+    ['service_product_blog', 'Service / Product-Focused Blog'],
+    ['faq_article', 'FAQ Article'],
+    ['guide', 'Guide']
+  ],
+  length: [
+    ['short', 'Short (500-800 words)'],
+    ['medium', 'Medium (800-1,500 words)'],
+    ['long', 'Long (1,500-3,000 words)'],
+    ['custom', 'Custom']
+  ],
+  searchIntent: [
+    ['informational', 'Informational'],
+    ['commercial', 'Commercial'],
+    ['transactional', 'Transactional'],
+    ['navigational', 'Navigational']
+  ],
+  outlineMode: [
+    ['auto', 'Auto Generate'],
+    ['custom', 'Custom Outline']
+  ],
+  pointOfView: [
+    ['third_person', 'Third person'],
+    ['first_person_company', 'First person company']
+  ]
+};
+
+const DEFAULT_STYLE = {
+  tone: 'professional',
+  format: 'insight_article',
+  audience: 'business decision-makers',
+  length: 'medium',
+  customLength: '',
+  pointOfView: 'third_person',
+  metaTitle: '',
+  metaDescription: '',
+  primaryKeyword: '',
+  searchIntent: 'informational',
+  outlineMode: 'auto',
+  customOutline: '',
+  focusPage: '',
+  internalLinkPages: '',
+  ctaTitle: '',
+  ctaDescription: '',
+  ctaButtonText: 'Contact us',
+  ctaUrl: '',
+  cta: 'Contact us to discuss this update.',
+  keyPoints: '',
+  competitorUrls: '',
+  referenceUrls: '',
+  includeFaq: true,
+  includeStats: true
+};
+
+export default function BlogStudio() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const inboundState = location.state || {};
+
+  if (user?.access?.canUseBlogStudio === false) {
+    return (
+      <Layout>
+        <div className="flex h-full min-h-0 items-center justify-center -m-6 p-4">
+          <div className="glass-panel p-8 text-center text-sm font-semibold text-gray-500 max-w-lg flex flex-col items-center justify-center gap-4">
+            <Sparkles size={48} className="text-brand-crimson animate-pulse" />
+            <h2 className="text-xl font-black text-gray-900">Social Media Studio is Locked</h2>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              AI content creation, blogging, and social media posting are not included in your current subscription plan. Contact your organization administrator or upgrade to a higher tier plan to unlock this feature.
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+  const [contentType, setContentType] = useState(() => inboundState.contentType || 'blog');
+  const [socialPlatform, setSocialPlatform] = useState(() => inboundState.socialPlatform || 'linkedin');
+  const [articles, setArticles] = useState([]);
+  const [blogs, setBlogs] = useState([]);
+  const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || null);
+  const [selectedBlog, setSelectedBlog] = useState(null);
+  const [socialPosts, setSocialPosts] = useState([]);
+  const [style, setStyle] = useState(DEFAULT_STYLE);
+  const [keywords, setKeywords] = useState('');
+  const [topicMeta, setTopicMeta] = useState(EMPTY_META);
+  const [topicFilters, setTopicFilters] = useState({
+    q: '',
+    type: '',
+    category: '',
+    subcategory: '',
+    country: '',
+    saved: ''
+  });
+  const [blogQuery, setBlogQuery] = useState('');
+  const [loadingArticles, setLoadingArticles] = useState(false);
+  const [loadingBlogs, setLoadingBlogs] = useState(false);
+  const [loadingSocialPosts, setLoadingSocialPosts] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
+  const [deletingBlogs, setDeletingBlogs] = useState(false);
+  const [savingStatus, setSavingStatus] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftForm, setDraftForm] = useState({ title: '', excerpt: '', bodyMarkdown: '' });
+  const [draftEditorOpen, setDraftEditorOpen] = useState(false);
+  const [selectedBlogIds, setSelectedBlogIds] = useState([]);
+  const [error, setError] = useState('');
+  const [draggingArticleId, setDraggingArticleId] = useState('');
+  const [dropActive, setDropActive] = useState(false);
+  const [linkedinForm, setLinkedinForm] = useState({
+    postGoal: 'thought_leadership',
+    tone: 'professional',
+    audience: 'business decision-makers',
+    length: 'medium',
+    hookStyle: 'proof',
+    framework: 'auto',
+    topicTier: 'auto',
+    emotionalJob: 'auto',
+    personaProfile: 'founder/operator/advisor',
+    icpPainPoints: '',
+    marketReality: '',
+    proofElement: '',
+    authorityLine: '',
+    takeaway: '',
+    includeHashtags: true,
+    includeCTA: true,
+    cta: 'Follow us for more market intelligence.',
+    customInstructions: ''
+  });
+  const [linkedinOutput, setLinkedinOutput] = useState(null);
+  const selectedArticleRef = useRef(selectedArticle);
+
+  const keywordList = useMemo(() => cleanList(keywords), [keywords]);
+  const categoryTree = useMemo(() => {
+    const dataCategories = topicMeta.dataCategories || {};
+    return Object.keys(dataCategories).length ? dataCategories : topicMeta.categories || {};
+  }, [topicMeta]);
+  const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+  const subcategoryOptions = useMemo(() => (
+    topicFilters.category ? categoryTree[topicFilters.category] || [] : []
+  ), [categoryTree, topicFilters.category]);
+  const updateTopicFilter = useCallback((key, value) => {
+    setTopicFilters((prev) => ({
+      ...prev,
+      [key]: value,
+      ...(key === 'category' ? { subcategory: '' } : {})
+    }));
+  }, []);
+
+  useEffect(() => {
+    selectedArticleRef.current = selectedArticle;
+  }, [selectedArticle]);
+
+  const selectArticleById = useCallback((articleId) => {
+    const article = articles.find((item) => item._id === articleId);
+    if (article) setSelectedArticle(article);
+  }, [articles]);
+
+  const loadArticles = useCallback(async () => {
+    setLoadingArticles(true);
+    try {
+      const params = { limit: 24, personalized: 'true' };
+      Object.entries(topicFilters).forEach(([key, value]) => {
+        if (value) params[key] = value;
+      });
+      const { data } = await api.get('/articles', { params });
+      const items = data.items || [];
+      setArticles((prevArticles) => {
+        const pinned = selectedArticleRef.current || prevArticles.find((item) => item._id === inboundState.articleId);
+        if (pinned?._id && !items.some((item) => item._id === pinned._id)) return [pinned, ...items];
+        return items;
+      });
+    } catch (err) {
+      setError(err.message || 'Could not load topics');
+    } finally {
+      setLoadingArticles(false);
+    }
+  }, [inboundState.articleId, topicFilters]);
+
+  const loadBlogs = useCallback(async () => {
+    setLoadingBlogs(true);
+    try {
+      const params = { limit: 30 };
+      if (blogQuery) params.q = blogQuery;
+      const { data } = await api.get('/blogs', { params });
+      setBlogs(data.items || []);
+      if (data.items?.length) setSelectedBlog((prev) => prev || data.items[0]);
+    } catch (err) {
+      setError(err.message || 'Could not load blogs');
+    } finally {
+      setLoadingBlogs(false);
+    }
+  }, [blogQuery]);
+
+  const loadSocialPosts = useCallback(async () => {
+    setLoadingSocialPosts(true);
+    try {
+      const { data } = await api.get('/blogs/social-posts', { params: { platform: 'linkedin', limit: 30 } });
+      setSocialPosts(data.items || []);
+    } catch (err) {
+      setError(err.message || 'Could not load saved social posts');
+    } finally {
+      setLoadingSocialPosts(false);
+    }
+  }, []);
+
+  useEffect(() => { loadArticles(); }, [loadArticles]);
+  useEffect(() => { loadBlogs(); }, [loadBlogs]);
+  useEffect(() => { loadSocialPosts(); }, [loadSocialPosts]);
+  useEffect(() => {
+    api.get('/articles/meta/filters')
+      .then(({ data }) => setTopicMeta({ ...EMPTY_META, ...data }))
+      .catch(() => setTopicMeta(EMPTY_META));
+  }, []);
+  useEffect(() => {
+    if (inboundState.contentType) setContentType(inboundState.contentType);
+    if (inboundState.socialPlatform) setSocialPlatform(inboundState.socialPlatform);
+    if (inboundState.article?._id) {
+      setSelectedArticle(inboundState.article);
+      setArticles((prev) => (
+        prev.some((item) => item._id === inboundState.article._id)
+          ? prev
+          : [inboundState.article, ...prev]
+      ));
+      setStyle((prev) => ({ ...prev, topic: prev.topic || inboundState.article.title || '' }));
+    }
+  }, [inboundState.article, inboundState.contentType, inboundState.socialPlatform]);
+  useEffect(() => {
+    setDraftForm({
+      title: selectedBlog?.title || '',
+      excerpt: selectedBlog?.excerpt || '',
+      bodyMarkdown: selectedBlog?.bodyMarkdown || ''
+    });
+  }, [selectedBlog]);
+
+  const generate = async () => {
+    if (!selectedArticle?._id) {
+      setError('Select or drag a topic first.');
+      return;
+    }
+    setError('');
+    setGenerating(true);
+    try {
+      const { data } = await api.post('/blogs/generate', {
+        articleId: selectedArticle._id,
+        style,
+        keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
+        status: 'draft'
+      });
+      setSelectedBlog(data.item);
+      await loadBlogs();
+    } catch (err) {
+      setError(err.message || 'Blog generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const updateBlogStatus = async (status) => {
+    if (!selectedBlog?._id) return;
+    setSavingStatus(status);
+    try {
+      const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
+      setSelectedBlog(data.item);
+      await loadBlogs();
+    } catch (err) {
+      setError(err.message || 'Status update failed');
+    } finally {
+      setSavingStatus('');
+    }
+  };
+
+  const saveDraftEdits = async () => {
+    if (!selectedBlog?._id) return;
+    setSavingDraft(true);
+    setError('');
+    try {
+      const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
+      setSelectedBlog(data.item);
+      await loadBlogs();
+    } catch (err) {
+      setError(err.message || 'Draft save failed');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const toggleBlogSelection = (blogId) => {
+    setSelectedBlogIds((prev) => (
+      prev.includes(blogId) ? prev.filter((id) => id !== blogId) : [...prev, blogId]
+    ));
+  };
+
+  const clearBlogSelection = () => setSelectedBlogIds([]);
+
+  const deleteBlogs = async (ids) => {
+    const targetIds = ids.filter(Boolean);
+    if (!targetIds.length) return;
+    const confirmed = window.confirm(targetIds.length === 1 ? 'Delete this post?' : `Delete ${targetIds.length} posts?`);
+    if (!confirmed) return;
+
+    setDeletingBlogs(true);
+    setError('');
+    try {
+      if (targetIds.length === 1) {
+        await api.delete(`/blogs/${targetIds[0]}`);
+      } else {
+        await api.delete('/blogs/bulk', { data: { ids: targetIds } });
+      }
+      setSelectedBlogIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+      if (targetIds.includes(selectedBlog?._id)) {
+        setSelectedBlog(null);
+        setDraftEditorOpen(false);
+      }
+      await loadBlogs();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Delete failed');
+    } finally {
+      setDeletingBlogs(false);
+    }
+  };
+
+  const generateLinkedinPost = async () => {
+    if (!selectedArticle?._id) {
+      setError('Select an intelligence topic first.');
+      return;
+    }
+    setError('');
+    setGeneratingLinkedin(true);
+    try {
+      const { data } = await api.post('/blogs/linkedin/generate', {
+        articleId: selectedArticle._id,
+        options: linkedinForm
+      });
+      setLinkedinOutput(data.item);
+      await loadSocialPosts();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
+    } finally {
+      setGeneratingLinkedin(false);
+    }
+  };
+
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <div className="grid grid-cols-2 rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setContentType('blog')}
+          className={`flex min-h-[36px] items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black transition-all ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          <BookOpenText size={14} />
+          Blog
+        </button>
+        <button
+          type="button"
+          onClick={() => setContentType('social')}
+          className={`flex min-h-[36px] items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black transition-all ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          <MessageSquareText size={14} />
+          Social Media Post
+        </button>
+      </div>
+      <button type="button" onClick={() => { loadArticles(); loadBlogs(); loadSocialPosts(); }} className="btn-secondary min-h-[40px] rounded-xl bg-white px-3 shadow-sm hover:bg-white hover:border-brand-crimson/30">
+        <RefreshCw size={15} />
+        Refresh
+      </button>
+    </div>
+  );
+
+  return (
+    <Layout headerActions={headerActions}>
+      <div className="flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
+        {error && (
+          <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
+            {error}
+          </div>
+        )}
+
+        {contentType === 'social' && (
+          <div className="flex min-h-0 flex-1 flex-col animate-fade-in-up stagger-2">
+            {socialPlatform === 'linkedin' && (
+              <LinkedInStudio
+                socialPlatform={socialPlatform}
+                setSocialPlatform={setSocialPlatform}
+                articles={articles}
+                selectedArticle={selectedArticle}
+                setSelectedArticle={setSelectedArticle}
+                loadingArticles={loadingArticles}
+                topicFilters={topicFilters}
+                updateTopicFilter={updateTopicFilter}
+                categoryOptions={categoryOptions}
+                subcategoryOptions={subcategoryOptions}
+                countries={topicMeta.countries || []}
+                types={topicMeta.types || EMPTY_META.types}
+                linkedinForm={linkedinForm}
+                setLinkedinForm={setLinkedinForm}
+                generatingLinkedin={generatingLinkedin}
+                generateLinkedinPost={generateLinkedinPost}
+                linkedinOutput={linkedinOutput}
+                setLinkedinOutput={setLinkedinOutput}
+                socialPosts={socialPosts}
+                loadingSocialPosts={loadingSocialPosts}
+              />
+            )}
+          </div>
+        )}
+
+        {contentType === 'blog' && (
+        <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-2 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,340px)_minmax(420px,1fr)_minmax(560px,640px)]">
+          
+          {/* Panel 1: Topics */}
+          <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel lg:h-[calc(100vh-96px)]">
+            <PanelHeader icon={Layers} title="Intelligence Topics" />
+            <TopicFilterBar
+              filters={topicFilters}
+              onChange={updateTopicFilter}
+              categoryOptions={categoryOptions}
+              subcategoryOptions={subcategoryOptions}
+              countries={topicMeta.countries || []}
+              types={topicMeta.types || EMPTY_META.types}
+            />
+            
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/30 p-3 custom-scrollbar">
+              {loadingArticles ? (
+                <LoadingRows label="Loading intelligence topics..." />
+              ) : articles.length ? articles.map((item) => {
+                const isSelected = selectedArticle?._id === item._id;
+                return (
+                  <div
+                    key={item._id}
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData('text/plain', item._id);
+                      setDraggingArticleId(item._id);
+                    }}
+                    onDragEnd={() => setDraggingArticleId('')}
+                    onClick={() => setSelectedArticle(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
+                    }}
+                    className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'opacity-50 scale-95' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+                  >
+                    <ArticleCard item={item} compact selected={isSelected} />
+                    <div className={`mt-0 flex items-center justify-between rounded-b-xl px-3 py-2 text-xs font-black transition-colors ${isSelected ? 'bg-brand-crimson text-white' : 'bg-white text-gray-500 border-x border-b border-gray-100 group-hover/panel:border-gray-200'}`}>
+                      <span className="flex min-w-0 items-center gap-2">
+                        {isSelected ? <Check size={14} /> : <GripVertical size={14} className="text-gray-400" />}
+                        <span className="truncate">{isSelected ? 'Selected for Generation' : 'Drag or Click to Select'}</span>
+                      </span>
+                      {isSelected ? <Sparkles size={14} /> : <MousePointer2 size={14} className="opacity-50" />}
+                    </div>
+                  </div>
+                );
+              }) : (
+                <Empty icon={FileText} label="No topics found matching criteria" />
+              )}
+            </div>
+          </section>
+
+          {/* Panel 2: Studio Generator */}
+          <section className="relative z-10 flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
+            <PanelHeader icon={Settings2} title="Style & Generation Settings" />
+            
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDropActive(true);
+                }}
+                onDragLeave={() => setDropActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDropActive(false);
+                  selectArticleById(event.dataTransfer.getData('text/plain'));
+                }}
+                className={`mb-4 rounded-xl border border-dashed p-3 transition-all duration-300 ${
+                  dropActive 
+                    ? 'border-brand-crimson bg-brand-pink/10' 
+                    : selectedArticle 
+                      ? 'border-gray-200 bg-white/60' 
+                      : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'
+                }`}
+              >
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-gray-500">
+                  <GripVertical size={14} />
+                  Selected Topic Source
+                </div>
+                {selectedArticle ? (
+                  <div className="animate-fade-in-up stagger-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedArticle(null)}
+                        className="shrink-0 rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 border border-gray-200 transition hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="mt-2 text-xs font-medium text-gray-500 line-clamp-2 italic border-l-2 border-gray-200 pl-2">{selectedArticle.summary || selectedArticle.aiSummary}</div>
+                  </div>
+                ) : (
+                  <div className="flex min-h-[78px] items-center justify-center rounded-lg bg-white/60 text-center">
+                    <div className="text-sm font-bold text-gray-500">Drag or click a topic to select</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <SettingsGroup title="Basic Information">
+                  <Field label="Topic">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.topic || selectedArticle?.title || ''} onChange={(e) => setStyle({ ...style, topic: e.target.value })} placeholder="Auto-filled from selected topic" />
+                  </Field>
+                  <SelectField label="Format" value={style.format} onChange={(value) => setStyle({ ...style, format: value })} options={STYLE_OPTIONS.format} />
+                </SettingsGroup>
+
+                <SettingsGroup title="Audience & Style">
+                  <Field label="Target Audience">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.audience} onChange={(e) => setStyle({ ...style, audience: e.target.value })} />
+                  </Field>
+                  <SelectField label="Tone" value={style.tone} onChange={(value) => setStyle({ ...style, tone: value })} options={STYLE_OPTIONS.tone} />
+                </SettingsGroup>
+
+                <SettingsGroup title="SEO">
+                  <Field label="Meta Title (50-60 characters)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.metaTitle} onChange={(e) => setStyle({ ...style, metaTitle: e.target.value })} placeholder="Optional, AI can generate" />
+                  </Field>
+                  <Field label="Meta Description (150-160 characters)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.metaDescription} onChange={(e) => setStyle({ ...style, metaDescription: e.target.value })} placeholder="Optional, AI can generate" />
+                  </Field>
+                  <Field label="Primary SEO Keyword">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.primaryKeyword} onChange={(e) => setStyle({ ...style, primaryKeyword: e.target.value })} />
+                  </Field>
+                  <Field label="Secondary SEO Keywords">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="Comma separated" />
+                  </Field>
+                  <SelectField label="Target Search Intent" value={style.searchIntent} onChange={(value) => setStyle({ ...style, searchIntent: value })} options={STYLE_OPTIONS.searchIntent} />
+                </SettingsGroup>
+
+                <SettingsGroup title="Content Structure">
+                  <SelectField label="Length" value={style.length} onChange={(value) => setStyle({ ...style, length: value })} options={STYLE_OPTIONS.length} />
+                  {style.length === 'custom' && (
+                    <Field label="Custom Length">
+                      <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customLength} onChange={(e) => setStyle({ ...style, customLength: e.target.value })} placeholder="e.g. 1,200 words" />
+                    </Field>
+                  )}
+                  <SelectField label="Content Outline (TOC)" value={style.outlineMode} onChange={(value) => setStyle({ ...style, outlineMode: value })} options={STYLE_OPTIONS.outlineMode} />
+                  {style.outlineMode === 'custom' && (
+                    <Field label="Custom Outline">
+                      <textarea className="input rounded-xl min-h-[100px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customOutline} onChange={(e) => setStyle({ ...style, customOutline: e.target.value })} placeholder="Add headings or bullet outline..." />
+                    </Field>
+                  )}
+                </SettingsGroup>
+
+                <SettingsGroup title="Internal Linking & CTA">
+                  <Field label="Focus Page / Service">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.focusPage} onChange={(e) => setStyle({ ...style, focusPage: e.target.value })} />
+                  </Field>
+                  <Field label="Pages on the company's website to link to">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.internalLinkPages} onChange={(e) => setStyle({ ...style, internalLinkPages: e.target.value })} placeholder="Comma separated pages or URLs" />
+                  </Field>
+                  <Field label="CTA Title">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaTitle} onChange={(e) => setStyle({ ...style, ctaTitle: e.target.value })} />
+                  </Field>
+                  <Field label="CTA Button Text">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaButtonText} onChange={(e) => setStyle({ ...style, ctaButtonText: e.target.value })} />
+                  </Field>
+                  <Field label="CTA Description">
+                    <textarea className="input rounded-xl min-h-[72px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
+                  </Field>
+                  <Field label="CTA URL (optional)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaUrl} onChange={(e) => setStyle({ ...style, ctaUrl: e.target.value })} />
+                  </Field>
+                </SettingsGroup>
+
+                <SettingsGroup title="Additional Context">
+                  <Field label="Key Points to Cover">
+                    <textarea className="input rounded-xl min-h-[90px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
+                  </Field>
+                  <Field label="Competitor URLs (optional)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.competitorUrls} onChange={(e) => setStyle({ ...style, competitorUrls: e.target.value })} placeholder="Comma separated" />
+                  </Field>
+                  <Field label="Reference Material / Source URLs (optional)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.referenceUrls} onChange={(e) => setStyle({ ...style, referenceUrls: e.target.value })} placeholder="Selected article URL is included automatically" />
+                  </Field>
+                  <ToggleField label="Include FAQ Section" checked={style.includeFaq} onChange={(checked) => setStyle({ ...style, includeFaq: checked })} />
+                  <ToggleField label="Include Statistics & Data" checked={style.includeStats} onChange={(checked) => setStyle({ ...style, includeStats: checked })} />
+                </SettingsGroup>
+              </div>
+              {false && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <SelectField label="Tone" value={style.tone} onChange={(value) => setStyle({ ...style, tone: value })} options={STYLE_OPTIONS.tone} />
+                <SelectField label="Format" value={style.format} onChange={(value) => setStyle({ ...style, format: value })} options={STYLE_OPTIONS.format} />
+                <SelectField label="Length" value={style.length} onChange={(value) => setStyle({ ...style, length: value })} options={STYLE_OPTIONS.length} />
+                <SelectField label="Point of view" value={style.pointOfView} onChange={(value) => setStyle({ ...style, pointOfView: value })} options={STYLE_OPTIONS.pointOfView} />
+                <Field label="Target Audience">
+                  <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.audience} onChange={(e) => setStyle({ ...style, audience: e.target.value })} />
+                </Field>
+                <Field label="SEO Keywords">
+                  <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. startup funding, AI regulation" />
+                </Field>
+                <Field label="Call to Action (CTA)">
+                  <textarea className="input rounded-xl min-h-[64px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.cta} onChange={(e) => setStyle({ ...style, cta: e.target.value })} />
+                </Field>
+              </div>
+              )}
+            </div>
+            
+            <div className="border-t border-gray-200/50 bg-white/70 p-4 backdrop-blur">
+              <button 
+                type="button" 
+                onClick={generate} 
+                disabled={generating || !selectedArticle} 
+                className="btn-primary w-full py-3 text-base rounded-xl font-black tracking-wide shadow-lg hover:shadow-brand-crimson/20 transition-all hover-lift disabled:hover:translate-y-0 relative overflow-hidden group"
+              >
+                {generating ? (
+                  <>
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    <Loader2 size={18} className="animate-spin relative z-10" />
+                    <span className="relative z-10">Generating Content...</span>
+                  </>
+                ) : (
+                  <>
+                    <PenLine size={18} />
+                    Generate Blog Draft
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
+
+          {/* Panel 3: Drafts Editor */}
+          <section className="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-2 lg:h-[calc(100vh-96px)] 2xl:col-span-1">
+            <PanelHeader icon={BookOpenText} title="Drafts & Publishing" />
+            
+            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
+              <aside className="flex min-h-[260px] flex-col border-b border-gray-100 bg-gray-50/60 md:min-h-0 md:border-b-0 md:border-r">
+                <div className="border-b border-gray-100 bg-white p-3">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson" value={blogQuery} onChange={(e) => setBlogQuery(e.target.value)} placeholder="Search drafts..." />
+                  </div>
+                  {selectedBlogIds.length ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2">
+                      <span className="text-xs font-black text-brand-crimson">{selectedBlogIds.length} selected</span>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={clearBlogSelection} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+                          Clear
+                        </button>
+                        <button type="button" onClick={() => deleteBlogs(selectedBlogIds)} disabled={deletingBlogs} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+                          {deletingBlogs ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
+                  {loadingBlogs ? (
+                    <LoadingRows label="Loading drafts..." />
+                  ) : blogs.length ? blogs.map((blog) => {
+                    const selectedForBulk = selectedBlogIds.includes(blog._id);
+                    const active = selectedBlog?._id === blog._id;
+                    return (
+                      <div
+                        key={blog._id}
+                        className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleBlogSelection(blog._id)}
+                            className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                            title={selectedForBulk ? 'Unselect' : 'Select'}
+                          >
+                            {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBlog(blog);
+                              setDraftEditorOpen(false);
+                            }}
+                            onDoubleClick={() => {
+                              setSelectedBlog(blog);
+                              setDraftEditorOpen(true);
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="mb-2 flex items-start justify-between gap-2">
+                              <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
+                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                                blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
+                                blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                                'bg-gray-50 text-gray-500 border-gray-200'
+                              }`}>
+                                {blog.status}
+                              </span>
+                            </div>
+                            <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteBlogs([blog._id])}
+                            disabled={deletingBlogs}
+                            className="mt-0.5 rounded-lg border border-transparent p-1.5 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Delete post"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <Empty icon={BookOpenText} label="No drafts generated yet" />
+                  )}
+                </div>
+              </aside>
+
+              <div className="min-h-[560px] overflow-y-auto bg-white p-4 custom-scrollbar md:min-h-0">
+                {selectedBlog && draftEditorOpen ? (
+                  <div className="animate-fade-in-up stagger-1">
+                    <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
+                            selectedBlog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
+                            selectedBlog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                            'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}>
+                            {selectedBlog.status}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <StatusButton status="review" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
+                        <StatusButton status="published" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
+                        <button
+                          type="button"
+                          onClick={() => deleteBlogs([selectedBlog._id])}
+                          disabled={deletingBlogs}
+                          className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] font-black text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
+                        >
+                          {deletingBlogs ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-4">
+                      <Field label="Post Title">
+                        <input className="input min-h-[42px] rounded-xl font-bold transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.title} onChange={(e) => setDraftForm({ ...draftForm, title: e.target.value })} />
+                      </Field>
+                      <Field label="Short Excerpt">
+                        <textarea className="input min-h-[92px] resize-y rounded-xl text-sm transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.excerpt} onChange={(e) => setDraftForm({ ...draftForm, excerpt: e.target.value })} />
+                      </Field>
+                      <Field label="Markdown Content">
+                        <textarea className="input min-h-[360px] resize-y rounded-xl bg-gray-50 font-mono text-xs leading-relaxed transition-colors hover:border-gray-300 focus:bg-white focus:border-brand-crimson custom-scrollbar md:min-h-[430px]" value={draftForm.bodyMarkdown} onChange={(e) => setDraftForm({ ...draftForm, bodyMarkdown: e.target.value })} />
+                      </Field>
+                      <button type="button" onClick={saveDraftEdits} disabled={savingDraft} className="btn-secondary w-full rounded-xl bg-white py-3 font-black">
+                        {savingDraft ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        Save Edits
+                      </button>
+                    </div>
+                  </div>
+                ) : selectedBlog ? (
+                  <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
+                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
+                      <BookOpenText size={18} />
+                    </div>
+                    <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
+                    <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
+                      Double-click this draft in the list to open edit mode.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setDraftEditorOpen(true)}
+                      className="mt-4 rounded-xl bg-brand-crimson px-4 py-2 text-xs font-black text-white shadow-sm transition-all hover:bg-brand-hoverred"
+                    >
+                      Open Editor
+                    </button>
+                  </div>
+                ) : (
+                  <Empty icon={Settings2} label="Double-click a draft to open" />
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+        )}
+      </div>
+    </Layout>
+  );
+}
+
+function cleanList(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function ContentTypeCard({ icon: Icon, title, description, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`glass-panel p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg ${
+        active ? 'ring-2 ring-brand-crimson ring-offset-2' : 'hover:border-brand-crimson/30'
+      }`}
+    >
+      <div className="flex items-start gap-4">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+          active ? 'bg-brand-crimson text-white' : 'bg-white text-brand-crimson border border-brand-crimson/10'
+        }`}>
+          <Icon size={20} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-black text-gray-900">{title}</h2>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-gray-500">{description}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SocialPlatformSelector({ value, onChange }) {
+  const platforms = [
+    {
+      key: 'linkedin',
+      title: 'LinkedIn Post',
+      description: 'Create a professional LinkedIn post from selected intelligence.',
+      icon: MessageSquareText,
+      disabled: false
+    },
+    {
+      key: 'instagram',
+      title: 'Instagram Post',
+      description: 'Upcoming',
+      icon: Sparkles,
+      disabled: true
+    },
+    {
+      key: 'facebook',
+      title: 'Facebook Post',
+      description: 'Upcoming',
+      icon: Sparkles,
+      disabled: true
+    }
+  ];
+
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      {platforms.map((platform) => {
+        const Icon = platform.icon;
+        const active = value === platform.key;
+        return (
+          <button
+            key={platform.key}
+            type="button"
+            disabled={platform.disabled}
+            onClick={() => onChange(platform.key)}
+            className={`glass-panel flex items-center gap-4 px-5 py-4 text-left transition-all ${
+              active ? 'ring-2 ring-brand-crimson ring-offset-1' : 'hover:border-brand-crimson/30'
+            } ${platform.disabled ? 'cursor-not-allowed opacity-60' : 'hover:-translate-y-0.5 hover:shadow-md'}`}
+          >
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+              active ? 'bg-brand-crimson text-white' : 'bg-white text-brand-crimson border border-brand-crimson/10'
+            }`}>
+              <Icon size={19} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-gray-900">{platform.title}</span>
+              <span className={`mt-1 block text-xs font-bold ${platform.disabled ? 'text-amber-500' : 'text-gray-500'}`}>
+                {platform.description}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CompactPlatformSelector({ value, onChange }) {
+  const options = [
+    ['linkedin', 'LinkedIn'],
+    ['instagram', 'Instagram'],
+    ['facebook', 'Facebook']
+  ];
+
+  return (
+    <div className="mb-4 grid grid-cols-3 rounded-xl border border-gray-100 bg-gray-50 p-1">
+      {options.map(([key, label]) => {
+        const disabled = key !== 'linkedin';
+        const active = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(key)}
+            className={`relative min-h-[36px] overflow-hidden rounded-lg px-2 text-[11px] font-black transition-all ${
+              active ? 'bg-brand-crimson text-white shadow-sm' : disabled ? 'cursor-not-allowed bg-white/60 text-amber-500' : 'text-gray-500 hover:bg-white'
+            }`}
+          >
+            {disabled ? <span className="absolute inset-y-0 -left-1/2 w-1/2 animate-[shimmerPass_2.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/80 to-transparent" /> : null}
+            {label}
+            {disabled ? <span className="ml-1 inline-block animate-pulse text-[9px] uppercase tracking-wider">Soon</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, onSelectSaved, onClear }) {
+  if (!output) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/50 p-4 custom-scrollbar">
+        <div className="mb-4 rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-pink/40 text-brand-crimson shadow-sm ring-1 ring-gray-100">
+            <MessageSquareText size={20} />
+          </div>
+          <div className="text-sm font-black text-gray-900">Output will appear here</div>
+          <p className="mt-2 max-w-xs text-xs font-semibold leading-relaxed text-gray-500">Select a topic, tune the settings, and generate a post.</p>
+        </div>
+        <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/60 p-4 custom-scrollbar">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-brand-crimson px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">{output.framework || 'LinkedIn'}</span>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.topicTier || 'Tier'}</span>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.emotionalJob || 'Job'}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClear}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="mb-3 text-sm font-black leading-snug text-gray-900">{output.selectedTopic}</div>
+        <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-inner">
+          <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
+            <div className="min-w-0">
+              <div className="text-sm font-black text-gray-900">Admin</div>
+              <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
+            </div>
+          </div>
+          <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
+            {output.postText}
+          </div>
+        </div>
+        {Array.isArray(output.hashtags) && output.hashtags.length ? (
+          <div className="mt-3 break-words text-sm font-bold leading-relaxed text-brand-crimson">{output.hashtags.join(' ')}</div>
+        ) : null}
+      </div>
+      <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} activeId={output._id} />
+    </div>
+  );
+}
+
+function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId }) {
+  return (
+    <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-500">Saved Posts</div>
+        {loading ? <Loader2 size={14} className="animate-spin text-brand-crimson" /> : null}
+      </div>
+      {posts.length ? (
+        <div className="space-y-2">
+          {posts.map((post) => (
+            <button
+              key={post._id}
+              type="button"
+              onClick={() => onSelect?.(post)}
+              className={`w-full rounded-xl border p-3 text-left transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/10 ${
+                activeId === post._id ? 'border-brand-crimson bg-brand-pink/20' : 'border-gray-100 bg-white'
+              }`}
+            >
+              <div className="line-clamp-2 text-xs font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
+              <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-relaxed text-gray-500">{post.postText}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl bg-gray-50 p-4 text-center text-xs font-bold text-gray-400">No saved posts yet</div>
+      )}
+    </div>
+  );
+}
+
+function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions, countries, types }) {
+  const [open, setOpen] = useState(false);
+  const hasFilters = Object.values(filters).some(Boolean);
+  const activeCount = Object.values(filters).filter(Boolean).length;
+  const clearFilters = () => {
+    ['q', 'type', 'category', 'subcategory', 'country', 'saved'].forEach((key) => onChange(key, ''));
+  };
+
+  return (
+    <div className="border-b border-gray-100 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-all hover:bg-gray-50 sm:px-4"
+      >
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-pink/40 text-brand-crimson ring-1 ring-brand-crimson/10">
+            <MoreHorizontal size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[11px] font-black uppercase tracking-[0.16em] text-gray-700">Filters</div>
+            {activeCount ? <div className="text-[11px] font-bold text-brand-crimson">{activeCount} active</div> : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasFilters ? (
+            <span
+              onClick={(event) => {
+                event.stopPropagation();
+                clearFilters();
+              }}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              Clear
+            </span>
+          ) : null}
+          <ChevronDown size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && (
+      <div className="grid grid-cols-1 gap-2 px-3 pb-3 sm:grid-cols-2 sm:px-4 sm:pb-4">
+        <div className="relative sm:col-span-2">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input min-h-[42px] rounded-xl pl-9 transition-colors hover:border-gray-300 focus:border-brand-crimson"
+            value={filters.q}
+            onChange={(e) => onChange('q', e.target.value)}
+            placeholder="Search intelligence topics..."
+          />
+        </div>
+
+        <TopicSelect label="Type" value={filters.type} onChange={(value) => onChange('type', value)}>
+          <option value="">All types</option>
+          {(types || EMPTY_META.types).map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+        </TopicSelect>
+
+        <TopicSelect label="Category" value={filters.category} onChange={(value) => onChange('category', value)}>
+          <option value="">All categories</option>
+          {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+        </TopicSelect>
+
+        <TopicSelect
+          label="Sub-category"
+          value={filters.subcategory}
+          onChange={(value) => onChange('subcategory', value)}
+          disabled={!filters.category}
+        >
+          <option value="">All sub-categories</option>
+          {subcategoryOptions.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
+        </TopicSelect>
+
+        <TopicSelect label="Country" value={filters.country} onChange={(value) => onChange('country', value)}>
+          <option value="">All countries</option>
+          {(countries || []).map((country) => <option key={country} value={country}>{country}</option>)}
+        </TopicSelect>
+
+        <TopicSelect label="Saved" value={filters.saved} onChange={(value) => onChange('saved', value)}>
+          <option value="">All topics</option>
+          <option value="true">Saved only</option>
+        </TopicSelect>
+      </div>
+      )}
+    </div>
+  );
+}
+
+function TopicSelect({ label, value, onChange, children, disabled = false }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
+      <select
+        className="select min-h-[42px] w-full rounded-xl transition-colors hover:border-gray-300 focus:border-brand-crimson disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function LinkedInStudio({
+  socialPlatform,
+  setSocialPlatform,
+  articles,
+  selectedArticle,
+  setSelectedArticle,
+  loadingArticles,
+  topicFilters,
+  updateTopicFilter,
+  categoryOptions,
+  subcategoryOptions,
+  countries,
+  types,
+  linkedinForm,
+  setLinkedinForm,
+  generatingLinkedin,
+  generateLinkedinPost,
+  linkedinOutput,
+  setLinkedinOutput,
+  socialPosts,
+  loadingSocialPosts
+}) {
+  const update = (key, value) => setLinkedinForm({ ...linkedinForm, [key]: value });
+  const [draggingArticleId, setDraggingArticleId] = useState('');
+  const [dropActive, setDropActive] = useState(false);
+  const selectArticleById = (articleId) => {
+    const article = articles.find((item) => item._id === articleId);
+    if (article) setSelectedArticle(article);
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 lg:grid-cols-[minmax(280px,350px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(290px,340px)_minmax(460px,1fr)_minmax(360px,460px)]">
+      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+        <PanelHeader icon={Layers} title="Intelligence Topics" />
+        <TopicFilterBar
+          filters={topicFilters}
+          onChange={updateTopicFilter}
+          categoryOptions={categoryOptions}
+          subcategoryOptions={subcategoryOptions}
+          countries={countries}
+          types={types}
+        />
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/30 p-4 custom-scrollbar">
+          {loadingArticles ? (
+            <LoadingRows label="Loading intelligence topics..." />
+          ) : articles.length ? articles.map((item) => {
+            const isSelected = selectedArticle?._id === item._id;
+            return (
+              <div
+                key={item._id}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('text/plain', item._id);
+                  setDraggingArticleId(item._id);
+                }}
+                onDragEnd={() => setDraggingArticleId('')}
+                onClick={() => setSelectedArticle(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
+                }}
+                className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-95 opacity-50' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+              >
+                <ArticleCard item={item} compact selected={isSelected} />
+                <div className={`mt-0 flex items-center justify-between rounded-b-xl px-3 py-2 text-xs font-black transition-colors ${isSelected ? 'bg-brand-crimson text-white' : 'bg-white text-gray-500 border-x border-b border-gray-100'}`}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {isSelected ? <Check size={14} /> : <GripVertical size={14} className="text-gray-400" />}
+                    <span className="truncate">{isSelected ? 'Selected for Post' : 'Drag or Click to Select'}</span>
+                  </span>
+                  {isSelected ? <Sparkles size={14} /> : <MousePointer2 size={14} className="opacity-50" />}
+                </div>
+              </div>
+            );
+          }) : (
+            <Empty icon={FileText} label="No topics found matching criteria" />
+          )}
+        </div>
+      </section>
+
+      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
+        <PanelHeader icon={MessageSquareText} title="Post Builder" subtitle="Customize before generation" />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
+
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDropActive(true);
+            }}
+            onDragLeave={() => setDropActive(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDropActive(false);
+              selectArticleById(event.dataTransfer.getData('text/plain'));
+            }}
+            className={`mb-4 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/70' : 'border-gray-200 bg-gray-50/70'}`}
+          >
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
+              {selectedArticle ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedArticle(null);
+                    setLinkedinOutput(null);
+                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            {selectedArticle ? (
+              <>
+                <div className="text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
+                <p className="mt-2 line-clamp-3 border-l-2 border-gray-200 pl-3 text-xs font-medium italic text-gray-500">
+                  {selectedArticle.summary || selectedArticle.aiSummary}
+                </p>
+              </>
+            ) : (
+              <div className="flex min-h-[90px] items-center justify-center rounded-lg bg-white/60 text-center text-sm font-bold text-gray-500">
+                Drag a topic here or click one from the left.
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <SelectField
+              label="Post Goal"
+              value={linkedinForm.postGoal}
+              onChange={(value) => update('postGoal', value)}
+              options={[
+                ['thought_leadership', 'Thought Leadership'],
+                ['client_alert', 'Client Alert'],
+                ['market_insight', 'Market Insight'],
+                ['educational', 'Educational'],
+                ['lead_generation', 'Lead Generation']
+              ]}
+            />
+            <SelectField
+              label="Tone"
+              value={linkedinForm.tone}
+              onChange={(value) => update('tone', value)}
+              options={STYLE_OPTIONS.tone}
+            />
+            <SelectField
+              label="Length"
+              value={linkedinForm.length}
+              onChange={(value) => update('length', value)}
+              options={[
+                ['short', 'Short'],
+                ['medium', 'Medium'],
+                ['long', 'Long']
+              ]}
+            />
+            <SelectField
+              label="Hook Style"
+              value={linkedinForm.hookStyle}
+              onChange={(value) => update('hookStyle', value)}
+              options={[
+                ['proof', 'Proof-led'],
+                ['contrarian', 'Contrarian'],
+                ['personal_story', 'Personal story'],
+                ['insight', 'Insight-led'],
+                ['question', 'Question-led'],
+                ['stat', 'Stat-led']
+              ]}
+            />
+            <SelectField
+              label="Framework"
+              value={linkedinForm.framework}
+              onChange={(value) => update('framework', value)}
+              options={[
+                ['auto', 'Auto select'],
+                ['SLAY', 'SLAY - story-led authority'],
+                ['PAS', 'PAS - pain-driven inbound'],
+                ['POV', 'POV - high reach'],
+                ['5-Line Mirror', '5-Line Mirror'],
+                ['AIDA', 'AIDA - conversion']
+              ]}
+            />
+            <SelectField
+              label="Topic Tier"
+              value={linkedinForm.topicTier}
+              onChange={(value) => update('topicTier', value)}
+              options={[
+                ['auto', 'Auto select'],
+                ['Broad', 'Broad - reach'],
+                ['Narrow', 'Narrow - authority'],
+                ['Niche', 'Niche - conversion']
+              ]}
+            />
+            <SelectField
+              label="Emotional Job"
+              value={linkedinForm.emotionalJob}
+              onChange={(value) => update('emotionalJob', value)}
+              options={[
+                ['auto', 'Auto select'],
+                ['Inspire', 'Inspire'],
+                ['Educate', 'Educate'],
+                ['Provoke', 'Provoke'],
+                ['Convert', 'Convert']
+              ]}
+            />
+            <Field label="Target Audience">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.audience} onChange={(e) => update('audience', e.target.value)} />
+            </Field>
+            <Field label="Person Profile">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
+            </Field>
+            <Field label="Call to Action">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} />
+            </Field>
+            <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700">
+              <input type="checkbox" checked={linkedinForm.includeHashtags} onChange={(e) => update('includeHashtags', e.target.checked)} />
+              Include hashtags
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700">
+              <input type="checkbox" checked={linkedinForm.includeCTA} onChange={(e) => update('includeCTA', e.target.checked)} />
+              Include CTA
+            </label>
+            <Field label="ICP Pain Points">
+              <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.icpPainPoints} onChange={(e) => update('icpPainPoints', e.target.value)} placeholder="What painful truth should this speak to?" />
+            </Field>
+            <Field label="Market Realities">
+              <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.marketReality} onChange={(e) => update('marketReality', e.target.value)} placeholder="What is changing in the market?" />
+            </Field>
+            <Field label="Proof Element">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.proofElement} onChange={(e) => update('proofElement', e.target.value)} placeholder="Number / timeframe / result, if known" />
+            </Field>
+            <Field label="Soft Authority Line">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />
+            </Field>
+            <Field label="Rule of One Takeaway">
+              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.takeaway} onChange={(e) => update('takeaway', e.target.value)} placeholder="One clear thing reader should remember" />
+            </Field>
+            <Field label="Custom Instructions">
+              <textarea className="input rounded-xl min-h-[120px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.customInstructions} onChange={(e) => update('customInstructions', e.target.value)} placeholder="Add brand voice, angle, keywords, do/don't rules..." />
+            </Field>
+          </div>
+
+        </div>
+
+        <div className="border-t border-gray-200/50 bg-white/50 p-5 backdrop-blur">
+          <button type="button" disabled={generatingLinkedin} onClick={generateLinkedinPost} className="btn-primary w-full py-3.5 text-base rounded-xl font-black tracking-wide">
+            {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
+            {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
+          </button>
+        </div>
+      </section>
+
+      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-2 2xl:col-span-1 2xl:h-[calc(100vh-96px)]">
+        <PanelHeader icon={MessageSquareText} title="Output Preview" subtitle="Generated post" />
+        <LinkedInOutputPreview
+          output={linkedinOutput}
+          savedPosts={socialPosts}
+          loadingSaved={loadingSocialPosts}
+          onSelectSaved={setLinkedinOutput}
+          onClear={() => setLinkedinOutput(null)}
+        />
+      </section>
+    </div>
+  );
+}
+
+function PanelHeader({ icon: Icon, title, subtitle }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-gray-200/50 px-5 py-4 bg-white/60 backdrop-blur">
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-crimson to-brand-hoverred text-white shadow-sm">
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0">
+        <h2 className="truncate text-base font-black text-gray-900 tracking-tight">{title}</h2>
+        {subtitle ? <p className="truncate text-[11px] font-semibold text-gray-500 mt-0.5">{subtitle}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children, className = '' }) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="label text-gray-600 font-bold tracking-wider">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SettingsGroup({ title, children }) {
+  return (
+    <section className="rounded-xl border border-gray-100 bg-white/70 p-4 shadow-sm">
+      <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-gray-500">{title}</h3>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+function ToggleField({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700">
+      <span>{label}</span>
+      <input type="checkbox" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <Field label={label}>
+      <select className="select rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map(([key, labelText]) => <option key={key} value={key}>{labelText}</option>)}
+      </select>
+    </Field>
+  );
+}
+
+function StatusButton({ status, current, saving, onClick }) {
+  const active = current === status;
+  const label = status === 'published' ? 'Publish' : status === 'review' ? 'Review' : status;
+  
+  if (active) {
+    return (
+      <button type="button" disabled className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] font-black text-gray-400">
+        <Check size={12} />
+        Current
+      </button>
+    );
+  }
+  
+  return (
+    <button
+      type="button"
+      disabled={Boolean(saving)}
+      onClick={() => onClick(status)}
+      className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-2 text-[11px] font-black text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
+    >
+      {saving === status ? <Loader2 size={12} className="animate-spin" /> : <Settings2 size={12} />}
+      {label}
+    </button>
+  );
+}
+
+function LoadingRows({ label }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 gap-3 text-brand-crimson">
+      <Loader2 size={24} className="animate-spin" />
+      <span className="text-sm font-bold text-gray-500">{label}</span>
+    </div>
+  );
+}
+
+function Empty({ icon: Icon, label }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full min-h-[160px] p-6 text-center">
+      <div className="w-12 h-12 rounded-full bg-white shadow-sm border border-gray-100 flex items-center justify-center mb-3">
+        <Icon size={20} className="text-gray-300" />
+      </div>
+      <span className="text-sm font-bold text-gray-500">{label}</span>
+    </div>
+  );
+}

@@ -1,7 +1,7 @@
 {
-  "name": "ascentium-dashboard-backend",
+  "name": "opportunityos-ai-backend",
   "version": "1.0.0",
-  "description": "Ascentium Intelligence Dashboard - Backend API with scraping, dedup, auth, and cron automation",
+  "description": "OpportunityOS AI backend API with dynamic opportunity intelligence, n8n automation, auth, and scheduling",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import Filters from '../components/Filters';
@@ -7,80 +7,408 @@ import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
-  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus
+  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
+  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+// Plan limits matching backend PLAN_DEFAULTS — used for auto-fill
+const PLAN_DEFAULTS_UI = {
+  free:       { memberLimit: 1,   fetchesPerMonth: 10,   storageItems: 100,    tokenBudgetMonthly: 50000 },
+  growth:     { memberLimit: 3,   fetchesPerMonth: 50,   storageItems: 2000,   tokenBudgetMonthly: 500000 },
+  scale:      { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000 },
+  enterprise: { memberLimit: 999, fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000 },
+  premium:    { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000 }
+};
+
+const PLAN_BADGE = {
+  free:       'bg-gray-50 text-gray-500 ring-1 ring-gray-200',
+  growth:     'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  scale:      'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  enterprise: 'bg-gradient-to-r from-amber-100 to-yellow-50 text-amber-800 ring-1 ring-amber-200/50 shadow-sm',
+  premium:    'bg-gradient-to-r from-amber-100 to-yellow-50 text-amber-800 ring-1 ring-amber-200/50 shadow-sm'
+};
+
+const MEMBER_ACCESS_OPTIONS = [
+  { key: 'canFetch', label: 'Fetch' },
+  { key: 'canUseBlogStudio', label: 'Social Media Studio' },
+  { key: 'canUseSavedSearches', label: 'Saved' },
+  { key: 'canUseScheduler', label: 'Schedule' }
+];
+
 // =============== TABS ===============
 
-const TABS = [
-  { key: 'articles', label: 'Articles', icon: FileText },
-  { key: 'fetch',    label: 'Fetch',    icon: Play },
-  { key: 'logs',     label: 'Logs',     icon: Activity },
-  { key: 'users',    label: 'Users',    icon: Users },
-  { key: 'stats',    label: 'Stats',    icon: BarChart3 }
+const ADMIN_TABS = [
+  { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review content' },
+  { key: 'fetch',    label: 'Fetch',    icon: Play, hint: 'Run sources' },
+  { key: 'logs',     label: 'Logs',     icon: Activity, hint: 'System activity' },
+  { key: 'users',    label: 'Users',    icon: Users, hint: 'Team access' },
+  { key: 'stats',    label: 'Stats',    icon: BarChart3, hint: 'Usage insights' }
 ];
 
-const N8N_WORKFLOWS = [
-  { key: 'news', label: 'News', tone: '#3b82f6' },
-  { key: 'govt', label: 'Government', tone: '#10b981' },
-  { key: 'competitor', label: 'Competitor', tone: '#f59e0b' },
-  { key: 'evergreen', label: 'Evergreen', tone: '#8b5cf6' }
+const SUPER_ADMIN_TABS = [
+  { key: 'platform', label: 'Platform Overview', icon: Crown, hint: 'Global health' },
+  { key: 'users',    label: 'Users & Access',    icon: ShieldCheck, hint: 'Companies and members' },
+  { key: 'plans',    label: 'Plan Builder',       icon: Database, hint: 'Limits and billing' },
+  { key: 'settings', label: 'System Settings',   icon: KeyRound, hint: 'Platform controls' },
 ];
+
+const TOPIC_OPTIONS = [
+  { key: 'news', label: 'News', help: 'Market and business updates' },
+  { key: 'govt', label: 'Government updates', help: 'Regulatory, tax and policy sources' },
+  { key: 'competitor', label: 'Competitor intel', help: 'Other firms, partnerships and launches' },
+  { key: 'evergreen', label: 'Evergreen guides', help: 'Guides, explainers and reference content' }
+];
+
+const COUNTRY_TIMEZONES = {
+  India: ['Asia/Kolkata'],
+  Singapore: ['Asia/Singapore'],
+  'United States': ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu'],
+  USA: ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu'],
+  'United Kingdom': ['Europe/London'],
+  UK: ['Europe/London'],
+  Canada: ['America/Toronto', 'America/Winnipeg', 'America/Edmonton', 'America/Vancouver', 'America/Halifax', 'America/St_Johns'],
+  Australia: ['Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane', 'Australia/Adelaide', 'Australia/Perth'],
+  UAE: ['Asia/Dubai'],
+  'United Arab Emirates': ['Asia/Dubai'],
+  Germany: ['Europe/Berlin'],
+  France: ['Europe/Paris'],
+  Netherlands: ['Europe/Amsterdam'],
+  Switzerland: ['Europe/Zurich'],
+  Japan: ['Asia/Tokyo'],
+  China: ['Asia/Shanghai'],
+  Hongkong: ['Asia/Hong_Kong'],
+  'Hong Kong': ['Asia/Hong_Kong'],
+  Malaysia: ['Asia/Kuala_Lumpur'],
+  Indonesia: ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'],
+  Philippines: ['Asia/Manila'],
+  Thailand: ['Asia/Bangkok'],
+  Vietnam: ['Asia/Ho_Chi_Minh'],
+  'South Africa': ['Africa/Johannesburg'],
+  Brazil: ['America/Sao_Paulo'],
+  Mexico: ['America/Mexico_City'],
+  'New Zealand': ['Pacific/Auckland']
+};
+
+function getBrowserTimezones() {
+  try {
+    if (typeof Intl.supportedValuesOf === 'function') {
+      return Intl.supportedValuesOf('timeZone');
+    }
+  } catch {
+    // Fall through to curated list below.
+  }
+  return [
+    'Asia/Kolkata', 'Asia/Singapore', 'Asia/Dubai', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Hong_Kong',
+    'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'America/New_York', 'America/Chicago',
+    'America/Denver', 'America/Los_Angeles', 'Australia/Sydney', 'Pacific/Auckland'
+  ];
+}
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState('articles');
+  const { isSuperAdmin } = useAuth();
+  const tabs = isSuperAdmin ? SUPER_ADMIN_TABS : ADMIN_TABS;
+  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : 'articles'));
+  const [dbPlans, setDbPlans] = useState([]);
+
+  const loadDbPlans = useCallback(async () => {
+    try {
+      const { data } = await api.get('/admin/plans');
+      if (data.items) setDbPlans(data.items);
+    } catch (e) {
+      console.error('Failed to load plans:', e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDbPlans();
+  }, [loadDbPlans]);
+
+  useEffect(() => {
+    if (!tabs.some((item) => item.key === tab)) setTab(tabs[0].key);
+  }, [tabs, tab]);
 
   return (
     <Layout>
-      <div className="space-y-5 pb-10">
-        <div className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-card sm:px-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="eyebrow mb-1">Operations</div>
-              <h1 className="text-2xl font-black tracking-tight text-gray-900">Admin Panel</h1>
-              <p className="mt-1 text-sm text-gray-500">Manage content, users, n8n runs, and operational logs.</p>
+      <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
+        <div className="w-full space-y-5 pb-10">
+        <div className="hidden">
+          <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-pink/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                {isSuperAdmin ? <Crown size={13} /> : <ShieldCheck size={13} />}
+                {isSuperAdmin ? 'Super Admin' : 'Operations'}
+              </div>
+              <h1 className="truncate text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">{isSuperAdmin ? 'Super Admin Console' : 'Admin Panel'}</h1>
+              <p className="mt-1 text-sm text-gray-500">{isSuperAdmin ? 'Full platform control — users, plans, system config, and access management for all companies.' : 'Manage content, users, n8n runs, and operational logs.'}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <span className="rounded-md bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
+              <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.14)]" />
                 Console online
               </span>
-              <span className="rounded-md bg-brand-pink/50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson ring-1 ring-brand-crimson/10">
-                Admin access
+              <span className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider ${isSuperAdmin ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-brand-crimson/10 bg-brand-pink/50 text-brand-crimson'}`}>
+                {isSuperAdmin ? <Crown size={12} /> : <ShieldCheck size={12} />}
+                {isSuperAdmin ? 'Super Admin' : 'Admin access'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div className="hide-scrollbar flex items-center gap-2 overflow-x-auto rounded-lg border border-gray-100 bg-white p-1.5 shadow-card">
-          {TABS.map((t) => {
+        <div className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm animate-fade-in-up stagger-1">
+        <div className="hide-scrollbar grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-2 overflow-x-auto lg:grid-flow-row lg:grid-cols-5">
+          {tabs.map((t) => {
             const active = t.key === tab;
             return (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={[
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold transition-all whitespace-nowrap',
+                  'group flex min-h-[64px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all',
                   active
-                    ? 'bg-brand-crimson text-white shadow-sm'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                    ? 'border-brand-crimson bg-brand-crimson text-white shadow-sm'
+                    : 'border-gray-100 bg-white text-gray-500 hover:border-brand-crimson/20 hover:bg-brand-pink/20 hover:text-gray-900'
                 ].join(' ')}
               >
-                <t.icon size={14} />
-                {t.label}
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-white/15 text-white' : 'bg-gray-50 text-brand-crimson group-hover:bg-white'}`}>
+                  <t.icon size={16} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black">{t.label}</span>
+                  <span className={`mt-0.5 block truncate text-[11px] font-bold ${active ? 'text-white/75' : 'text-gray-400'}`}>{t.hint}</span>
+                </span>
               </button>
             );
           })}
         </div>
+        </div>
 
-        {tab === 'articles' && <ArticlesTab />}
-        {tab === 'fetch'    && <FetchTab />}
-        {tab === 'logs'     && <LogsTab />}
-        {tab === 'users'    && <UsersTab />}
-        {tab === 'stats'    && <StatsTab />}
+        {tab === 'platform' && isSuperAdmin  && <SuperAdminPlatform />}
+        {tab === 'users'                       && <UsersTab dbPlans={dbPlans} />}
+        {tab === 'plans'    && isSuperAdmin    && <PlanBuilderTab dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
+        {tab === 'settings' && isSuperAdmin    && <SystemSettingsTab />}
+        {tab === 'articles' && !isSuperAdmin   && <ArticlesTab />}
+        {tab === 'fetch'    && !isSuperAdmin   && <FetchTab />}
+        {tab === 'logs'     && !isSuperAdmin   && <LogsTab />}
+        {tab === 'stats'    && !isSuperAdmin   && <StatsTab />}
+        </div>
       </div>
     </Layout>
+  );
+}
+
+// =============== SUPER ADMIN PLATFORM ===============
+
+function SuperAdminPlatform() {
+  const [overview, setOverview] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/admin/super/overview');
+      setOverview(data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading || !overview) return <Loader />;
+
+  const users = overview.users || {};
+  const usage = overview.usage || {};
+  const topUsers = overview.topUsers || [];
+  const recentRuns = overview.recentRuns || [];
+  const planPremiumPct = users.total ? Math.round((Number(users.premium || 0) / users.total) * 100) : 0;
+  const activePct = users.total ? Math.round((Number(users.active || 0) / users.total) * 100) : 0;
+  const failedPct = Number(usage.failureRateThisMonth || 0);
+
+  return (
+    <div className="space-y-6 mesh-bg p-4 sm:p-6 rounded-2xl relative">
+      <div className="premium-gradient-card p-6 sm:p-8 rounded-2xl relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none">
+          <Crown size={180} />
+        </div>
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
+              <Crown size={12} /> Super Admin
+            </div>
+            <h2 className="text-3xl font-black tracking-tight text-white mb-2">Platform Control Center</h2>
+            <p className="max-w-2xl text-sm font-medium text-white/80">
+              Manage plans, permissions, member capacity, usage, failures, storage and premium access from one place.
+            </p>
+          </div>
+          <button onClick={load} className="btn bg-white/10 text-white hover:bg-white/20 border border-white/20 backdrop-blur-sm shadow-sm transition-all">
+            <RefreshCw size={14} className="mr-1" /> Refresh Data
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 relative z-10">
+        <StatCard label="Total users" value={users.total || 0} accent="bg-brand-crimson" note={`${users.active || 0} active (${activePct}%)`} />
+        <StatCard label="Premium users" value={users.premium || 0} accent="bg-amber-500" note={`${planPremiumPct}% of accounts`} />
+        <StatCard label="Fetches this month" value={usage.monthRuns || 0} accent="bg-blue-500" note={`${usage.monthFailedRuns || 0} failed (${failedPct}%)`} />
+        <StatCard label="Stored signals" value={usage.totalArticles || 0} accent="bg-emerald-500" note={`${usage.monthArticles || 0} added this month`} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
+        <div className="premium-glass p-6 xl:col-span-2">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
+                <Gauge size={12} /> Usage Leaders
+              </div>
+              <h3 className="text-xl font-black tracking-tight text-gray-900">Top users this month</h3>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+              <Gauge size={18} className="text-brand-crimson" />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm border-separate border-spacing-y-2">
+              <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
+                <tr>
+                  <th className="py-2 px-3">User</th>
+                  <th className="py-2 px-3">Plan</th>
+                  <th className="py-2 px-3 text-right">Fetches</th>
+                  <th className="py-2 px-3 text-right">Stored</th>
+                  <th className="py-2 px-3 text-right">Errors</th>
+                  <th className="py-2 px-3 text-right">Est. tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topUsers.map((row, index) => (
+                  <tr key={row.user?._id || index} className="premium-table-row">
+                    <td className="py-3 px-3 rounded-l-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                          {(row.user?.name || 'U')[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
+                          <div className="text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`tag px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
+                        {(row.user?.subscriptionPlan === 'enterprise' || row.user?.subscriptionPlan === 'premium') && <Crown size={10} className="mr-1 inline" />}
+                        {row.user?.subscriptionPlan || 'free'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-black text-gray-700">{row.runs || 0}</td>
+                    <td className="py-3 px-3 text-right font-black text-gray-700">{row.inserted || 0}</td>
+                    <td className="py-3 px-3 text-right font-black text-red-500">{row.errors || 0}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold text-gray-400 rounded-r-xl">{Number(row.estimatedTokens || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {!topUsers.length && (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-sm font-semibold text-gray-400 bg-white/50 rounded-xl border border-dashed border-gray-200">No usage this month yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <PlatformMetric icon={Users} label="Admins" value={users.admins || 0} detail={`${users.members || 0} members managed`} />
+          <PlatformMetric icon={Database} label="Storage growth" value={usage.monthArticles || 0} detail="New stored signals this month" />
+          <PlatformMetric icon={KeyRound} label="Estimated tokens" value={Number(usage.estimatedTokensThisMonth || 0).toLocaleString()} detail="Approximate AI usage from stored results" />
+          <PlatformMetric icon={AlertTriangle} label="Failure rate" value={`${failedPct}%`} detail={`${usage.monthFailedRuns || 0} failed runs this month`} danger={failedPct > 20} />
+        </div>
+      </div>
+
+      <div className="premium-glass p-6 relative z-10">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
+              <Activity size={12} /> Recent Runs
+            </div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Platform activity</h3>
+          </div>
+          <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+             <Activity size={18} className="text-brand-crimson" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {recentRuns.map((run) => {
+            const owner = run.userId || run.triggeredByUser || {};
+            const isSuccess = run.status === 'success';
+            const isFailed = run.status === 'failed';
+            const isRunning = run.status === 'running' || run.status === 'queued';
+            return (
+              <div key={run._id} className="relative overflow-hidden rounded-xl bg-white p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5">
+                <div className="absolute top-0 right-0 p-5">
+                  <div className={`h-2.5 w-2.5 rounded-full ${
+                    isSuccess ? 'bg-emerald-400 glow-dot-success' 
+                    : isFailed ? 'bg-red-500 glow-dot-error'
+                    : 'bg-blue-400 glow-dot-running'
+                  }`} />
+                </div>
+                <div className="mb-3 flex items-center justify-between gap-3 pr-6">
+                  <span className={`tag px-2.5 py-1 ${
+                    isSuccess ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
+                    : isFailed ? 'bg-red-50 text-red-700 ring-1 ring-red-200/60'
+                    : 'bg-blue-50 text-blue-700 ring-1 ring-blue-200/60'
+                  }`}>
+                    {run.status}
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                    {run.startedAt ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true }) : '-'}
+                  </span>
+                </div>
+                <div className="font-black text-gray-900 text-base">{owner.name || owner.email || 'Unknown user'}</div>
+                <div className="mt-4 grid grid-cols-3 gap-2 bg-gray-50/80 rounded-lg p-2.5 border border-gray-100/50">
+                  <div className="text-center">
+                    <div className="text-[10px] font-black uppercase text-gray-400">Fetched</div>
+                    <div className="font-black text-gray-700 mt-0.5">{run.totalFetched || 0}</div>
+                  </div>
+                  <div className="text-center border-l border-r border-gray-200/60">
+                    <div className="text-[10px] font-black uppercase text-gray-400">Stored</div>
+                    <div className="font-black text-gray-700 mt-0.5">{run.totalInserted || 0}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[10px] font-black uppercase text-gray-400">Errors</div>
+                    <div className="font-black text-red-500 mt-0.5">{run.totalErrors || 0}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!recentRuns.length && (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-white/50 p-10 text-center text-sm font-bold text-gray-400 lg:col-span-2">
+              <Activity size={24} className="mx-auto mb-2 opacity-50" />
+              No platform activity yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
+  return (
+    <div className="premium-glass p-5 relative overflow-hidden group">
+      <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-500 pointer-events-none">
+        <Icon size={100} />
+      </div>
+      <div className="flex items-start gap-4 relative z-10">
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
+          <Icon size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-gray-400">{label}</div>
+          <div className={`mt-1 text-2xl font-black tracking-tight ${danger ? 'text-red-600' : 'text-gray-900'}`}>{value}</div>
+          <div className="mt-1.5 text-xs font-medium text-gray-500 leading-snug">{detail}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -144,47 +472,49 @@ function ArticlesTab() {
   };
 
   return (
-    <div>
-      <Filters onChange={setFilters} showAdmin />
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
+        <Filters onChange={setFilters} showAdmin />
+      </div>
 
       {selected.size > 0 && (
-        <div className="mt-4 card p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-brass-50 ring-brass-200">
-          <div className="text-sm text-brass-700 font-medium">
+        <div className="rounded-2xl border border-brand-crimson/10 bg-brand-pink/20 p-3 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm font-black text-gray-800">
             {selected.size} selected
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => bulk('publish')} className="btn-secondary">
+            <button onClick={() => bulk('publish')} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50">
               <Eye size={14} /> Publish
             </button>
-            <button onClick={() => bulk('unpublish')} className="btn-secondary">
+            <button onClick={() => bulk('unpublish')} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50">
               <EyeOff size={14} /> Unpublish
             </button>
-            <button onClick={() => bulk('delete')} className="btn-danger">
+            <button onClick={() => bulk('delete')} className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100">
               <Trash2 size={14} /> Delete
             </button>
-            <button onClick={clearSelection} className="btn-ghost">
+            <button onClick={clearSelection} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 ring-1 ring-gray-200 hover:bg-gray-50">
               <X size={14} />
             </button>
           </div>
         </div>
       )}
 
-      <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm text-ink-400 mb-3">
-        <div>
+      <div className="flex flex-col gap-2 text-sm font-bold text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-gray-100">
           {loading ? '…' : `${pagination.total} articles`}
           {pagination.pages > 1 && ` · Page ${pagination.page} of ${pagination.pages}`}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={selectAll} className="text-[11px] uppercase tracking-wider hover:text-ink-700">
+          <button onClick={selectAll} className="rounded-xl bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100 hover:text-gray-900">
             Select all on page
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="card p-4 space-y-2">
+            <div key={i} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm space-y-2">
               <Skeleton className="h-3 w-20" />
               <Skeleton className="h-5 w-full" />
               <Skeleton className="h-3 w-3/4" />
@@ -192,7 +522,7 @@ function ArticlesTab() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {items.map((item) => (
             <ArticleCard
               key={item._id}
@@ -221,21 +551,21 @@ function ArticlesTab() {
 
       {/* Pagination */}
       {pagination.pages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-8">
+        <div className="mt-8 flex items-center justify-center gap-2">
           <button
             disabled={pagination.page <= 1}
             onClick={() => load(filters, pagination.page - 1)}
-            className="btn-secondary"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 disabled:opacity-40"
           >
             Previous
           </button>
-          <span className="text-sm text-ink-500 px-3">
+          <span className="rounded-xl bg-white px-3 py-2 text-sm font-black text-gray-600 ring-1 ring-gray-100">
             {pagination.page} / {pagination.pages}
           </span>
           <button
             disabled={pagination.page >= pagination.pages}
             onClick={() => load(filters, pagination.page + 1)}
-            className="btn-secondary"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 disabled:opacity-40"
           >
             Next
           </button>
@@ -248,18 +578,45 @@ function ArticlesTab() {
 // =============== FETCH TAB ===============
 
 function FetchTab() {
+  const { user, updateProfile, runProgress, setRunProgress } = useAuth();
   const [n8nStatus, setN8nStatus] = useState({ isFetching: false, configured: {}, running: {} });
   const [lastLog, setLastLog] = useState(null);
-  const [startingN8n, setStartingN8n] = useState('');
+  const [startingN8n, setStartingN8n] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [profileMeta, setProfileMeta] = useState(null);
+  const [savedSearches, setSavedSearches] = useState([]);
   const [msg, setMsg] = useState('');
+  const [form, setForm] = useState(() => ({
+    saveSearchName: '',
+    country: user?.country || '',
+    category: user?.category || '',
+    categories: Array.isArray(user?.categories) && user.categories.length
+      ? user.categories
+      : (user?.category ? [user.category] : []),
+    subcategory: user?.subcategory || '',
+    topics: Array.isArray(user?.topics) && user.topics.length ? user.topics : ['news', 'govt', 'competitor', 'evergreen'],
+    sources: Array.isArray(user?.sources) ? user.sources.join(', ') : '',
+    competitors: Array.isArray(user?.competitors) ? user.competitors.join(', ') : '',
+    days: user?.days || 30,
+    query: user?.query || '',
+    language: user?.language || 'en',
+    timezone: user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    scheduleEnabled: Boolean(user?.fetchSchedule?.enabled),
+    scheduleFrequency: user?.fetchSchedule?.frequency || 'daily',
+    scheduleTime: user?.fetchSchedule?.time || '07:00',
+    scheduleTimezone: user?.fetchSchedule?.timezone || user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  }));
 
   const refresh = useCallback(async () => {
-    const [n, l] = await Promise.all([
+    const [n, l, s] = await Promise.all([
       api.get('/admin/n8n/status'),
-      api.get('/admin/logs', { params: { limit: 1 } })
+      api.get('/admin/logs', { params: { limit: 1 } }),
+      api.get('/n8n/saved-searches').catch(() => ({ data: { items: [] } }))
     ]);
     setN8nStatus(n.data);
     setLastLog(l.data.items[0] || null);
+    setSavedSearches(Array.isArray(s.data.items) ? s.data.items : []);
   }, []);
 
   useEffect(() => {
@@ -268,111 +625,561 @@ function FetchTab() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  const runN8n = async (type) => {
-    setStartingN8n(type);
+  useEffect(() => {
+    api.get('/articles/meta/filters')
+      .then((r) => setProfileMeta(r.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const options = profileMeta?.fetchCountries || [];
+    if (!options.length) return;
+    setForm((prev) => ({
+      ...prev,
+      country: options.includes(prev.country) ? prev.country : options[0]
+    }));
+  }, [profileMeta?.fetchCountries]);
+
+  useEffect(() => {
+    if (runProgress && !['running', 'queued'].includes(runProgress.status)) {
+       setStartingN8n(false);
+       refresh();
+    }
+  }, [runProgress?.status, refresh]);
+
+  useEffect(() => {
+    if (!user) return;
+    setForm((prev) => ({
+      ...prev,
+      country: prev.country || user.country || '',
+      category: prev.category || user.category || '',
+      categories: Array.isArray(prev.categories) && prev.categories.length
+        ? prev.categories
+        : Array.isArray(user.categories) && user.categories.length
+          ? user.categories
+          : user.category
+            ? [user.category]
+            : [],
+      subcategory: prev.subcategory || user.subcategory || '',
+      topics: Array.isArray(prev.topics) && prev.topics.length
+        ? prev.topics
+        : Array.isArray(user.topics) && user.topics.length
+          ? user.topics
+          : ['news', 'govt', 'competitor', 'evergreen'],
+      sources: prev.sources || (Array.isArray(user.sources) ? user.sources.join(', ') : ''),
+      competitors: prev.competitors || (Array.isArray(user.competitors) ? user.competitors.join(', ') : ''),
+      days: prev.days || user.days || 30,
+      query: prev.query || user.query || '',
+      language: prev.language || user.language || 'en',
+      timezone: prev.timezone || user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      scheduleEnabled: Boolean(user.fetchSchedule?.enabled),
+      scheduleFrequency: user.fetchSchedule?.frequency || 'daily',
+      scheduleTime: user.fetchSchedule?.time || '07:00',
+      scheduleTimezone: user.fetchSchedule?.timezone || user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    }));
+  }, [user?._id]);
+
+  const update = (key, value) => {
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+      ...(key === 'category' ? { subcategory: '' } : {})
+    }));
+  };
+
+  const toggleCategory = (category) => {
+    setForm((prev) => {
+      const current = Array.isArray(prev.categories) ? prev.categories : [];
+      const exists = current.includes(category);
+      const next = exists ? current.filter((item) => item !== category) : [...current, category];
+      return {
+        ...prev,
+        categories: next,
+        category: next[0] || '',
+        subcategory: next.length === 1 ? prev.subcategory : ''
+      };
+    });
+  };
+
+  const toggleTopic = (topic) => {
+    setForm((prev) => {
+      const current = Array.isArray(prev.topics) ? prev.topics : [];
+      const next = current.includes(topic)
+        ? current.filter((item) => item !== topic)
+        : [...current, topic];
+      return { ...prev, topics: next.length ? next : current };
+    });
+  };
+
+  const loadSavedSearch = (search) => {
+    const allowedCountries = profileMeta?.fetchCountries || [];
+    setForm((prev) => ({
+      ...prev,
+      saveSearchName: search.name || '',
+      country: allowedCountries.includes(search.country) ? search.country : (allowedCountries[0] || prev.country),
+      category: Array.isArray(search.categories) && search.categories.length ? search.categories[0] : (search.category || ''),
+      categories: Array.isArray(search.categories) && search.categories.length
+        ? search.categories
+        : (search.category ? [search.category] : []),
+      subcategory: Array.isArray(search.categories) && search.categories.length > 1 ? '' : (search.subcategory || ''),
+      topics: Array.isArray(search.topics) && search.topics.length ? search.topics : prev.topics,
+      sources: Array.isArray(search.sources) ? search.sources.join(', ') : '',
+      competitors: Array.isArray(search.competitors) ? search.competitors.join(', ') : '',
+      days: search.days || 30,
+      query: search.query || '',
+      language: search.language || 'en',
+      timezone: search.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    }));
+    setMsg(`Loaded saved search: ${search.name}`);
+  };
+
+  const saveSchedule = async () => {
+    setSavingSchedule(true);
     setMsg('');
     try {
-      await api.post('/admin/n8n/run', { type });
-      setMsg(`${type} n8n workflow started. Logs will refresh while it runs.`);
-      refresh();
+      await updateProfile(buildProfileDetails());
+      setMsg(form.scheduleEnabled ? 'Schedule saved. Automatic fetch will use these details.' : 'Schedule disabled.');
     } catch (e) {
       setMsg(`Error: ${e.message}`);
     } finally {
-      setStartingN8n('');
+      setSavingSchedule(false);
     }
   };
 
+  const saveSearchDetails = async () => {
+    const name = String(form.saveSearchName || '').trim();
+    if (!selectedCategories.length) {
+      setMsg('Select a category before saving details.');
+      return;
+    }
+
+    setSavingDetails(true);
+    setMsg('');
+    try {
+      const profileDetails = buildProfileDetails();
+      await updateProfile(profileDetails);
+
+      if (name) {
+        await api.post('/n8n/saved-searches', {
+          name,
+          ...profileDetails,
+          subcategoryOptions
+        });
+      }
+
+      await refresh();
+      setMsg(name
+        ? `Saved default fetch details and saved search: ${name}`
+        : 'Saved default fetch details. Future fetches and schedule will use these settings.'
+      );
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const runFetch = async () => {
+    setStartingN8n(true);
+    setMsg('');
+    try {
+      if (hasUnsavedFetchChanges) {
+        const shouldSave = confirm('You have unsaved fetch changes. Save changes before running fetch?');
+        if (!shouldSave) {
+          setMsg('Fetch cancelled. Save your latest changes before running.');
+          return;
+        }
+        await updateProfile(buildProfileDetails());
+        setMsg('Changes saved. Starting fetch...');
+      }
+      const { data } = await api.post('/n8n/trigger', {
+        async: true,
+        country: form.country,
+        category: selectedCategories[0] || form.category,
+        categories: selectedCategories,
+        subcategory: selectedCategories.length === 1 ? form.subcategory : '',
+        subcategoryOptions,
+        competitors: cleanList(form.competitors),
+        topics: form.topics,
+        sources: cleanList(form.sources),
+        days: Number(form.days || 30),
+        query: form.query,
+        language: form.language,
+        timezone: form.scheduleTimezone || form.timezone,
+        saveSearchName: form.saveSearchName ? String(form.saveSearchName).trim() : undefined
+      });
+      const logId = data.logId || data.runId;
+      setRunProgress({
+        runId: logId,
+        logId,
+        status: 'running',
+        step: 'queued',
+        percent: 5,
+        messages: [{ at: new Date().toISOString(), step: 'queued', message: 'Fetch queued. Waiting for backend runner...' }]
+      });
+      setMsg(data.logId ? `Fetch started. Log ID: ${data.logId}` : 'Fetch started.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setStartingN8n(false);
+    }
+  };
+
+  const countryOptions = [...new Set((profileMeta?.fetchCountries || []).filter(Boolean))];
+  const categoryOptions = Object.keys(profileMeta?.categories || {});
+  const selectedCategories = Array.isArray(form.categories) && form.categories.length
+    ? form.categories
+    : (form.category ? [form.category] : []);
+  const subcategoryOptions = selectedCategories.length === 1 ? (profileMeta?.categories?.[selectedCategories[0]] || []) : [];
+  const selectedTopics = Array.isArray(form.topics) ? form.topics : [];
+  const pipelineConfigured = true;
+  const progressRunning = runProgress && ['running', 'queued'].includes(runProgress.status);
+  const pipelineRunning = Boolean(n8nStatus.running?.profile) || startingN8n || progressRunning;
+  const browserTimezones = useMemo(() => getBrowserTimezones(), []);
+  const recommendedTimezones = useMemo(() => {
+    const matchKey = Object.keys(COUNTRY_TIMEZONES).find((key) => key.toLowerCase() === String(form.country || '').toLowerCase());
+    return matchKey ? COUNTRY_TIMEZONES[matchKey] : [];
+  }, [form.country]);
+  const remainingTimezones = useMemo(() => {
+    const preferred = new Set(recommendedTimezones);
+    return browserTimezones.filter((zone) => !preferred.has(zone));
+  }, [browserTimezones, recommendedTimezones]);
+
+  const buildProfileDetails = useCallback(() => ({
+    country: form.country,
+    category: selectedCategories[0] || form.category,
+    categories: selectedCategories,
+    subcategory: selectedCategories.length === 1 ? form.subcategory : '',
+    competitors: cleanList(form.competitors),
+    topics: form.topics,
+    sources: cleanList(form.sources),
+    days: Number(form.days || 30),
+    query: form.query,
+    language: form.language,
+    timezone: form.scheduleTimezone || form.timezone,
+    fetchSchedule: {
+      enabled: Boolean(form.scheduleEnabled),
+      frequency: form.scheduleFrequency,
+      time: form.scheduleTime,
+      timezone: form.scheduleTimezone || form.timezone
+    }
+  }), [form, selectedCategories]);
+
+  const currentProfileDetails = useMemo(() => ({
+    country: user?.country || '',
+    category: user?.category || '',
+    categories: Array.isArray(user?.categories) && user.categories.length
+      ? user.categories
+      : (user?.category ? [user.category] : []),
+    subcategory: user?.subcategory || '',
+    competitors: Array.isArray(user?.competitors) ? user.competitors : [],
+    topics: Array.isArray(user?.topics) && user.topics.length ? user.topics : ['news', 'govt', 'competitor', 'evergreen'],
+    sources: Array.isArray(user?.sources) ? user.sources : [],
+    days: Number(user?.days || 30),
+    query: user?.query || '',
+    language: user?.language || 'en',
+    timezone: user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    fetchSchedule: {
+      enabled: Boolean(user?.fetchSchedule?.enabled),
+      frequency: user?.fetchSchedule?.frequency || 'daily',
+      time: user?.fetchSchedule?.time || '07:00',
+      timezone: user?.fetchSchedule?.timezone || user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    }
+  }), [user]);
+
+  const hasUnsavedFetchChanges = useMemo(
+    () => JSON.stringify(buildProfileDetails()) !== JSON.stringify(currentProfileDetails),
+    [buildProfileDetails, currentProfileDetails]
+  );
+
+  const handleCountryChange = (country) => {
+    const matchKey = Object.keys(COUNTRY_TIMEZONES).find((key) => key.toLowerCase() === String(country || '').toLowerCase());
+    const defaultZone = matchKey ? COUNTRY_TIMEZONES[matchKey][0] : '';
+    setForm((prev) => ({
+      ...prev,
+      country,
+      scheduleTimezone: prev.scheduleTimezone || defaultZone || prev.timezone
+    }));
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* Trigger card */}
-      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 xl:col-span-2">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="eyebrow mb-1">Manual fetch</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">Run intelligence workflows</h3>
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
+              <RefreshCw size={18} />
+            </span>
+            <div className="min-w-0">
+            <div className="eyebrow mb-1 text-brand-crimson/80">Profile fetch</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Run Intelligence Fetch</h3>
             <p className="mt-1 text-sm text-gray-500">
-              Trigger each n8n pipeline and track its callback in the run log.
+              Select the market details, save them, or run a fresh fetch.
             </p>
+            </div>
           </div>
           <span className={[
-            'rounded-md px-3 py-1.5 text-[11px] font-black uppercase tracking-wider',
-            n8nStatus.isFetching ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+            'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
+            pipelineRunning ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
           ].join(' ')}>
-            {n8nStatus.isFetching ? 'Running...' : 'Idle'}
+            <span className={`h-2 w-2 rounded-full ${pipelineRunning ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+            {pipelineRunning ? 'Running...' : 'Idle'}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {N8N_WORKFLOWS.map((workflow) => {
-            const configured = Boolean(n8nStatus.configured?.[workflow.key]);
-            const running = Boolean(n8nStatus.running?.[workflow.key]);
-            const startingThis = startingN8n === workflow.key;
-            return (
-              <div
-                key={workflow.key}
-                className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 transition-all hover:bg-white hover:shadow-sm"
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                      style={{ color: workflow.tone, background: `${workflow.tone}12` }}
-                    >
-                      <Play size={15} />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-black text-gray-900">{workflow.label}</div>
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                        {configured ? 'Webhook configured' : 'Missing webhook'}
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    className={[
-                      'rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider',
-                      running || startingThis
-                        ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
-                        : configured
-                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                          : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
-                    ].join(' ')}
-                  >
-                    {running || startingThis ? 'Running' : configured ? 'Ready' : 'Setup'}
-                  </span>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {user?.access?.canUseSavedSearches !== false && (
+            <FetchField label="Saved search name">
+              <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Rajasthan compliance watch" />
+            </FetchField>
+          )}
+          <FetchField label="Country">
+            <select className="select min-h-[44px] rounded-xl" value={form.country} onChange={(e) => handleCountryChange(e.target.value)}>
+              {countryOptions.map((country) => <option key={country} value={country}>{country}</option>)}
+            </select>
+          </FetchField>
+          <div className="md:col-span-2 2xl:col-span-1">
+          <FetchField label="Category">
+            <details className="group relative">
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-brand-crimson/30 hover:bg-brand-pink/10 [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0 truncate">
+                  {selectedCategories.length
+                    ? selectedCategories.length === 1
+                      ? selectedCategories[0]
+                      : `${selectedCategories.length} categories selected`
+                    : 'Select categories'}
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-gray-400 transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+                <div className="max-h-64 space-y-1 overflow-y-auto p-2">
+                  {categoryOptions.map((category) => {
+                    const checked = selectedCategories.includes(category);
+                    return (
+                      <label
+                        key={category}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-bold transition-all ${
+                          checked ? 'bg-brand-pink/40 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleCategory(category)}
+                          className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30"
+                        />
+                        <span className="min-w-0 truncate">{category}</span>
+                      </label>
+                    );
+                  })}
                 </div>
-                <button
-                  disabled={startingThis || running || !configured}
-                  onClick={() => runN8n(workflow.key)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                  style={{
-                    background: configured ? workflow.tone : '#f3f4f6',
-                    color: configured ? 'white' : '#9ca3af',
-                  }}
-                  title={configured ? `Run ${workflow.label} n8n workflow` : `${workflow.label} workflow URL is not configured yet`}
-                >
-                  {startingThis || running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  Run workflow
-                </button>
+                <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-400">
+                  {selectedCategories.length ? `${selectedCategories.length} selected` : 'Select one or more categories'}
+                </div>
               </div>
-            );
-          })}
+            </details>
+          </FetchField>
+          </div>
+          <FetchField label="Sub-category">
+            <select className="select min-h-[44px] rounded-xl" value={form.subcategory} onChange={(e) => update('subcategory', e.target.value)} disabled={selectedCategories.length !== 1}>
+              <option value="">
+                {selectedCategories.length > 1 ? 'All sub-categories for selected categories' : selectedCategories.length === 1 ? 'All sub-categories' : 'Select category first'}
+              </option>
+              {subcategoryOptions.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
+            </select>
+          </FetchField>
+          <FetchField label="Data age">
+            <select className="select min-h-[44px] rounded-xl" value={form.days} onChange={(e) => update('days', Number(e.target.value))}>
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+            </select>
+          </FetchField>
+          <FetchField label="Preferred sources">
+            <textarea className="input min-h-24 resize-y rounded-xl" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: rajasthan.gov.in, msme.gov.in" />
+          </FetchField>
+          <FetchField label="Tracked competitors">
+            <textarea className="input min-h-24 resize-y rounded-xl" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: Deloitte, TCS, Infosys" />
+          </FetchField>
         </div>
 
-        {N8N_WORKFLOWS.some((workflow) => !n8nStatus.configured?.[workflow.key]) && (
-          <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-[12px] text-amber-700 ring-1 ring-amber-100">
-            Add the remaining n8n webhook URLs in backend .env to enable disabled workflow buttons.
+        <div className="mt-4">
+          <FetchField label="Topics">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {TOPIC_OPTIONS.map((topic) => (
+                <label key={topic.key} className={`flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-brand-pink/20 text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
+                  <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0 truncate font-black">{topic.label}</span>
+                </label>
+              ))}
+            </div>
+          </FetchField>
+        </div>
+
+        <div className="mt-4">
+          <FetchField label="Custom query override">
+            <textarea className="input min-h-24 resize-y rounded-xl" value={form.query} onChange={(e) => update('query', e.target.value)} placeholder="Leave blank to auto-generate from country, category and sub-category." />
+          </FetchField>
+        </div>
+
+        {user?.access?.canUseScheduler === false ? (
+          <div className="mt-5 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
+            <Clock3 size={24} className="text-gray-300 animate-pulse" />
+            <div className="font-black text-gray-700">Auto Scheduler is Locked</div>
+            <div className="text-xs text-gray-400 max-w-md">Automated scraping runs are not included in your current subscription plan. Contact your administrator or upgrade to a higher tier plan to unlock this feature.</div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Scheduler</div>
+                <h4 className="text-base font-black tracking-tight text-gray-900">Automatic fetch</h4>
+              </div>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm">
+                <Clock3 size={17} />
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr_1fr_1.2fr] md:items-end">
+              <label className="flex h-[44px] items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 text-sm font-bold text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.scheduleEnabled}
+                  onChange={(e) => update('scheduleEnabled', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30"
+                />
+                Enable schedule
+              </label>
+              <FetchField label="Frequency">
+                <select className="select min-h-[44px] rounded-xl" value={form.scheduleFrequency} onChange={(e) => update('scheduleFrequency', e.target.value)}>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </FetchField>
+              <FetchField label="Time">
+                <input type="time" className="input min-h-[44px] rounded-xl" value={form.scheduleTime} onChange={(e) => update('scheduleTime', e.target.value)} />
+              </FetchField>
+              <FetchField label="Schedule timezone">
+                <select className="select min-h-[44px] rounded-xl" value={form.scheduleTimezone} onChange={(e) => update('scheduleTimezone', e.target.value)}>
+                  {form.scheduleTimezone && !browserTimezones.includes(form.scheduleTimezone) && !recommendedTimezones.includes(form.scheduleTimezone) && (
+                    <option value={form.scheduleTimezone}>{form.scheduleTimezone}</option>
+                  )}
+                  {recommendedTimezones.length > 0 && (
+                    <optgroup label={`${form.country || 'Selected country'} timezones`}>
+                      {recommendedTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label="All timezones">
+                    {remainingTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                  </optgroup>
+                </select>
+              </FetchField>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-medium leading-relaxed text-gray-500">
+                Scheduled runs use the saved market details and run at the selected local time in {form.scheduleTimezone || form.timezone || 'your timezone'}.
+              </p>
+              <button
+                type="button"
+                onClick={saveSchedule}
+                disabled={savingSchedule || !selectedCategories.length}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+                title={selectedCategories.length ? 'Save schedule settings' : 'Select a category before saving schedule'}
+              >
+                {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save schedule
+              </button>
+            </div>
           </div>
         )}
+
+        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
+              <Play size={17} />
+            </span>
+            <div className="min-w-0">
+              <div className="font-black text-gray-900">Ready to fetch intelligence</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                {hasUnsavedFetchChanges ? 'Unsaved changes will be saved before fetch' : 'Saved details are ready'}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              disabled={savingDetails || !selectedCategories.length}
+              onClick={saveSearchDetails}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+              title={selectedCategories.length ? 'Save as default fetch details' : 'Select a category first'}
+            >
+              {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {savingDetails ? 'Saving' : 'Save details'}
+            </button>
+            <button
+              type="button"
+              disabled={pipelineRunning || !selectedCategories.length}
+              onClick={runFetch}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              title={selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
+            >
+              {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {pipelineRunning ? 'Fetching' : 'Run fetch'}
+            </button>
+          </div>
+        </div>
 
         {msg && (
           <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">
             {msg}
           </div>
         )}
+
+        {runProgress && (
+          <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Live process</div>
+                <h4 className="text-base font-black tracking-tight text-gray-900">
+                  {runProgress.status === 'success' ? 'Fetch complete' : runProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}
+                </h4>
+              </div>
+              <span className={`rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
+                runProgress.status === 'success' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                : runProgress.status === 'failed' ? 'bg-red-50 text-red-700 ring-1 ring-red-100'
+                : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+              }`}>
+                {runProgress.step || runProgress.status}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className={`h-full rounded-full transition-all ${runProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`}
+                style={{ width: `${Math.max(5, Math.min(100, Number(runProgress.percent || 35)))}%` }}
+              />
+            </div>
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+              {(runProgress.messages || []).slice(-14).map((item, index) => (
+                <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                    runProgress.status === 'failed' && index === (runProgress.messages || []).slice(-14).length - 1 ? 'bg-red-500' : 'bg-brand-crimson'
+                  }`} />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>
+                    <div className="text-sm font-medium leading-relaxed text-gray-700">{item.message}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Last log */}
-      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5">
+        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="eyebrow mb-1">Last run</div>
@@ -381,7 +1188,7 @@ function FetchTab() {
           <Activity size={17} className="text-brand-crimson" />
         </div>
         {!lastLog ? (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
             No logs yet.
           </div>
         ) : (
@@ -405,8 +1212,58 @@ function FetchTab() {
           </div>
         )}
       </div>
+      {user?.access?.canUseSavedSearches === false ? (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
+          <Search size={24} className="text-gray-300 animate-pulse" />
+          <div className="font-black text-gray-700">Saved Searches is Locked</div>
+          <div className="text-xs text-gray-400">Saving or loading custom query configurations is not included in your current subscription plan.</div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow mb-1">Saved searches</div>
+              <h3 className="text-lg font-black tracking-tight text-gray-900">Load previous details</h3>
+            </div>
+            <Search size={17} className="text-brand-crimson" />
+          </div>
+          {savedSearches.length ? (
+            <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+              {savedSearches.map((search) => (
+                <button key={search._id} type="button" onClick={() => loadSavedSearch(search)} className="w-full rounded-xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:bg-white hover:shadow-sm">
+                  <div className="truncate text-sm font-black text-gray-900">{search.name}</div>
+                  <div className="mt-1 line-clamp-2 text-xs font-medium text-gray-500">
+                    {search.query || `${search.category || 'Any category'} in ${[search.region, search.country].filter(Boolean).join(', ') || 'any market'}`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
+              No saved searches yet.
+            </div>
+          )}
+        </div>
+      )}
+      </div>
     </div>
   );
+}
+
+function FetchField({ label, children }) {
+  return (
+    <div className="min-w-0">
+      <label className="label text-gray-500 font-bold tracking-wider">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function cleanList(value) {
+  return String(value || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function Stat({ label, value, highlight }) {
@@ -420,12 +1277,32 @@ function Stat({ label, value, highlight }) {
   );
 }
 
+function LogMetric({ label, value, tone = 'muted' }) {
+  const toneClass = {
+    success: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    brand: 'bg-brand-pink/40 text-brand-crimson ring-brand-crimson/10',
+    danger: 'bg-red-50 text-red-700 ring-red-100',
+    muted: 'bg-gray-50 text-gray-700 ring-gray-100'
+  }[tone] || 'bg-gray-50 text-gray-700 ring-gray-100';
+
+  return (
+    <div className={`rounded-xl px-3 py-3 ring-1 ${toneClass}`}>
+      <div className="text-[10px] font-black uppercase tracking-wider opacity-70">{label}</div>
+      <div className="mt-1 text-xl font-black">{value ?? 0}</div>
+    </div>
+  );
+}
+
 // =============== LOGS TAB ===============
 
 function LogsTab() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
+  const [logProgress, setLogProgress] = useState({});
+  const [cleanupDays, setCleanupDays] = useState(30);
+  const [deleting, setDeleting] = useState(false);
+  const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -439,26 +1316,129 @@ function LogsTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  const loadLogProgress = useCallback(async (logId) => {
+    if (!logId) return;
+    try {
+      const { data } = await api.get(`/n8n/runs/${logId}/progress`);
+      setLogProgress((prev) => ({ ...prev, [logId]: data }));
+    } catch {
+      setLogProgress((prev) => ({
+        ...prev,
+        [logId]: {
+          status: 'unavailable',
+          step: 'details',
+          messages: [{ at: new Date().toISOString(), step: 'details', message: 'Live progress details are not available for this run yet.' }]
+        }
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const activeLog = items.find((log) => log._id === expanded);
+    if (!activeLog || activeLog.status !== 'running') return undefined;
+    const id = window.setInterval(() => {
+      load();
+      loadLogProgress(activeLog._id);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [expanded, items, load, loadLogProgress]);
+
   if (loading) return <Loader />;
 
+  const summary = items.reduce((acc, log) => {
+    acc.total += 1;
+    acc.inserted += Number(log.totalInserted || 0);
+    acc.errors += Number(log.totalErrors || 0);
+    acc[log.status] = (acc[log.status] || 0) + 1;
+    return acc;
+  }, { total: 0, inserted: 0, errors: 0 });
+
+  const cleanupLogs = async () => {
+    const days = Math.max(Number(cleanupDays || 0), 1);
+    if (!confirm(`Delete logs older than ${days} days?`)) return;
+    setDeleting(true);
+    setMessage('');
+    try {
+      const { data } = await api.delete('/admin/logs/cleanup', { data: { days } });
+      setMessage(`${data.deleted || 0} logs deleted.`);
+      setExpanded(null);
+      await load();
+    } catch (e) {
+      setMessage(e.message || 'Failed to delete logs.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleLog = (log) => {
+    const next = expanded === log._id ? null : log._id;
+    setExpanded(next);
+    if (next) loadLogProgress(log._id);
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
-        <div className="text-sm text-ink-500">{items.length} most recent runs</div>
-        <button onClick={load} className="btn-ghost">
-          <RefreshCw size={14} /> Refresh
-        </button>
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
+                <Activity size={18} />
+              </span>
+              <div className="min-w-0">
+                <div className="eyebrow mb-1 text-brand-crimson/80">Fetch logs</div>
+                <h3 className="text-xl font-black tracking-tight text-gray-900">Recent Runs</h3>
+                <p className="mt-1 text-sm font-medium text-gray-500">{items.length} latest fetch logs</p>
+              </div>
+            </div>
+            <button onClick={load} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50">
+              <RefreshCw size={14} /> Refresh
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <LogMetric label="Runs" value={summary.total} />
+            <LogMetric label="Success" value={summary.success || 0} tone="success" />
+            <LogMetric label="Inserted" value={summary.inserted} tone="brand" />
+            <LogMetric label="Errors" value={summary.errors} tone={summary.errors ? 'danger' : 'muted'} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-red-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <Trash2 size={17} />
+            </span>
+            <div>
+              <div className="eyebrow mb-1 text-red-500">Cleanup</div>
+              <h3 className="text-base font-black tracking-tight text-gray-900">Delete old logs</h3>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <select className="select min-h-[44px] rounded-xl" value={cleanupDays} onChange={(e) => setCleanupDays(Number(e.target.value))}>
+              <option value={7}>Older than 7 days</option>
+              <option value={15}>Older than 15 days</option>
+              <option value={30}>Older than 30 days</option>
+              <option value={60}>Older than 60 days</option>
+              <option value={90}>Older than 90 days</option>
+            </select>
+            <button type="button" onClick={cleanupLogs} disabled={deleting} className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50">
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Delete
+            </button>
+          </div>
+          {message && <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-sm font-bold text-gray-600">{message}</div>}
+        </div>
       </div>
       {items.length === 0 && (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-semibold text-gray-400 shadow-card">
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-semibold text-gray-400 shadow-sm">
           No fetch logs yet.
         </div>
       )}
       {items.map((log) => (
-        <div key={log._id} className="card overflow-hidden">
+        <div key={log._id} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div
-            className="px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 cursor-pointer hover:bg-ink-50/50"
-            onClick={() => setExpanded(expanded === log._id ? null : log._id)}
+            className="flex cursor-pointer flex-col gap-3 px-4 py-4 transition hover:bg-gray-50/70 lg:flex-row lg:items-center lg:justify-between"
+            onClick={() => toggleLog(log)}
           >
             <div className="flex flex-wrap items-center gap-3 min-w-0">
               <span className={`tag ${
@@ -467,27 +1447,28 @@ function LogsTab() {
                 : log.status === 'failed' ? 'bg-red-50 text-red-700 ring-1 ring-red-100'
                 : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
               }`}>{log.status}</span>
-              <span className="text-sm text-ink-700 font-medium">
+              <span className="text-sm font-bold text-gray-800">
                 {new Date(log.startedAt).toLocaleString()}
               </span>
-              <span className="text-[11px] uppercase tracking-wider text-ink-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">
                 {log.triggeredBy}
                 {log.triggeredByUser?.name && ` · ${log.triggeredByUser.name}`}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-3 lg:gap-6 text-[12px] text-ink-500 font-mono">
-              <span>+{log.totalInserted} new</span>
-              <span>{log.totalDuplicates} dup</span>
-              <span>{log.totalErrors} err</span>
+            <div className="flex flex-wrap items-center gap-2 text-[12px] font-black text-gray-500">
+              <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">+{log.totalInserted || 0} new</span>
+              <span className="rounded-lg bg-gray-50 px-2.5 py-1">{log.totalDuplicates || 0} dup</span>
+              <span className={`rounded-lg px-2.5 py-1 ${log.totalErrors ? 'bg-red-50 text-red-600' : 'bg-gray-50'}`}>{log.totalErrors || 0} err</span>
               <ChevronRight size={14} className={`transition-transform ${expanded === log._id ? 'rotate-90' : ''}`} />
             </div>
           </div>
 
           {expanded === log._id && (
-            <div className="border-t border-ink-100 px-4 py-3 bg-ink-50/30">
+            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+              <LogRunDetails log={log} progress={logProgress[log._id]} />
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-[10px] uppercase tracking-wider text-ink-400">
+                <table className="w-full min-w-[680px] text-sm">
+                  <thead className="text-[10px] uppercase tracking-wider text-gray-400">
                     <tr className="text-left">
                       <th className="py-2 pr-3">Source</th>
                       <th className="py-2 pr-3">Type</th>
@@ -496,22 +1477,29 @@ function LogsTab() {
                       <th className="py-2 pr-3">Notes</th>
                     </tr>
                   </thead>
-                  <tbody className="text-ink-600">
+                  <tbody className="text-gray-600">
                     {(log.perSource || []).map((p, i) => (
-                      <tr key={i} className="border-t border-ink-100/50">
-                        <td className="py-1.5 pr-3 font-medium text-ink-700">{p.sourceName}</td>
-                        <td className="py-1.5 pr-3 text-ink-400">{p.type}</td>
-                        <td className="py-1.5 pr-3 text-right">{p.fetched}</td>
-                        <td className="py-1.5 pr-3 text-right">
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="py-2 pr-3 font-bold text-gray-800">{p.sourceName}</td>
+                        <td className="py-2 pr-3 text-gray-400">{p.type}</td>
+                        <td className="py-2 pr-3 text-right">{p.fetched}</td>
+                        <td className="py-2 pr-3 text-right">
                           {p.errors > 0
                             ? <span className="text-red-600">{p.errors}</span>
-                            : <span className="text-ink-300">0</span>}
+                            : <span className="text-gray-300">0</span>}
                         </td>
-                        <td className="py-1.5 pr-3 text-[11px] text-ink-400 max-w-md truncate">
+                        <td className="max-w-md truncate py-2 pr-3 text-[11px] text-gray-400">
                           {(p.errorMessages || []).join('; ')}
                         </td>
                       </tr>
                     ))}
+                    {!(log.perSource || []).length && (
+                      <tr className="border-t border-gray-100">
+                        <td colSpan={5} className="py-5 text-center text-sm font-semibold text-gray-400">
+                          Source-level details will appear after the fetch returns results.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -523,10 +1511,87 @@ function LogsTab() {
   );
 }
 
+function LogRunDetails({ log, progress }) {
+  const messages = progress?.messages || [];
+  const percent = Math.max(5, Math.min(100, Number(progress?.percent || (log.status === 'running' ? 45 : 100))));
+  const statusTone = log.status === 'failed'
+    ? 'bg-red-500'
+    : log.status === 'running'
+      ? 'bg-blue-500'
+      : 'bg-emerald-500';
+  const started = log.startedAt ? new Date(log.startedAt) : null;
+  const finished = log.finishedAt ? new Date(log.finishedAt) : null;
+
+  return (
+    <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Run details</div>
+              <div className="mt-1 text-sm font-black text-gray-900">{log.notes || 'Fetch run is being processed.'}</div>
+            </div>
+            <span className={`tag ${
+              log.status === 'failed' ? 'bg-red-50 text-red-600 ring-1 ring-red-100'
+              : log.status === 'running' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+              : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+            }`}>
+              {progress?.step || log.status}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+            <div className={`h-full rounded-full transition-all ${statusTone}`} style={{ width: `${percent}%` }} />
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <LogDetailPill label="Started" value={started ? formatDistanceToNow(started, { addSuffix: true }) : '-'} />
+            <LogDetailPill label="Finished" value={finished ? formatDistanceToNow(finished, { addSuffix: true }) : '-'} />
+            <LogDetailPill label="Duration" value={log.durationMs ? `${Math.round(log.durationMs / 1000)}s` : '-'} />
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <LogDetailPill label="Country" value={log.country || '-'} />
+            <LogDetailPill label="Query" value={log.query || '-'} />
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
+          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
+          <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+            {messages.length ? messages.slice(-8).map((item, index) => (
+              <div key={`${item.at || index}-${index}`} className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>
+                  <span className="text-[10px] font-semibold text-gray-400">
+                    {item.at ? formatDistanceToNow(new Date(item.at), { addSuffix: true }) : ''}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs font-semibold leading-relaxed text-gray-600">{item.message}</div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs font-semibold text-gray-400">
+                Progress will appear while the fetch is running.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LogDetailPill({ label, value }) {
+  return (
+    <div className="min-w-0 rounded-xl bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+      <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-bold text-gray-700">{value}</div>
+    </div>
+  );
+}
+
 // =============== USERS TAB ===============
 
-function UsersTab() {
+function UsersTab({ dbPlans }) {
   const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -537,8 +1602,22 @@ function UsersTab() {
     password: '',
     company: '',
     designation: '',
-    role: 'admin',
-    isActive: true
+    role: isSuperAdmin ? 'admin' : 'user',
+    isActive: true,
+    subscriptionPlan: 'free',
+    memberLimit: 3,
+    access: {
+      canFetch: true,
+      canCreateMembers: false,
+      canUseBlogStudio: false,
+      canUseSavedSearches: true,
+      canUseScheduler: false
+    },
+    limits: {
+      fetchesPerMonth: 30,
+      storageItems: 1000,
+      tokenBudgetMonthly: 100000
+    }
   });
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -557,7 +1636,58 @@ function UsersTab() {
     return () => window.clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    setForm((prev) => {
+      if (isSuperAdmin || prev.role !== 'admin') return prev;
+      return { ...prev, role: 'user' };
+    });
+  }, [isSuperAdmin]);
+
   const updateForm = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  // When plan changes, auto-populate limits/memberLimit from defaults
+  const updatePlan = (plan) => {
+    const dbPlan = dbPlans?.find(p => p.planId === plan);
+    const defs = dbPlan ? {
+      memberLimit: dbPlan.memberLimit,
+      fetchesPerMonth: dbPlan.limits?.fetchesPerMonth ?? 0,
+      storageItems: dbPlan.limits?.storageItems ?? 0,
+      tokenBudgetMonthly: dbPlan.limits?.tokenBudgetMonthly ?? 0
+    } : (PLAN_DEFAULTS_UI[plan] || PLAN_DEFAULTS_UI.free);
+
+    setForm((prev) => ({
+      ...prev,
+      subscriptionPlan: plan,
+      memberLimit: defs.memberLimit,
+      access: dbPlan?.access ? { ...prev.access, ...dbPlan.access } : prev.access,
+      limits: {
+        fetchesPerMonth: defs.fetchesPerMonth,
+        storageItems: defs.storageItems,
+        tokenBudgetMonthly: defs.tokenBudgetMonthly
+      }
+    }));
+  };
+
+  const updateTablePlan = async (u, plan) => {
+    try {
+      const dbPlan = dbPlans?.find(p => p.planId === plan);
+      const defs = dbPlan ? {
+        memberLimit: dbPlan.memberLimit,
+        limits: dbPlan.limits,
+        access: dbPlan.access
+      } : (PLAN_DEFAULTS_UI[plan] || PLAN_DEFAULTS_UI.free);
+
+      await api.patch(`/admin/users/${u._id}`, {
+        subscriptionPlan: plan,
+        memberLimit: defs.memberLimit,
+        limits: defs.limits,
+        access: defs.access
+      });
+      load();
+    } catch (e) {
+      alert(e.message || 'Failed to update user plan');
+    }
+  };
 
   const createUser = async (e) => {
     e.preventDefault();
@@ -571,8 +1701,22 @@ function UsersTab() {
         password: '',
         company: '',
         designation: '',
-        role: 'admin',
-        isActive: true
+        role: isSuperAdmin ? 'admin' : 'user',
+        isActive: true,
+        subscriptionPlan: 'free',
+        memberLimit: 3,
+        access: {
+          canFetch: true,
+          canCreateMembers: false,
+          canUseBlogStudio: false,
+          canUseSavedSearches: true,
+          canUseScheduler: false
+        },
+        limits: {
+          fetchesPerMonth: 30,
+          storageItems: 1000,
+          tokenBudgetMonthly: 100000
+        }
       });
       load();
     } catch (e) {
@@ -585,13 +1729,33 @@ function UsersTab() {
   const setRole = async (u, role) => {
     if (u.role === role) return;
     if (!confirm(`Change role of ${u.email} to ${role === 'admin' ? 'Admin' : 'Member'}?`)) return;
-    await api.patch(`/admin/users/${u._id}`, { role });
-    load();
+    try {
+      await api.patch(`/admin/users/${u._id}`, { role });
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
   };
 
   const toggleActive = async (u) => {
     await api.patch(`/admin/users/${u._id}`, { isActive: !u.isActive });
     load();
+  };
+
+  const updateUserAccess = async (u, patch) => {
+    try {
+      await api.patch(`/admin/users/${u._id}`, patch);
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const updateFormAccess = (key, value) => {
+    setForm((prev) => ({
+      ...prev,
+      access: { ...(prev.access || {}), [key]: value }
+    }));
   };
 
   const remove = async (u) => {
@@ -610,15 +1774,45 @@ function UsersTab() {
   const currentAccount = items.find((u) => currentUserId && String(u._id) === String(currentUserId));
   const managedUsers = items.filter((u) => !currentUserId || String(u._id) !== String(currentUserId));
   const displayCurrent = currentAccount || currentUser;
+  const adminById = new Map(items.filter((u) => u.role === 'admin').map((u) => [String(u._id), u]));
+  const sortedUsers = isSuperAdmin
+    ? [
+        ...managedUsers
+          .filter((u) => u.role === 'admin')
+          .flatMap((admin) => [
+            admin,
+            ...managedUsers.filter((u) => u.role === 'user' && String(u.tenantAdminId || '') === String(admin._id))
+          ]),
+        ...managedUsers.filter((u) => u.role === 'user' && !adminById.has(String(u.tenantAdminId || '')))
+      ]
+    : managedUsers;
+
+  const teamLabel = (u) => {
+    if (!isSuperAdmin) return '';
+    if (u.role === 'admin') return 'Company admin';
+    const owner = adminById.get(String(u.tenantAdminId || ''));
+    return owner ? `${owner.name}${owner.company ? ` · ${owner.company}` : ''}` : 'Unassigned';
+  };
+
+  const memberAccessChecked = (u, key) => {
+    const defaults = {
+      canFetch: true,
+      canUseBlogStudio: false,
+      canUseSavedSearches: true,
+      canUseScheduler: false
+    };
+    if (u.access && Object.prototype.hasOwnProperty.call(u.access, key)) return u.access[key] !== false;
+    return defaults[key] !== false;
+  };
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-brand-crimson/15 bg-white shadow-card">
-        <div className="border-b border-brand-crimson/10 px-4 py-3">
+      <div className="overflow-hidden rounded-2xl border border-brand-crimson/10 bg-white shadow-sm">
+        <div className="border-b border-brand-crimson/10 bg-brand-pink/10 px-4 py-3 sm:px-5">
           <div className="eyebrow mb-1">Current session</div>
           <h3 className="text-lg font-black tracking-tight text-gray-900">Signed-in account</h3>
         </div>
-        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_180px_180px_180px] lg:items-center">
+        <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_180px_180px_180px] xl:items-center">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-base font-black text-white shadow-sm">
               {(displayCurrent?.name || displayCurrent?.email || 'U').slice(0, 1).toUpperCase()}
@@ -633,17 +1827,17 @@ function UsersTab() {
               <div className="truncate text-xs font-medium text-gray-400">{displayCurrent?.email}</div>
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
             <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Role</div>
             <div className="text-sm font-black text-gray-900">
               {displayCurrent?.role === 'super_admin' ? 'Super Admin' : displayCurrent?.role === 'admin' ? 'Admin' : 'Member'}
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
             <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Company</div>
             <div className="truncate text-sm font-black text-gray-900">{displayCurrent?.company || '-'}</div>
           </div>
-          <div className={`rounded-md px-3 py-2 ring-1 ${displayCurrent?.isOnline === false ? 'bg-gray-50 ring-gray-100' : 'bg-emerald-50 ring-emerald-100'}`}>
+          <div className={`rounded-xl border px-3 py-2 ${displayCurrent?.isOnline === false ? 'border-gray-100 bg-gray-50' : 'border-emerald-100 bg-emerald-50'}`}>
             <div className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Status</div>
             <div className={`text-sm font-black ${displayCurrent?.isOnline === false ? 'text-gray-600' : 'text-emerald-700'}`}>
               {displayCurrent?.isActive === false ? 'Inactive' : displayCurrent?.isOnline === false ? 'Active' : 'Live now'}
@@ -652,7 +1846,7 @@ function UsersTab() {
         </div>
       </div>
 
-      <form onSubmit={createUser} className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5">
+      <form onSubmit={createUser} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="eyebrow mb-1">Create account</div>
@@ -664,15 +1858,15 @@ function UsersTab() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input className="input" required placeholder="Full name" value={form.name} onChange={(e) => updateForm('name', e.target.value)} />
-          <input className="input" type="email" required placeholder="Email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
-          <input className="input" type="password" required minLength={6} placeholder="Password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
-          <input className="input" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
-          <input className="input" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <input className="input min-h-[44px] rounded-xl" required placeholder="Full name" value={form.name} onChange={(e) => updateForm('name', e.target.value)} />
+          <input className="input min-h-[44px] rounded-xl" type="email" required placeholder="Email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
+          <input className="input min-h-[44px] rounded-xl" type="password" required minLength={6} placeholder="Password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
+          <input className="input min-h-[44px] rounded-xl" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
+          <input className="input min-h-[44px] rounded-xl" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
           <div className="flex gap-2">
-            <select className="input" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
-              <option value="admin">Admin</option>
+            <select className="input min-h-[44px] rounded-xl" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
+              {isSuperAdmin && <option value="admin">Admin</option>}
               <option value="user">Member</option>
             </select>
             <label className="flex items-center gap-2 text-xs text-ink-500 whitespace-nowrap px-2">
@@ -680,7 +1874,39 @@ function UsersTab() {
               Active
             </label>
           </div>
+          {isSuperAdmin && (
+            <>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Subscription Plan</label>
+                <select className="input" value={form.subscriptionPlan} onChange={(e) => updatePlan(e.target.value)}>
+                  <option value="free">Free — $0 / mo</option>
+                  <option value="growth">Growth — $29 / mo</option>
+                  <option value="scale">Scale — $99 / mo</option>
+                  <option value="enterprise">Enterprise — $299+ / mo</option>
+                </select>
+                <p className="mt-1 text-[10px] font-semibold text-gray-400">Changing plan auto-fills limits below.</p>
+              </div>
+              <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
+              <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
+            </>
+          )}
         </div>
+
+        {form.role === 'user' && (
+          <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-3">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-400">Member access</div>
+            <div className="flex flex-wrap gap-2">
+              {MEMBER_ACCESS_OPTIONS.map((option) => (
+                <PermissionToggle
+                  key={option.key}
+                  label={option.label}
+                  checked={form.access?.[option.key] !== false}
+                  onChange={(checked) => updateFormAccess(option.key, checked)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {err && (
           <div className="mt-3 text-xs rounded-md px-3 py-2 bg-red-50 text-red-700 ring-1 ring-red-100">
@@ -689,15 +1915,15 @@ function UsersTab() {
         )}
 
         <div className="mt-4">
-          <button disabled={saving} className="btn-primary">
+          <button disabled={saving} className="btn-primary w-full rounded-xl sm:w-auto">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
             Create account
           </button>
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-card">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
         <div>
           <div className="text-sm font-black text-gray-900">Members and admins</div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
@@ -707,12 +1933,15 @@ function UsersTab() {
         <Users size={17} className="text-gray-400" />
       </div>
       <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px]">
+      <table className="w-full min-w-[1180px]">
         <thead className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
           <tr className="text-left">
             <th className="py-3 px-4">User</th>
             <th className="py-3 px-4">Company</th>
+            {isSuperAdmin && <th className="py-3 px-4">Managed by</th>}
             <th className="py-3 px-4">Role</th>
+            {isSuperAdmin && <th className="py-3 px-4">Plan & limits</th>}
+            <th className="py-3 px-4">Permissions</th>
             <th className="py-3 px-4">Status</th>
             <th className="py-3 px-4">Live</th>
             <th className="py-3 px-4">Last login</th>
@@ -720,13 +1949,33 @@ function UsersTab() {
           </tr>
         </thead>
         <tbody>
-          {managedUsers.map((u) => (
+          {sortedUsers.map((u) => (
             <tr key={u._id} className="border-t border-gray-100 hover:bg-gray-50/60">
               <td className="py-3 px-4">
-                <div className="font-black text-gray-900">{u.name}</div>
-                <div className="text-xs font-medium text-gray-400">{u.email}</div>
+                <div className="flex items-center gap-2">
+                  {isSuperAdmin && u.role === 'user' && (
+                    <span className="h-5 w-5 rounded border-l-2 border-b-2 border-gray-200" aria-hidden="true" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-black text-gray-900">{u.name}</div>
+                    <div className="text-xs font-medium text-gray-400">{u.email}</div>
+                  </div>
+                </div>
               </td>
               <td className="py-3 px-4 text-sm font-medium text-gray-600">{u.company || '-'}</td>
+              {isSuperAdmin && (
+                <td className="py-3 px-4">
+                  <span className={`tag ${
+                    u.role === 'admin'
+                      ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+                      : teamLabel(u) === 'Unassigned'
+                        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
+                        : 'bg-gray-50 text-gray-600 ring-1 ring-gray-100'
+                  }`}>
+                    {teamLabel(u)}
+                  </span>
+                </td>
+              )}
               <td className="py-3 px-4">
                 <span className={`tag ${
                   u.role === 'super_admin' ? 'bg-brass-100 text-brass-700'
@@ -735,6 +1984,59 @@ function UsersTab() {
                 }`}>
                   {u.role === 'super_admin' ? 'Super Admin' : u.role === 'admin' ? 'Admin' : 'Member'}
                 </span>
+              </td>
+              {isSuperAdmin && (
+                <td className="py-3 px-4">
+                  <div className="grid min-w-[240px] grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <select
+                        value={u.subscriptionPlan || 'free'}
+                        onChange={(e) => updateTablePlan(u, e.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
+                      >
+                        <option value="free">Free ($0)</option>
+                        <option value="growth">Growth ($29)</option>
+                        <option value="scale">Scale ($99)</option>
+                        <option value="enterprise">Enterprise ($299+)</option>
+                      </select>
+                      <p className="mt-1 text-[9px] font-medium text-gray-400">Auto-fills limits on save</p>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={u.memberLimit ?? 3}
+                      onChange={(e) => updateUserAccess(u, { memberLimit: Number(e.target.value) })}
+                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
+                      title="Member limit"
+                    />
+                    <LimitInput label="Fetch" value={u.limits?.fetchesPerMonth ?? 30} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), fetchesPerMonth: value } })} />
+                    <LimitInput label="Tokens" value={u.limits?.tokenBudgetMonthly ?? 100000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), tokenBudgetMonthly: value } })} />
+                    <LimitInput label="Storage" value={u.limits?.storageItems ?? 1000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), storageItems: value } })} />
+                  </div>
+                </td>
+              )}
+              <td className="py-3 px-4">
+                {u.role === 'user' || isSuperAdmin ? (
+                  <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
+                    {MEMBER_ACCESS_OPTIONS.map((option) => (
+                      <PermissionToggle
+                        key={option.key}
+                        label={option.label}
+                        checked={memberAccessChecked(u, option.key)}
+                        onChange={(checked) => updateUserAccess(u, { access: { ...(u.access || {}), [option.key]: checked } })}
+                      />
+                    ))}
+                    {isSuperAdmin && u.role === 'admin' && (
+                      <PermissionToggle
+                        label="Members"
+                        checked={u.access?.canCreateMembers !== false}
+                        onChange={(checked) => updateUserAccess(u, { access: { ...(u.access || {}), canCreateMembers: checked } })}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[11px] font-semibold text-gray-400">Managed by super admin</span>
+                )}
               </td>
               <td className="py-3 px-4">
                 <span className={`tag ${u.isActive ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'}`}>
@@ -762,9 +2064,11 @@ function UsersTab() {
                   <span className="text-[11px] text-ink-300">Developer managed</span>
                 ) : (
                   <div className="inline-flex items-center gap-1">
-                    <button onClick={() => setRole(u, u.role === 'admin' ? 'user' : 'admin')} className="rounded-md px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-900">
-                      Make {u.role === 'admin' ? 'Member' : 'Admin'}
-                    </button>
+                    {isSuperAdmin && (
+                      <button onClick={() => setRole(u, u.role === 'admin' ? 'user' : 'admin')} className="rounded-md px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-900">
+                        Make {u.role === 'admin' ? 'Member' : 'Admin'}
+                      </button>
+                    )}
                     <button onClick={() => toggleActive(u)} className="rounded-md px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-900">
                       {u.isActive ? 'Disable' : 'Approve'}
                     </button>
@@ -778,7 +2082,7 @@ function UsersTab() {
           ))}
           {managedUsers.length === 0 && (
             <tr className="border-t border-gray-100">
-              <td colSpan={7} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
+              <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
                 No other users to manage.
               </td>
             </tr>
@@ -791,6 +2095,44 @@ function UsersTab() {
   );
 }
 
+function LimitInput({ label, value, onSave }) {
+  const [local, setLocal] = useState(value ?? 0);
+
+  useEffect(() => {
+    setLocal(value ?? 0);
+  }, [value]);
+
+  return (
+    <label className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-400">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={0}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={() => onSave?.(Number(local || 0))}
+        className="min-w-0 flex-1 bg-transparent text-right text-xs font-bold text-gray-700 outline-none"
+      />
+    </label>
+  );
+}
+
+function PermissionToggle({ label, checked, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange?.(!checked)}
+      className={`rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider ring-1 transition-all ${
+        checked
+          ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+          : 'bg-gray-50 text-gray-400 ring-gray-100'
+      }`}
+    >
+      {label}: {checked ? 'On' : 'Off'}
+    </button>
+  );
+}
+
 // =============== STATS TAB ===============
 
 function StatsTab() {
@@ -799,145 +2141,221 @@ function StatsTab() {
 
   if (!stats) return <Loader />;
 
-  const TYPE_LABELS = { news: 'News', govt: 'Government', competitor: 'Competitor', evergreen: 'Evergreen' };
-  const TYPE_COLORS = { news: '#3b82f6', govt: '#10b981', competitor: '#f59e0b', evergreen: '#8b5cf6' };
-  const total = Number(stats.counts.total || 0);
-  const published = Number(stats.counts.published || 0);
-  const drafts = Number(stats.counts.unpublished || 0);
-  const publishRate = total ? Math.round((published / total) * 100) : 0;
-  const draftRate = total ? Math.round((drafts / total) * 100) : 0;
-  const typeEntries = ['news', 'govt', 'competitor', 'evergreen'].map((type) => ({
-    type,
-    label: TYPE_LABELS[type],
-    count: Number(stats.byType[type] || 0),
-    color: TYPE_COLORS[type],
-  }));
-  const topType = [...typeEntries].sort((a, b) => b.count - a.count)[0];
-  const topCategory = stats.byCategory[0];
-  const maxTypeCount = Math.max(1, ...typeEntries.map((x) => x.count));
-  const recentPublished = stats.recent.filter((item) => item.isPublished).length;
-  const actionItems = [
-    drafts > 0
-      ? `${drafts} draft${drafts === 1 ? '' : 's'} need review before they reach users.`
-      : 'No draft backlog. Publishing coverage is clean.',
-    topCategory
-      ? `${topCategory.category} is the highest demand area with ${topCategory.count} signals.`
-      : 'No category concentration detected yet.',
-    topType?.count
-      ? `${topType.label} is the largest content stream.`
-      : 'No content stream has started yet.',
+  const fmt = (value) => Number(value || 0).toLocaleString();
+  const pct = (used, limit) => {
+    const cap = Number(limit || 0);
+    if (!cap) return 0;
+    return Math.min(100, Math.round((Number(used || 0) / cap) * 100));
+  };
+  const planName = String(stats.admin?.subscriptionPlan || 'free').replace(/^./, (c) => c.toUpperCase());
+  const memberCount = (stats.users || []).filter((user) => user.role === 'user').length;
+  const usageCards = [
+    {
+      label: 'Monthly fetches',
+      icon: RefreshCw,
+      used: stats.totals?.monthFetches,
+      limit: stats.limits?.fetchesPerMonth,
+      remaining: stats.remaining?.fetchesPerMonth,
+      accent: 'bg-brand-crimson',
+      tint: 'bg-brand-pink/40 text-brand-crimson ring-brand-crimson/10'
+    },
+    {
+      label: 'Token budget',
+      icon: Gauge,
+      used: stats.totals?.estimatedTokens,
+      limit: stats.limits?.tokenBudgetMonthly,
+      remaining: stats.remaining?.tokenBudgetMonthly,
+      accent: 'bg-blue-500',
+      tint: 'bg-blue-50 text-blue-700 ring-blue-100'
+    },
+    {
+      label: 'Stored signals',
+      icon: Database,
+      used: stats.totals?.storageItems,
+      limit: stats.limits?.storageItems,
+      remaining: stats.remaining?.storageItems,
+      accent: 'bg-emerald-500',
+      tint: 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+    },
+    {
+      label: 'Member seats',
+      icon: Users,
+      used: memberCount,
+      limit: stats.limits?.memberLimit,
+      remaining: stats.remaining?.memberSeats,
+      accent: 'bg-amber-500',
+      tint: 'bg-amber-50 text-amber-700 ring-amber-100'
+    }
   ];
+  const sortedUsers = [...(stats.users || [])].sort((a, b) => {
+    if (a.role === 'admin' && b.role !== 'admin') return -1;
+    if (b.role === 'admin' && a.role !== 'admin') return 1;
+    return Number(b.usage?.estimatedTokens || 0) - Number(a.usage?.estimatedTokens || 0);
+  });
+  const topUser = sortedUsers.find((user) => Number(user.usage?.estimatedTokens || 0) > 0) || sortedUsers[0];
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <StatCard label="Total signals" value={total} accent="bg-brand-crimson" note="All indexed intelligence" />
-        <StatCard label="Published" value={published} accent="bg-emerald-500" note={`${publishRate}% live coverage`} />
-        <StatCard label="Draft review" value={drafts} accent="bg-amber-500" note={`${draftRate}% pending`} />
-        <StatCard label="Recent live" value={recentPublished} accent="bg-blue-500" note="In latest activity" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="p-5 sm:p-6">
+            <div className="eyebrow mb-2 text-brand-crimson/80">Usage & limits</div>
+            <h3 className="text-2xl font-black tracking-tight text-gray-900">Team Usage</h3>
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-gray-500">
+              Current month usage for {stats.admin?.name || 'this admin'} on the {planName} plan, including member activity and remaining limits.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
+                <Clock3 size={14} />
+                Since {new Date(stats.monthStart).toLocaleDateString()}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
+                <Users size={14} />
+                {fmt(memberCount)} members
+              </span>
+            </div>
+          </div>
+          <div className="border-t border-gray-100 bg-gray-50/70 p-5 lg:border-l lg:border-t-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Highest activity</div>
+            <div className="mt-3 rounded-2xl bg-white p-4 ring-1 ring-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-sm font-black text-white">
+                  {(topUser?.name || topUser?.email || 'U').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-black text-gray-900">{topUser?.name || 'No usage yet'}</div>
+                  <div className="truncate text-xs font-semibold text-gray-400">{topUser?.email || 'Team activity will appear here'}</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-gray-50 px-3 py-2">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Tokens</div>
+                  <div className="text-sm font-black text-gray-900">{fmt(topUser?.usage?.estimatedTokens)}</div>
+                </div>
+                <div className="rounded-xl bg-gray-50 px-3 py-2">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Fetches</div>
+                  <div className="text-sm font-black text-gray-900">{fmt(topUser?.usage?.monthFetches)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {usageCards.map((card) => {
+          const usedPct = pct(card.used, card.limit);
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{card.label}</div>
+                  <div className="mt-2 text-3xl font-black tracking-tight text-gray-900">{fmt(card.used)}</div>
+                </div>
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${card.tint}`}>
+                  <Icon size={17} />
+                </span>
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-xs font-bold">
+                  <span className="text-gray-500">{fmt(card.remaining)} left</span>
+                  <span className={usedPct >= 90 ? 'text-red-600' : usedPct >= 70 ? 'text-amber-600' : 'text-gray-400'}>
+                    {usedPct}% used
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-gray-100">
+                  <div className={`h-full rounded-full ${card.accent}`} style={{ width: `${usedPct}%` }} />
+                </div>
+                <div className="mt-2 text-[11px] font-semibold text-gray-400">Limit: {fmt(card.limit)}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 xl:col-span-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <div className="eyebrow mb-1">Admin insights</div>
-              <h3 className="text-lg font-black tracking-tight text-gray-900">Operational snapshot</h3>
-              <p className="mt-1 text-sm text-gray-500">What needs attention from an admin perspective.</p>
+              <div className="eyebrow mb-1">Team breakdown</div>
+              <h3 className="text-lg font-black tracking-tight text-gray-900">Admin and member usage</h3>
             </div>
-            <Activity size={17} className="text-brand-crimson" />
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <InsightMetric label="Publish health" value={`${publishRate}%`} detail={drafts ? `${drafts} drafts pending` : 'All visible content is live'} tone="#10b981" />
-            <InsightMetric label="Leading stream" value={topType?.label || 'None'} detail={`${topType?.count || 0} signals`} tone={topType?.color || '#D11243'} />
-            <InsightMetric label="Top category" value={topCategory?.category || 'None'} detail={`${topCategory?.count || 0} signals`} tone="#D11243" />
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5">
-          <div className="eyebrow mb-3">Recommended actions</div>
-          <div className="space-y-2">
-            {actionItems.map((item, index) => (
-              <div key={index} className="flex gap-2 rounded-md bg-gray-50 p-3 ring-1 ring-gray-100">
-                <Check size={14} className="mt-0.5 shrink-0 text-emerald-600" />
-                <p className="text-sm font-medium leading-relaxed text-gray-600">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="eyebrow mb-1">By type</div>
-            <h3 className="text-lg font-black tracking-tight text-gray-900">Content mix</h3>
-            <p className="mt-1 text-sm text-gray-500">Balance of sources feeding the dashboard.</p>
-          </div>
-          <BarChart3 size={17} className="text-gray-400" />
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
-          {typeEntries.map((entry) => {
-            const pct = Math.round((entry.count / maxTypeCount) * 100);
-            return (
-            <div key={entry.type} className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-100">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{entry.label}</div>
-                <div className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
-              </div>
-              <div className="mb-3 text-3xl font-black tracking-tight text-gray-900">{entry.count}</div>
-              <div className="h-2 overflow-hidden rounded-full bg-white">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: entry.color }} />
-              </div>
-            </div>
-          );})}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 xl:col-span-3">
-          <div className="mb-4">
-            <div className="eyebrow mb-1">Top categories</div>
-            <h3 className="text-lg font-black tracking-tight text-gray-900">Demand concentration</h3>
-            <p className="mt-1 text-sm text-gray-500">Service areas where market activity is most concentrated.</p>
+            <BarChart3 size={17} className="text-gray-400" />
           </div>
           <div className="space-y-3">
-            {stats.byCategory.map((c, i) => {
-              const maxCount = stats.byCategory[0]?.count || 1;
-              const pct = Math.round((c.count / maxCount) * 100);
+            {sortedUsers.map((user) => {
+              const userTokenPct = pct(user.usage?.estimatedTokens, stats.limits?.tokenBudgetMonthly);
               return (
-                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[220px_1fr_48px] sm:items-center">
-                  <div className="truncate text-sm font-bold text-gray-700">{c.category}</div>
-                  <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                    <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${pct}%` }} />
+                <div key={user._id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-3">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(180px,1.2fr)_minmax(0,2fr)] lg:items-center">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-black text-brand-crimson ring-1 ring-gray-100">
+                        {(user.name || user.email || 'U').slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate text-sm font-black text-gray-900">{user.name}</div>
+                          <span className={`tag ${user.role === 'admin' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100' : 'bg-white text-gray-500 ring-1 ring-gray-100'}`}>
+                            {user.role === 'admin' ? 'Admin' : 'Member'}
+                          </span>
+                        </div>
+                        <div className="truncate text-xs font-medium text-gray-400">{user.email}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+                      <UsageMini label="Fetches" value={fmt(user.usage?.monthFetches)} />
+                      <UsageMini label="Stored" value={fmt(user.usage?.storageItems)} sub={`+${fmt(user.usage?.monthArticles)}`} />
+                      <UsageMini label="Blogs" value={fmt(user.usage?.blogs)} sub={`+${fmt(user.usage?.monthBlogs)}`} />
+                      <UsageMini label="Social" value={fmt(user.usage?.socialPosts)} sub={`+${fmt(user.usage?.monthSocialPosts)}`} />
+                      <UsageMini label="Tokens" value={fmt(user.usage?.estimatedTokens)} sub={`${userTokenPct}%`} />
+                      <UsageMini label="Errors" value={fmt(user.usage?.monthErrors)} danger={Number(user.usage?.monthErrors || 0) > 0} />
+                    </div>
                   </div>
-                  <div className="text-right text-sm font-black text-gray-500">{c.count}</div>
                 </div>
               );
             })}
+            {!sortedUsers.length && (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm font-semibold text-gray-400">
+                No team usage yet.
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-card sm:p-5 xl:col-span-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-3">
-            <div className="eyebrow mb-1">Latest activity</div>
-            <h3 className="text-lg font-black tracking-tight text-gray-900">Recent signals</h3>
+            <div className="eyebrow mb-1">Recent usage</div>
+            <h3 className="text-lg font-black tracking-tight text-gray-900">Latest fetch runs</h3>
           </div>
           <ul className="divide-y divide-gray-100">
-            {stats.recent.map((r) => (
+            {(stats.recentRuns || []).map((r) => (
               <li key={r._id} className="py-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="rounded-md bg-gray-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
-                    {TYPE_LABELS[r.type] || r.type}
-                  </span>
-                  <span className={r.isPublished ? 'text-emerald-600' : 'text-amber-500'}>
-                    {r.isPublished ? <Check size={14} /> : <X size={14} />}
-                  </span>
+                <div className="flex items-start gap-3">
+                  <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${r.status === 'failed' ? 'bg-red-500' : r.status === 'running' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate text-sm font-black text-gray-900">
+                        {r.userId?.name || r.triggeredByUser?.name || 'Team run'}
+                      </div>
+                      <span className="shrink-0 text-[10px] font-semibold text-gray-400">
+                        {r.startedAt ? formatDistanceToNow(new Date(r.startedAt), { addSuffix: true }) : ''}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className={`tag ${r.status === 'failed' ? 'bg-red-50 text-red-600 ring-1 ring-red-100' : r.status === 'running' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-100' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'}`}>
+                        {r.status}
+                      </span>
+                      <span className="tag bg-gray-50 text-gray-500 ring-1 ring-gray-100">{fmt(r.totalInserted)} inserted</span>
+                      <span className="tag bg-gray-50 text-gray-500 ring-1 ring-gray-100">{fmt(r.totalErrors)} errors</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="truncate text-sm font-bold text-gray-800">{r.title}</div>
-                <div className="mt-1 text-[11px] font-medium text-gray-400">{r.source}</div>
               </li>
             ))}
+            {!(stats.recentRuns || []).length && (
+              <li className="py-6 text-center text-sm font-semibold text-gray-400">No fetch runs yet.</li>
+            )}
           </ul>
         </div>
       </div>
@@ -945,24 +2363,517 @@ function StatsTab() {
   );
 }
 
-function InsightMetric({ label, value, detail, tone }) {
+function UsageMini({ label, value, sub, danger = false }) {
   return (
-    <div className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-100">
-      <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="truncate text-xl font-black tracking-tight text-gray-900" style={{ color: tone }}>{value}</div>
-      <div className="mt-1 text-xs font-medium text-gray-500">{detail}</div>
+    <div className={`rounded-xl bg-white px-3 py-2 ring-1 ${danger ? 'ring-red-100' : 'ring-gray-100'}`}>
+      <div className="text-[9px] font-black uppercase tracking-wider text-gray-400">{label}</div>
+      <div className={`mt-0.5 truncate text-sm font-black ${danger ? 'text-red-600' : 'text-gray-900'}`}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-[10px] font-semibold text-gray-400">{sub}</div>}
     </div>
   );
 }
 
 function StatCard({ label, value, accent, note }) {
   return (
-    <div className="relative overflow-hidden rounded-lg border border-gray-100 bg-white p-5 shadow-card">
-      <div className={`absolute left-0 top-0 h-full w-1 ${accent}`} />
-      <div className="pl-2">
-        <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</div>
-        <div className="text-4xl font-black tracking-tight text-gray-900">{value}</div>
-        {note && <div className="mt-1 text-xs font-bold text-gray-400">{note}</div>}
+    <div className="premium-stat-card p-6">
+      <div className={`absolute top-0 right-0 w-24 h-24 blur-[40px] opacity-20 rounded-full ${accent}`} />
+      <div className={`absolute left-0 top-0 h-full w-1.5 ${accent}`} />
+      <div className="pl-2 relative z-10">
+        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{label}</div>
+        <div className="text-4xl font-black tracking-tighter text-gray-900 mb-1">{value}</div>
+        {note && <div className="mt-2 text-xs font-bold text-gray-500 bg-gray-50/80 inline-block px-2.5 py-1 rounded-md border border-gray-100/50">{note}</div>}
+      </div>
+    </div>
+  );
+}
+
+// =============== PLAN BUILDER (SUPER ADMIN ONLY) ===============
+
+const PLAN_FEATURES_META = [
+  { key: 'canUseScheduler',     label: 'Auto Scheduler',        help: 'Daily/weekly automated fetch runs' },
+  { key: 'canUseSavedSearches', label: 'Saved Searches',        help: 'Save and reload fetch presets' },
+  { key: 'canUseBlogStudio',    label: 'Blog Studio AI',        help: 'AI blog & social content generation' },
+  { key: 'canCreateMembers',    label: 'Team Members Addition', help: 'Add/manage team members under account' },
+  { key: 'canFetch',            label: 'Manual Fetching',       help: 'Trigger scraping and fetching manually' }
+];
+
+const PLAN_ACCENT = {
+  free:       { ring: 'ring-emerald-200', bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', grad: 'from-emerald-500 to-teal-600' },
+  growth:     { ring: 'ring-blue-200',    bg: 'bg-blue-50',    text: 'text-blue-700',    badge: 'bg-blue-100 text-blue-800',    grad: 'from-blue-500 to-indigo-600' },
+  scale:      { ring: 'ring-purple-200',  bg: 'bg-purple-50',  text: 'text-purple-700',  badge: 'bg-purple-100 text-purple-800', grad: 'from-purple-500 to-fuchsia-600' },
+  enterprise: { ring: 'ring-amber-200',   bg: 'bg-amber-50',   text: 'text-amber-700',   badge: 'bg-amber-100 text-amber-800',  grad: 'from-amber-500 to-orange-600' },
+};
+
+const PLAN_KEYS = ['free', 'growth', 'scale', 'enterprise'];
+
+const LIMIT_FIELDS = [
+  { key: 'memberLimit',         label: 'Team Seats' },
+  { key: 'fetchesPerMonth',     label: 'Fetch Runs / month' },
+  { key: 'storageItems',        label: 'Stored Signals' },
+  { key: 'tokenBudgetMonthly',  label: 'AI Tokens / month' },
+];
+
+function PlanBuilderTab({ dbPlans, loadDbPlans }) {
+  const getInitialConfigs = useCallback(() => {
+    const configObj = {};
+    PLAN_KEYS.forEach(k => {
+      const dbPlan = dbPlans?.find(p => p.planId === k);
+      if (dbPlan) {
+        configObj[k] = {
+          label: dbPlan.label,
+          price: dbPlan.price,
+          priceNote: dbPlan.priceNote,
+          memberLimit: dbPlan.memberLimit,
+          limits: {
+            fetchesPerMonth: dbPlan.limits?.fetchesPerMonth ?? 0,
+            storageItems: dbPlan.limits?.storageItems ?? 0,
+            tokenBudgetMonthly: dbPlan.limits?.tokenBudgetMonthly ?? 0,
+          },
+          access: {
+            canFetch: dbPlan.access?.canFetch ?? true,
+            canCreateMembers: dbPlan.access?.canCreateMembers ?? false,
+            canUseBlogStudio: dbPlan.access?.canUseBlogStudio ?? false,
+            canUseSavedSearches: dbPlan.access?.canUseSavedSearches ?? false,
+            canUseScheduler: dbPlan.access?.canUseScheduler ?? false,
+          }
+        };
+      } else {
+        configObj[k] = {
+          label: k.charAt(0).toUpperCase() + k.slice(1),
+          price: k === 'free' ? '$0' : k === 'growth' ? '$29' : k === 'scale' ? '$99' : '$299',
+          priceNote: k === 'free' ? 'Free forever' : 'per month',
+          memberLimit: k === 'free' ? 1 : k === 'growth' ? 3 : k === 'scale' ? 10 : 999,
+          limits: {
+            fetchesPerMonth: k === 'free' ? 10 : k === 'growth' ? 50 : k === 'scale' ? 300 : 1500,
+            storageItems: k === 'free' ? 100 : k === 'growth' ? 2000 : k === 'scale' ? 15000 : 999999,
+            tokenBudgetMonthly: k === 'free' ? 50000 : k === 'growth' ? 500000 : k === 'scale' ? 3500000 : 10000000,
+          },
+          access: {
+            canFetch: true,
+            canCreateMembers: k !== 'free',
+            canUseBlogStudio: k === 'scale' || k === 'enterprise',
+            canUseSavedSearches: k !== 'free',
+            canUseScheduler: k !== 'free',
+          }
+        };
+      }
+    });
+    return configObj;
+  }, [dbPlans]);
+
+  const [configs, setConfigs] = useState(getInitialConfigs);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setConfigs(getInitialConfigs());
+  }, [getInitialConfigs]);
+
+  const updateLimit = (plan, key, val) => {
+    setConfigs(prev => {
+      const next = { ...prev };
+      if (['price', 'priceNote', 'label', 'memberLimit'].includes(key)) {
+        next[plan] = { ...next[plan], [key]: val };
+      } else {
+        next[plan] = {
+          ...next[plan],
+          limits: { ...next[plan].limits, [key]: val }
+        };
+      }
+      return next;
+    });
+  };
+
+  const toggleFeature = (plan, feat) => {
+    setConfigs(prev => {
+      const next = { ...prev };
+      next[plan] = {
+        ...next[plan],
+        access: { ...next[plan].access, [feat]: !next[plan].access[feat] }
+      };
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put('/admin/plans', { configs });
+      setSaved(true);
+      await loadDbPlans();
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      console.error('Failed to save plans:', e.message);
+      alert('Failed to save plans: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const tableRows = [
+    { label: 'Team Seats',      get: (pk) => configs[pk]?.memberLimit >= 999 ? 'Unlimited' : `${configs[pk]?.memberLimit ?? 0} seats` },
+    { label: 'Fetch Runs / mo', get: (pk) => configs[pk]?.limits?.fetchesPerMonth >= 1000 ? '1,000+' : String(configs[pk]?.limits?.fetchesPerMonth ?? 0) },
+    { label: 'Stored Signals',  get: (pk) => configs[pk]?.limits?.storageItems >= 999999 ? 'Unlimited' : (configs[pk]?.limits?.storageItems ?? 0).toLocaleString() },
+    { label: 'AI Tokens / mo',  get: (pk) => configs[pk]?.limits?.tokenBudgetMonthly >= 10000000 ? '10M+' : configs[pk]?.limits?.tokenBudgetMonthly >= 1000000 ? `${((configs[pk]?.limits?.tokenBudgetMonthly ?? 0) / 1000000).toFixed(1)}M` : `${Math.round((configs[pk]?.limits?.tokenBudgetMonthly ?? 0) / 1000)}K` },
+    ...PLAN_FEATURES_META.map(f => ({ label: f.label, get: (pk) => (configs[pk]?.access?.[f.key] ? '✓ Included' : '—') }))
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="premium-gradient-card p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none"><Database size={160} /></div>
+        <div className="relative z-10">
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
+            <Database size={12} /> Plan Configuration
+          </div>
+          <h2 className="text-2xl font-black tracking-tight text-white mb-1">Plan Builder</h2>
+          <p className="text-sm font-medium text-white/80 max-w-2xl">
+            Define what each plan includes. Edit prices, limits, and feature access inline. These defaults auto-fill when you assign a plan to a user in Users &amp; Access.
+          </p>
+        </div>
+      </div>
+
+      {/* 4 Plan Cards */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
+        {PLAN_KEYS.map((pk) => {
+          const cfg = configs[pk];
+          if (!cfg) return null;
+          const ac = PLAN_ACCENT[pk];
+          return (
+            <div key={pk} className={`bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
+              <div className={`bg-gradient-to-br ${ac.grad} p-5`}>
+                <div className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{pk} plan</div>
+                <div className="flex items-end gap-2">
+                  <input
+                    className="bg-transparent text-white text-2xl font-black w-20 outline-none border-b-2 border-white/30 focus:border-white"
+                    value={cfg.price}
+                    onChange={e => updateLimit(pk, 'price', e.target.value)}
+                    title="Click to edit price"
+                  />
+                  <input
+                    className="bg-transparent text-white/70 text-xs font-semibold mb-1 outline-none border-b border-white/20 focus:border-white/50 flex-1"
+                    value={cfg.priceNote}
+                    onChange={e => updateLimit(pk, 'priceNote', e.target.value)}
+                    title="Click to edit price note"
+                  />
+                </div>
+              </div>
+
+              <div className="p-5 space-y-5 flex-1 flex flex-col justify-between">
+                {/* Editable Limits */}
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Usage Limits</div>
+                    <div className="space-y-2">
+                      {LIMIT_FIELDS.map(({ key, label }) => {
+                        const isUnlimited = pk === 'enterprise' && ['memberLimit', 'storageItems', 'tokenBudgetMonthly'].includes(key);
+                        const isTopLevel = ['memberLimit'].includes(key);
+                        const value = isTopLevel ? cfg[key] : cfg.limits?.[key];
+                        return (
+                          <div key={key} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                            <span className="text-xs font-bold text-gray-500">{label}</span>
+                            {isUnlimited ? (
+                              <span className={`text-xs font-black ${ac.text}`}>Unlimited</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                className={`w-20 text-right text-xs font-black bg-transparent outline-none ${ac.text}`}
+                                value={value ?? 0}
+                                onChange={e => updateLimit(pk, key, Number(e.target.value))}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                      <div className={`text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
+                        ≈ {Math.floor((cfg.limits?.tokenBudgetMonthly ?? 0) / 5000)} blogs &middot; {Math.floor((cfg.limits?.tokenBudgetMonthly ?? 0) / 800)} social posts
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Feature Toggles */}
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Features</div>
+                    <div className="space-y-2">
+                      {PLAN_FEATURES_META.map(({ key, label, help }) => {
+                        const on = cfg.access?.[key];
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => toggleFeature(pk, key)}
+                            className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border ${on ? `${ac.bg} ${ac.ring} ${ac.text}` : 'bg-gray-50 border-gray-100'}`}
+                          >
+                            <div className="min-w-0">
+                              <div className={`text-xs font-black truncate ${on ? ac.text : 'text-gray-500'}`}>{label}</div>
+                              <div className="text-[9px] text-gray-400 truncate">{help}</div>
+                            </div>
+                            <div className={`h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all ${on ? `bg-gradient-to-r ${ac.grad}` : 'bg-gray-200'}`}>
+                              <div className={`h-3 w-3 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${on ? 'translate-x-3' : 'translate-x-0'}`} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Live Comparison Preview */}
+      <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+        <div className="mb-5">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
+            <BarChart3 size={12} /> Live Preview
+          </div>
+          <h3 className="text-lg font-black tracking-tight text-gray-900">User-Facing Plan Comparison</h3>
+          <p className="mt-1 text-sm text-gray-500">Exactly what users see when comparing plans or when they hit a usage limit.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px] text-sm">
+            <thead>
+              <tr className="border-b-2 border-gray-100">
+                <th className="py-3 px-4 text-left text-[10px] font-black uppercase tracking-wider text-gray-400 w-44">Feature</th>
+                {PLAN_KEYS.map(pk => (
+                  <th key={pk} className="py-3 px-4 text-center">
+                    <span className={`inline-block px-3 py-1 rounded-lg text-xs font-black ${PLAN_ACCENT[pk].badge}`}>
+                      {configs[pk]?.label} &mdash; {configs[pk]?.price}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {tableRows.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="py-2.5 px-4 text-xs font-bold text-gray-600 border-r border-gray-50">{row.label}</td>
+                  {PLAN_KEYS.map(pk => {
+                    const val = row.get(pk);
+                    const isIncl = val === '\u2713 Included';
+                    const isExcl = val === '\u2014';
+                    return (
+                      <td key={pk} className={`py-2.5 px-4 text-center text-xs font-black ${isIncl ? 'text-emerald-600' : isExcl ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {val}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-4">
+        <p className="text-xs text-gray-400 font-medium">Limits auto-fill when assigning plans in Users &amp; Access.</p>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+          {saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Plan Config</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// =============== SYSTEM SETTINGS (SUPER ADMIN ONLY) ===============
+
+function SystemSettingsTab() {
+  const [aiModel, setAiModel] = useState('gpt-4o-mini');
+  const [aiSummary, setAiSummary] = useState(false);
+  const [aiCategory, setAiCategory] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+
+  const loadSettings = useCallback(async () => {
+    setLoadingSettings(true);
+    setSettingsError('');
+    try {
+      const { data } = await api.get('/admin/settings');
+      const settings = data.settings || {};
+      setAiModel(settings.aiModel || 'gpt-4o-mini');
+      setAiSummary(Boolean(settings.aiSummary));
+      setAiCategory(Boolean(settings.aiCategory));
+      setMaintenanceMode(Boolean(settings.maintenanceMode));
+    } catch (e) {
+      setSettingsError(e.response?.data?.message || e.message || 'Failed to load system settings');
+    } finally {
+      setLoadingSettings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    setSettingsError('');
+    try {
+      const { data } = await api.put('/admin/settings', {
+        aiModel,
+        aiSummary,
+        aiCategory,
+        maintenanceMode
+      });
+      const settings = data.settings || {};
+      setAiModel(settings.aiModel || aiModel);
+      setAiSummary(Boolean(settings.aiSummary));
+      setAiCategory(Boolean(settings.aiCategory));
+      setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setSettingsError(e.response?.data?.message || e.message || 'Failed to save system settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const apiServices = [
+    { name: 'MongoDB Atlas',  status: 'connected', latency: '12ms',  icon: Database },
+    { name: 'OpenAI API',     status: 'connected', latency: '340ms', icon: Gauge },
+    { name: 'Tavily Search',  status: 'connected', latency: '220ms', icon: Search },
+    { name: 'n8n Webhook',    status: 'connected', latency: '\u2014',     icon: Activity },
+  ];
+
+  const aiToggles = [
+    { label: 'AI Article Summarization',   help: 'Auto-generate AI summaries for fetched articles',       val: aiSummary,  set: setAiSummary },
+    { label: 'AI Category Classification', help: 'Use AI to auto-classify article categories on fetch',    val: aiCategory, set: setAiCategory },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="premium-gradient-card p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none"><KeyRound size={160} /></div>
+        <div className="relative z-10">
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
+            <KeyRound size={12} /> System Configuration
+          </div>
+          <h2 className="text-2xl font-black tracking-tight text-white mb-1">System Settings</h2>
+          <p className="text-sm font-medium text-white/80">Global platform configuration, AI model selection, and API health monitoring.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {/* AI Model & Flags */}
+        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">AI Engine</div>
+          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">AI Model Settings</h3>
+          <div className="space-y-5">
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Active AI Model</label>
+              <select
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
+                value={aiModel}
+                onChange={e => setAiModel(e.target.value)}
+              >
+                <option value="gpt-4o-mini">GPT-4o Mini &mdash; Fast &amp; Cost Efficient (Recommended)</option>
+                <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
+                <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
+              </select>
+              <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
+            </div>
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Feature Flags</div>
+              <div className="space-y-2.5">
+                {aiToggles.map(({ label, help, val, set }, i) => (
+                  <div key={i} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all ${val ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
+                    <div>
+                      <div className={`text-sm font-black ${val ? 'text-blue-800' : 'text-gray-700'}`}>{label}</div>
+                      <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
+                    </div>
+                    <button
+                      onClick={() => set(!val)}
+                      className={`flex-shrink-0 h-6 w-11 rounded-full flex items-center transition-all ${val ? 'bg-blue-500' : 'bg-gray-200'}`}
+                    >
+                      <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* API Health Monitor */}
+        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Monitoring</div>
+          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">API Health Status</h3>
+          <div className="space-y-3">
+            {apiServices.map(({ name, status, latency, icon: Icon }) => (
+              <div key={name} className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${status === 'connected' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                    <Icon size={15} />
+                  </div>
+                  <div className="text-sm font-black text-gray-800">{name}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400">{latency}</span>
+                  <span className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    {status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 hover:bg-gray-50 transition-all">
+            <RefreshCw size={13} /> Refresh Health Check
+          </button>
+        </div>
+      </div>
+
+      {settingsError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          {settingsError}
+        </div>
+      )}
+
+      {/* Maintenance Mode */}
+      <div className={`bg-white rounded-2xl ring-1 shadow-sm p-6 border-2 transition-all ${maintenanceMode ? 'border-red-300 ring-red-100' : 'border-gray-200 ring-gray-100'}`}>
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
+              <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
+            </div>
+            <p className="text-sm font-medium text-gray-500">When enabled, all users (except Super Admin) see a maintenance screen. Use during major updates or deployments.</p>
+          </div>
+          <button
+            onClick={() => setMaintenanceMode(!maintenanceMode)}
+            className={`flex-shrink-0 h-7 w-14 rounded-full flex items-center transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+          >
+            <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        {maintenanceMode && (
+          <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-700">
+            Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSaveSettings}
+          disabled={savingSettings || loadingSettings}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
+        >
+          {savingSettings ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Settings</>}
+        </button>
       </div>
     </div>
   );

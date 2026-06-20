@@ -8,10 +8,39 @@
  */
 const cron = require('node-cron');
 const orchestrator = require('../services/orchestrator');
+const { runDueSchedules } = require('./userSchedule');
 
 let task = null;
 
+function startUserScheduleScan() {
+  const userSchedule = process.env.USER_SCHEDULE_CRON || '*/10 * * * *';
+  if (process.env.ENABLE_USER_SCHEDULES === 'false') {
+    console.log('[schedule] disabled by ENABLE_USER_SCHEDULES=false');
+    return;
+  }
+  if (!cron.validate(userSchedule)) {
+    console.error(`[schedule] invalid USER_SCHEDULE_CRON: ${userSchedule}`);
+    return;
+  }
+
+  cron.schedule(
+    userSchedule,
+    async () => {
+      try {
+        const result = await runDueSchedules();
+        if (result.triggered) console.log('[schedule] triggered due profiles', result);
+      } catch (err) {
+        console.error('[schedule] scan failed', err);
+      }
+    },
+    { timezone: 'UTC', scheduled: true }
+  );
+  console.log(`[schedule] user profile scan scheduled "${userSchedule}" (UTC)`);
+}
+
 function start() {
+  startUserScheduleScan();
+
   if (process.env.ENABLE_CRON === 'false') {
     console.log('[cron] disabled by ENABLE_CRON=false');
     return;

@@ -22,6 +22,13 @@ const fetchLogSchema = new mongoose.Schema(
       index: true
     },
     triggeredByUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    savedSearchId: { type: mongoose.Schema.Types.ObjectId, ref: 'SavedSearch' },
+    country: { type: String, default: '' },
+    region: { type: String, default: '' },
+    sector: { type: String, default: '', maxlength: 100 },
+    query: { type: String, default: '', maxlength: 300 },
+    resultCount: { type: Number, default: 0 },
 
     status: {
       type: String,
@@ -34,18 +41,9 @@ const fetchLogSchema = new mongoose.Schema(
     finishedAt: { type: Date },
     durationMs: { type: Number },
 
-    // Per-source breakdown
-    perSource: [{
-      sourceId: String,
-      sourceName: String,
-      type: String,              // news/govt/competitor/evergreen
-      attempted: Number,
-      fetched: Number,           // items pulled from source
-      inserted: Number,          // brand new items saved
-      duplicates: Number,        // items that already existed (skipped)
-      errors: Number,
-      errorMessages: [String]
-    }],
+    // Per-source breakdown. Kept flexible because n8n can send this as
+    // objects, JSON strings, or legacy string rows depending on node setup.
+    perSource: [{ type: mongoose.Schema.Types.Mixed }],
 
     // Aggregate totals
     totalFetched:   { type: Number, default: 0 },
@@ -53,11 +51,13 @@ const fetchLogSchema = new mongoose.Schema(
     totalDuplicates:{ type: Number, default: 0 },
     totalErrors:    { type: Number, default: 0 },
 
-    notes: { type: String }
+    notes: { type: String, maxlength: 500 }
   },
   { timestamps: true }
 );
 
 fetchLogSchema.index({ startedAt: -1 });
+// Auto-delete logs older than 90 days to prevent unbounded storage growth
+fetchLogSchema.index({ startedAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 module.exports = mongoose.model('FetchLog', fetchLogSchema);

@@ -96,14 +96,14 @@ const CATEGORIES = {
       'Partnership': ['cross border partnership', 'international partnership', 'joint venture', 'strategic alliance']
     }
   },
-  'Singapore Economy & Trade': {
-    keywords: ['singapore economy', 'singapore trade', 'economic policy', 'regulatory'],
+  'Economy & Trade': {
+    keywords: ['economy', 'trade', 'economic policy', 'regulatory', 'business policy'],
     subcategories: {
       'Policy': ['economic policy', 'government policy', 'budget', 'fiscal policy', 'trade policy'],
       'Regulatory': ['regulatory update', 'regulation change', 'new regulation', 'regulatory framework'],
-      'Economy': ['singapore economy', 'gdp', 'economic growth', 'inflation', 'interest rate', 'trade balance'],
-      'IRAS': ['iras', 'inland revenue', 'iras update', 'iras announcement', 'tax authority'],
-      'ACRA': ['acra', 'accounting and corporate regulatory authority', 'acra update', 'acra announcement']
+      'Economy': ['economy', 'gdp', 'economic growth', 'inflation', 'interest rate', 'trade balance'],
+      'Tax Authority': ['tax authority', 'inland revenue', 'tax update', 'tax announcement'],
+      'Company Registry': ['company registry', 'business registry', 'company registration authority']
     }
   },
   'Competitor Intelligence': {

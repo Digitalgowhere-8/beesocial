@@ -1,7 +1,7 @@
 /**
  * NEWS SCRAPER
  * ------------
- * For each (news source × Ascentium service keyword) pair, hit the site's
+ * For each configured news source and opportunity keyword pair, hit the site's
  * search URL and extract result links from the HTML.  We use Cheerio
  * (a server-side jQuery-like parser) which handles even the messy markup
  * the four target sites emit.
@@ -21,7 +21,7 @@ const { CATEGORIES, matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; AscentiumIntelBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
 
 // Reasonable, generic link extractor.  We collect every <a> whose visible
 // text looks like a headline (>= 20 chars) and whose href lives on the

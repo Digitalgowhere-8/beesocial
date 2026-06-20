@@ -7,7 +7,7 @@ async function run() {
   console.log('Target API URL:', url);
   try {
     const loginRes = await axios.post(`${url}/auth/login`, {
-      email: 'admin@ascentium.com',
+      email: 'admin@opportunityos.ai',
       password: 'Admin@12345'
     });
     const token = loginRes.data.token;

@@ -1,7 +1,7 @@
 /**
  * EVERGREEN SCRAPER
  * -----------------
- * "Evergreen" = lasting how-to / guide content about Singapore corporate topics.
+ * "Evergreen" = lasting how-to / guide content about opportunity and compliance topics.
  * We hit Tavily (https://tavily.com) for relevance-ranked search.
  *
  *  - If TAVILY_API_KEY is set, we use Tavily search API.
@@ -16,7 +16,7 @@ const { hashUrl } = require('../utils/hash');
 const tavilyService = require('../services/tavilyService');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; AscentiumIntelBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
 
 async function ddgSearch(query) {
   // DuckDuckGo HTML endpoint (no API key required, light-weight fallback).

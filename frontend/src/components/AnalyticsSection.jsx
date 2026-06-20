@@ -3,7 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe, Sparkles, ExternalLink, Clock3, MapPin, Tag, Flame } from 'lucide-react';
 
 const CRIMSON = '#D11243';
-const DASHBOARD_TIMEZONE = 'Asia/Singapore';
+const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 const TYPE_ACCENTS = {
   news: '#3b82f6',
   govt: '#10b981',
@@ -11,10 +11,10 @@ const TYPE_ACCENTS = {
   evergreen: '#8b5cf6',
 };
 const TYPE_NAMES = {
-  news: 'News',
-  govt: 'Government',
-  competitor: 'Competitor',
-  evergreen: 'Evergreen',
+  news: 'News Articles',
+  govt: 'Government Updates',
+  competitor: 'Competitor Intel',
+  evergreen: 'Evergreen Guides',
 };
 
 function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
@@ -74,7 +74,7 @@ function DonutChart({ data, className = '' }) {
     <div className={`flex flex-col overflow-hidden bg-white rounded-xl p-3 fade-in min-w-0 sm:p-4 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
       <div className="mb-2 flex items-center gap-2 2xl:mb-4">
         <BarChart2 size={16} style={{ color: CRIMSON }} />
-        <span className="text-sm font-bold text-gray-700">Content by Type</span>
+        <span className="text-sm font-bold text-gray-700">Signals by Type</span>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-3 md:grid-cols-[minmax(128px,0.36fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(150px,0.36fr)_minmax(0,1fr)] 2xl:gap-5">

@@ -1,13 +1,26 @@
 const express = require('express');
 const Article = require('../models/Article');
+const UserResult = require('../models/UserResult');
 const { protect } = require('../middleware/auth');
 const { asTree } = require('../config/categories');
-const { NEWS_SOURCES, GOVT_SOURCES, COMPETITOR_SOURCES, EVERGREEN_TOPICS } = require('../config/sources');
+const { configuredFetchCountries } = require('../config/fetchSources');
 
 const router = express.Router();
 const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
+
+// Escape special regex characters to prevent ReDoS attacks
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 const DEFAULT_ARTICLE_SORT = { effectiveDay: -1, relevanceScore: -1, effectiveDate: -1 };
-const DASHBOARD_TIMEZONE = 'Asia/Singapore';
+const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
+
+function tenantOwnerIds(user) {
+  if (!user?._id) return [];
+  if (user.role === 'super_admin') return [];
+  if (user.role === 'admin') return [user._id];
+  return [user.tenantAdminId || user._id];
+}
 
 function formatDashboardDate(date) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -51,6 +64,39 @@ function withEffectiveDateSort(match, extraStages = []) {
   ];
 }
 
+function sortByName(a, b) {
+  return String(a?.name || a?._id || '').localeCompare(String(b?.name || b?._id || ''));
+}
+
+function optionLabel(value) {
+  return String(value || '').trim();
+}
+
+function emptySourcesByType() {
+  return {
+    news: [],
+    govt: [],
+    competitor: [],
+    evergreen: []
+  };
+}
+
+function buildDataCategoryTree(rows = []) {
+  const tree = {};
+  for (const row of rows) {
+    const category = optionLabel(row._id?.category);
+    const subcategory = optionLabel(row._id?.subcategory);
+    if (!category) continue;
+    if (!tree[category]) tree[category] = new Set();
+    if (subcategory) tree[category].add(subcategory);
+  }
+  return Object.fromEntries(
+    Object.entries(tree)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, subcategories]) => [category, [...subcategories].sort()])
+  );
+}
+
 // Helper to catch async route errors and pass them to next()
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -69,6 +115,7 @@ const asyncHandler = (fn) => (req, res, next) => {
  */
 function buildQuery(req, opts = {}) {
   const q = {};
+  const ownerIds = tenantOwnerIds(req.user);
 
   // Visibility rule:
   //   - Non-admins ALWAYS see only published.
@@ -91,6 +138,17 @@ function buildQuery(req, opts = {}) {
   if (req.query.subcategory) q.subcategory = req.query.subcategory;
   if (req.query.source)      q.sourceId = req.query.source;
   if (req.query.country)     q.country = req.query.country;
+  if (req.query.region)      q.region = req.query.region;
+  if (req.query.sector)      q.sector = req.query.sector;
+  if (req.query.opportunityType) q.opportunityType = req.query.opportunityType;
+  if (req.query.userId && req.user.role === 'super_admin') q.userId = req.query.userId;
+  if (req.query.savedSearchId) q.savedSearchId = req.query.savedSearchId;
+
+  if (ownerIds.length) {
+    q.userId = { $in: ownerIds };
+  } else if (req.query.personalized === 'true' && req.user.role === 'super_admin') {
+    q.userId = req.user._id;
+  }
 
   if (req.query.from || req.query.to) {
     q.fetchedAt = {};
@@ -99,36 +157,135 @@ function buildQuery(req, opts = {}) {
   }
 
   if (req.query.q) {
-    q.title = { $regex: req.query.q.trim(), $options: 'i' };
+    q.title = { $regex: escapeRegex(req.query.q.trim()), $options: 'i' };
   }
 
   return q;
 }
 
+async function savedArticleIdsForUser(user) {
+  if (!user?._id) return [];
+  const rows = await UserResult.find(
+    { userId: user._id, saved: true, dismissed: { $ne: true } },
+    { articleId: 1 }
+  ).lean();
+  return rows.map((row) => row.articleId).filter(Boolean);
+}
+
+async function applySavedFilter(req, query) {
+  if (req.query.saved !== 'true') return query;
+  const ids = await savedArticleIdsForUser(req.user);
+  return { ...query, _id: { $in: ids } };
+}
+
+async function annotateSaved(req, items = []) {
+  if (!req.user?._id || !items.length) return items;
+  const ids = items.map((item) => item._id).filter(Boolean);
+  const rows = await UserResult.find(
+    { userId: req.user._id, articleId: { $in: ids }, saved: true, dismissed: { $ne: true } },
+    { articleId: 1 }
+  ).lean();
+  const savedIds = new Set(rows.map((row) => String(row.articleId)));
+  return items.map((item) => ({ ...item, isSaved: savedIds.has(String(item._id)) }));
+}
+
+function canAccessArticle(user, article) {
+  const ownerIds = tenantOwnerIds(user).map((id) => String(id));
+  if (ownerIds.length && !ownerIds.includes(String(article.userId || ''))) return false;
+  if (!isAdminUser(user) && !article.isPublished) return false;
+  return true;
+}
+
 // ---------- META endpoints (filter dropdowns) ----------
-router.get('/meta/filters', protect, (_req, res) => {
+router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
+  const ownerIds = tenantOwnerIds(req.user);
+  const scope = ownerIds.length ? { userId: { $in: ownerIds } } : {};
+  const visibleScope = !isAdminUser(req.user) ? { ...scope, isPublished: true } : scope;
+  const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows] = await Promise.all([
+    Article.distinct('country', { ...visibleScope, country: { $nin: ['', null] } }),
+    Article.distinct('region', { ...visibleScope, region: { $nin: ['', null] } }),
+    Article.distinct('sector', { ...visibleScope, sector: { $nin: ['', null] } }),
+    Article.distinct('opportunityType', { ...visibleScope, opportunityType: { $nin: ['', null] } }),
+    Article.aggregate([
+      {
+        $match: {
+          ...visibleScope,
+          sourceId: { $nin: ['', null] },
+          source: { $nin: ['', null] },
+          type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            id: '$sourceId',
+            name: '$source'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.type': 1, '_id.name': 1 } }
+    ]),
+    Article.aggregate([
+      {
+        $match: {
+          ...visibleScope,
+          category: { $nin: ['', null, 'General'] }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            category: '$category',
+            subcategory: '$subcategory'
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ])
+  ]);
+
+  const sources = emptySourcesByType();
+  for (const row of sourceRows) {
+    const type = row._id?.type;
+    if (!sources[type]) continue;
+    sources[type].push({
+      id: optionLabel(row._id?.id),
+      name: optionLabel(row._id?.name),
+      count: row.count
+    });
+  }
+  for (const type of Object.keys(sources)) {
+    sources[type] = sources[type].filter((source) => source.id && source.name).sort(sortByName);
+  }
+
   res.json({
     categories: asTree(),
-    sources: {
-      news: NEWS_SOURCES.map((s) => ({ id: s.id, name: s.name })),
-      govt: GOVT_SOURCES.map((s) => ({ id: s.id, name: s.name })),
-      competitor: COMPETITOR_SOURCES.map((s) => ({ id: s.id, name: s.name })),
-      evergreen: EVERGREEN_TOPICS.map((s) => ({ id: s.id, name: s.topic }))
-    },
+    dataCategories: buildDataCategoryTree(categoryRows),
+    fetchCountries: configuredFetchCountries(),
+    countries: countries.map(optionLabel).filter(Boolean).sort(),
+    regions: regions.map(optionLabel).filter(Boolean).sort(),
+    sectors: sectors.map(optionLabel).filter(Boolean).sort(),
+    opportunityTypes: opportunityTypes.map(optionLabel).filter(Boolean).sort(),
+    sources,
     types: [
-      { id: 'news',       label: 'News' },
+      { id: 'news',       label: 'News Articles' },
       { id: 'govt',       label: 'Government Updates' },
-      { id: 'competitor', label: 'Competitors' },
-      { id: 'evergreen',  label: 'Evergreen' }
+      { id: 'competitor', label: 'Competitor Intel' },
+      { id: 'evergreen',  label: 'Evergreen Guides' }
     ]
   });
-});
+}));
 
 // ---------- DASHBOARD endpoint ----------
 // GET /api/articles/dashboard?limit=20&from=...&to=...&category=...
 // Returns 4 buckets in one round-trip.
 router.get('/dashboard', protect, asyncHandler(async (req, res) => {
-  const baseQuery = buildQuery(req, { forUser: !isAdminUser(req.user) || req.query.publishedOnly !== 'false' });
+  const baseQuery = await applySavedFilter(
+    req,
+    buildQuery(req, { forUser: !isAdminUser(req.user) || req.query.publishedOnly !== 'false' })
+  );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
 
   const types = ['news', 'govt', 'competitor', 'evergreen'];
@@ -142,11 +299,13 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     })
   );
 
+  const annotated = await Promise.all(results.map((items) => annotateSaved(req, items)));
+
   res.json({
-    news: results[0],
-    govt: results[1],
-    competitor: results[2],
-    evergreen: results[3]
+    news: annotated[0],
+    govt: annotated[1],
+    competitor: annotated[2],
+    evergreen: annotated[3]
   });
 }));
 
@@ -230,7 +389,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 router.get('/', protect, asyncHandler(async (req, res) => {
   // Users only see published. Admins see all unless they filter.
   const forUser = !isAdminUser(req.user);
-  const q = buildQuery(req, { forUser });
+  const q = await applySavedFilter(req, buildQuery(req, { forUser }));
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
@@ -254,7 +413,7 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   ]);
 
   res.json({
-    items,
+    items: await annotateSaved(req, items),
     page,
     limit,
     total,
@@ -262,16 +421,54 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   });
 }));
 
+router.post('/:id/save', protect, asyncHandler(async (req, res) => {
+  const item = await Article.findById(req.params.id).lean();
+  if (!item || !canAccessArticle(req.user, item)) {
+    return res.status(404).json({ message: 'Not found' });
+  }
+
+  await UserResult.findOneAndUpdate(
+    {
+      userId: req.user._id,
+      articleId: item._id,
+      savedSearchId: item.savedSearchId || undefined
+    },
+    {
+      $set: {
+        userId: req.user._id,
+        articleId: item._id,
+        savedSearchId: item.savedSearchId || undefined,
+        relevanceScore: Number(item.relevanceScore || 0),
+        relevanceReason: item.relevanceReason || '',
+        matchedInterests: item.matchedInterests || [],
+        saved: true,
+        dismissed: false
+      }
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  res.json({ ok: true, item: { ...item, isSaved: true } });
+}));
+
+router.delete('/:id/save', protect, asyncHandler(async (req, res) => {
+  await UserResult.updateMany(
+    { userId: req.user._id, articleId: req.params.id },
+    { $set: { saved: false } }
+  );
+  res.json({ ok: true, articleId: req.params.id, isSaved: false });
+}));
+
 // ---------- SINGLE article ----------
 router.get('/:id', protect, asyncHandler(async (req, res) => {
   const item = await Article.findById(req.params.id).lean();
   if (!item) return res.status(404).json({ message: 'Not found' });
 
-  // Users can only see published items
-  if (!isAdminUser(req.user) && !item.isPublished) {
+  if (!canAccessArticle(req.user, item)) {
     return res.status(404).json({ message: 'Not found' });
   }
-  res.json({ item });
+  const [annotated] = await annotateSaved(req, [item]);
+  res.json({ item: annotated });
 }));
 
 module.exports = router;

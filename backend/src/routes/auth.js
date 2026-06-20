@@ -16,7 +16,28 @@ const registerSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(128).required(),
   company: Joi.string().allow('').max(120),
-  designation: Joi.string().allow('').max(120)
+  designation: Joi.string().allow('').max(120),
+  country: Joi.string().allow('').max(120),
+  region: Joi.string().allow('').max(120),
+  sector: Joi.string().allow('').max(120),
+  userType: Joi.string().allow('').max(120),
+  category: Joi.string().allow('').max(120),
+  categories: Joi.array().items(Joi.string().max(120)),
+  subcategory: Joi.string().allow('').max(120),
+  competitors: Joi.array().items(Joi.string().max(120)),
+  topics: Joi.array().items(Joi.string().valid('news', 'govt', 'competitor', 'evergreen')),
+  sources: Joi.array().items(Joi.string().max(120)),
+  days: Joi.number().integer().min(1).max(365),
+  query: Joi.string().allow('').max(500),
+  language: Joi.string().allow('').max(10),
+  timezone: Joi.string().allow('').max(80),
+  fetchSchedule: Joi.object({
+    enabled: Joi.boolean(),
+    frequency: Joi.string().valid('daily', 'weekly'),
+    dayOfWeek: Joi.string().valid('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+    time: Joi.string().pattern(/^\d{2}:\d{2}$/),
+    timezone: Joi.string().allow('').max(80)
+  })
 });
 
 const loginSchema = Joi.object({
@@ -28,8 +49,28 @@ const updateSchema = Joi.object({
   name: Joi.string().min(2).max(120),
   company: Joi.string().allow('').max(120),
   designation: Joi.string().allow('').max(120),
-  interests: Joi.array().items(Joi.string()),
-  avatar: Joi.string().allow('').uri({ allowRelative: false })
+  country: Joi.string().allow('').max(120),
+  region: Joi.string().allow('').max(120),
+  sector: Joi.string().allow('').max(120),
+  userType: Joi.string().allow('').max(120),
+  category: Joi.string().allow('').max(120),
+  categories: Joi.array().items(Joi.string().max(120)),
+  subcategory: Joi.string().allow('').max(120),
+  competitors: Joi.array().items(Joi.string().max(120)),
+  topics: Joi.array().items(Joi.string().valid('news', 'govt', 'competitor', 'evergreen')),
+  sources: Joi.array().items(Joi.string().max(120)),
+  days: Joi.number().integer().min(1).max(365),
+  query: Joi.string().allow('').max(500),
+  language: Joi.string().allow('').max(10),
+  timezone: Joi.string().allow('').max(80),
+  fetchSchedule: Joi.object({
+    enabled: Joi.boolean(),
+    frequency: Joi.string().valid('daily', 'weekly'),
+    dayOfWeek: Joi.string().valid('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+    time: Joi.string().pattern(/^\d{2}:\d{2}$/),
+    timezone: Joi.string().allow('').max(80)
+  }),
+  avatar: Joi.string().allow('')
 });
 
 // ---------------- Routes ----------------
@@ -46,7 +87,27 @@ router.post('/register', asyncHandler(async (req, res) => {
     ...value,
     email: value.email.toLowerCase(),
     role: 'user',
-    isActive: false
+    isActive: false,
+    country: value.country || 'India',
+    region: value.region || '',
+    sector: value.sector || '',
+    userType: value.userType || '',
+    category: value.category || '',
+    categories: Array.isArray(value.categories) ? value.categories : [],
+    subcategory: value.subcategory || '',
+    competitors: Array.isArray(value.competitors) ? value.competitors : [],
+    topics: Array.isArray(value.topics) ? value.topics : ['news', 'govt', 'competitor', 'evergreen'],
+    sources: Array.isArray(value.sources) ? value.sources : [],
+    days: Number(value.days || 30),
+    query: value.query || '',
+    language: value.language || 'en',
+    timezone: value.timezone || 'Asia/Kolkata',
+    fetchSchedule: {
+      enabled: Boolean(value.fetchSchedule?.enabled),
+      frequency: value.fetchSchedule?.frequency || 'daily',
+      time: value.fetchSchedule?.time || '07:00',
+      timezone: value.fetchSchedule?.timezone || value.timezone || 'Asia/Kolkata'
+    }
   });
 
   res.status(201).json({
@@ -94,7 +155,26 @@ router.patch('/me', protect, asyncHandler(async (req, res) => {
   const { error, value } = updateSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
-  Object.assign(req.user, value);
+  const update = { ...value };
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
+    delete update.country;
+    delete update.region;
+    delete update.sector;
+    delete update.userType;
+    delete update.category;
+    delete update.categories;
+    delete update.subcategory;
+    delete update.competitors;
+    delete update.topics;
+    delete update.sources;
+    delete update.days;
+    delete update.query;
+    delete update.language;
+    delete update.timezone;
+    delete update.fetchSchedule;
+  }
+
+  Object.assign(req.user, update);
   await req.user.save();
   res.json({ user: req.user.toPublicJSON() });
 }));
@@ -102,8 +182,8 @@ router.patch('/me', protect, asyncHandler(async (req, res) => {
 // POST /api/auth/change-password
 router.post('/change-password', protect, asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  if (!newPassword || newPassword.length < 6) {
-    return res.status(400).json({ message: 'newPassword must be at least 6 chars' });
+  if (!newPassword || newPassword.length < 6 || newPassword.length > 128) {
+    return res.status(400).json({ message: 'newPassword must be between 6 and 128 characters' });
   }
   const user = await User.findById(req.user._id).select('+password');
   const ok = await user.matchPassword(currentPassword || '');

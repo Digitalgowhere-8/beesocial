@@ -34,6 +34,97 @@ function isEnabled() {
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
+function fallbackBlog({ article, style = {}, keywords = [] }) {
+  const title = article?.title || 'Market intelligence update';
+  const audience = style.audience || 'business decision-makers';
+  const cta = style.cta || 'Speak with our team to understand how this update may affect your plans.';
+  const keywordLine = keywords.length ? `\n\nFocus keywords: ${keywords.join(', ')}` : '';
+  const context = blogSourceContext(article);
+  return {
+    title,
+    excerpt: article?.summary || `A practical update for ${audience}.`,
+    bodyMarkdown: [
+      `# ${title}`,
+      '',
+      `## Why this matters`,
+      '',
+      article?.summary || 'This update may create a new planning, compliance, market-entry, or advisory signal for businesses.',
+      context ? `\nAdditional source context: ${context.slice(0, 900)}` : '',
+      '',
+      `## What companies should watch`,
+      '',
+      '- Review the source update and confirm applicability to your jurisdiction or business model.',
+      '- Identify any filing, compliance, market-entry, or competitor implications.',
+      '- Convert the update into a client advisory, internal checklist, or outreach note.',
+      '',
+      `## Recommended next step`,
+      '',
+      cta,
+      keywordLine
+    ].filter(Boolean).join('\n'),
+    suggestedKeywords: keywords,
+    metaTitle: title.slice(0, 70),
+    metaDescription: (article?.summary || '').slice(0, 155)
+  };
+}
+
+function fallbackLinkedInPost({ article, options = {} }) {
+  const topic = article?.title || options.topic || 'A practical market update';
+  const audience = options.audience || 'business decision-makers';
+  const cta = options.cta || 'If this is on your radar, save this and review how it affects your next decision.';
+  const summary = article?.summary || article?.aiSummary || 'This update may create a practical signal for operators, advisors, or business leaders.';
+  const hook = String(topic).split(/[,:|-]/)[0].trim().slice(0, 70) || 'This deserves a closer look';
+
+  return {
+    selectedTopic: topic,
+    topicTier: 'Narrow',
+    emotionalJob: 'Educate',
+    framework: options.framework || 'PAS',
+    hook,
+    postText: [
+      hook,
+      '',
+      'Most teams notice the headline.',
+      'The real signal sits underneath it.',
+      '',
+      summary,
+      '',
+      `For ${audience}, the practical question is not whether this matters.`,
+      'It is where it changes timing, risk, or client conversations.',
+      '',
+      'The rule I use: if it changes a decision, it deserves a clear note.',
+      '',
+      cta
+    ].join('\n'),
+    cta,
+    hashtags: ['#BusinessIntelligence', '#MarketIntelligence', '#Advisory'],
+    qualityChecks: {
+      hookUnderEightWords: hook.split(/\s+/).length <= 8,
+      oneClearIdea: true,
+      noGenericEnding: true,
+      soundsHuman: true
+    },
+    model: 'fallback'
+  };
+}
+
+function blogSourceContext(article = {}) {
+  return [
+    article.tavilyAnswer || article.tavily_answer,
+    article.blogContext || article.blog_context,
+    article.summary,
+    article.sourceQuery ? `Search query: ${article.sourceQuery}` : '',
+    article.relevanceReason ? `Relevance reason: ${article.relevanceReason}` : '',
+    Array.isArray(article.matchedInterests) && article.matchedInterests.length
+      ? `Matched interests: ${article.matchedInterests.join(', ')}`
+      : ''
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .slice(0, 3000);
+}
+
 /**
  * Generate a 1-2 sentence summary of an article.
  * Returns null on any failure (caller should keep the existing summary).
@@ -51,7 +142,7 @@ async function summarizeArticle({ title, snippet }) {
         {
           role: 'system',
           content:
-            'You are a corporate-services intelligence analyst. Write a one-sentence summary (max 30 words) of the following article headline relevant to Singapore corporate services, accounting, tax, fund administration, HR, or fiduciary topics. Output only the summary, no preamble.'
+            'You are an opportunity intelligence analyst. Write a one-sentence summary (max 30 words) relevant to grants, policy, tenders, startup funding, compliance, markets, or competitors. Output only the summary, no preamble.'
         },
         { role: 'user', content: `Title: ${title}\nSnippet: ${snippet || '(none)'}` }
       ]
@@ -85,7 +176,7 @@ async function classifyCategory({ title, snippet }) {
         {
           role: 'system',
           content:
-            `You classify a Singapore corporate-services article into one of the categories below. ` +
+            `You classify an opportunity intelligence article into one of the categories below. ` +
             `Return strict JSON: { "category": "...", "subcategory": "..." } using EXACT names from this taxonomy:\n${taxonomy}` +
             `\nIf none fit, return { "category": "General", "subcategory": "" }.`
         },
@@ -102,4 +193,588 @@ async function classifyCategory({ title, snippet }) {
   }
 }
 
-module.exports = { isEnabled, summarizeArticle, classifyCategory };
+function cleanPromptText(value) {
+  return String(value || '').trim();
+}
+
+function listPromptValues(value) {
+  if (Array.isArray(value)) return value.map(cleanPromptText).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map(cleanPromptText).filter(Boolean);
+  return [];
+}
+
+function profileCompanyName(profile = {}, article = {}) {
+  return cleanPromptText(
+    profile.companyName ||
+    profile.comanyName ||
+    profile.company ||
+    profile.businessName ||
+    profile.organization ||
+    article.companyName ||
+    article.company ||
+    ''
+  ) || 'the selected company';
+}
+
+function profileMarkets(profile = {}, article = {}) {
+  const country = cleanPromptText(profile.country || article.country);
+  const region = cleanPromptText(profile.region || article.region);
+  const location = cleanPromptText(article.location || profile.location);
+  const markets = [country, region ? `${country || location} (${region})` : '', location]
+    .filter(Boolean);
+  return [...new Set(markets)].slice(0, 4);
+}
+
+function taxonomyPromptText() {
+  return Object.entries(CATEGORIES)
+    .map(([category, value], index) => {
+      const subcategories = Object.keys(value.subcategories || {})
+        .map((subcategory) => `   - ${subcategory}`)
+        .join('\n');
+      return `${index + 1}. ${category}\n${subcategories}`;
+    })
+    .join('\n\n');
+}
+
+function topicFilterInstructions(topic) {
+  const map = {
+    govt:
+      'STORE government, regulatory, policy, tax, compliance, grant, scheme, subsidy, procurement, tender, court, filing, licensing, budget, immigration, employment, infrastructure, public spending, economic-development, industry-policy, or official guidance updates when they may affect business obligations, advisory work, market entry, operations, accounting, tax, payroll, governance, funding, sector growth, or professional-services clients.',
+    news:
+      'STORE country-relevant business news, market updates, regulatory developments, investment, expansion, funding, M&A, partnerships, sector trends, workforce changes, operational signals, or advisory opportunities relevant to companies or professional-services clients.',
+    competitor:
+      'STORE tracked competitor activity, acquisitions, partnerships, new offices, service launches, hiring, senior appointments, funding, client wins, market entry, expansion, thought leadership, or other competitive intelligence with a real business signal.',
+    evergreen:
+      'STORE evergreen guides, explainers, checklists, official guidance, compliance requirements, how-to resources, filing guides, market-entry guides, tax/accounting guides, or practical reference content that remains useful for clients or advisors.'
+  };
+  return map[topic] || map.news;
+}
+
+function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
+  const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
+  return {
+    decision: score >= 40 ? 'STORE' : 'IGNORE',
+    category: score >= 40 ? (article.category || 'General') : 'IGNORE',
+    subcategory: article.subcategory || '',
+    summary: article.summary || article.aiSummary || '',
+    relevance_score: score,
+    relevance_reason: `Fallback Tavily relevance score ${score} for ${topic}.`
+  };
+}
+
+async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'news' }) {
+  const cli = getClient();
+  if (!cli) return fallbackProfileRelevance({ article, topic });
+  const currentYear = Math.min(2100, Number(profile.year || profile.currentYear || new Date().getFullYear()) || new Date().getFullYear());
+
+  const validSubcategories = Array.isArray(article.subcategoryOptions)
+    ? article.subcategoryOptions
+    : Array.isArray(profile.subcategoryOptions)
+      ? profile.subcategoryOptions
+      : [];
+  const companyName = profileCompanyName(profile, article);
+  const markets = profileMarkets(profile, article);
+  const marketText = markets.join(', ') || 'the selected market';
+  const competitors = listPromptValues(profile.competitors || article.competitors);
+  const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || article.days || 30) || 30));
+  const selectedCategory = profile.category || article.category || 'General';
+  const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 420,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a precise business-intelligence relevance classifier. Return valid JSON only.'
+        },
+        {
+          role: 'user',
+          content: [
+            `You are a news intelligence AI for ${companyName}.`,
+            'Analyze this article and decide whether it should be stored for the current fetch profile.',
+            'Return ONLY valid JSON.',
+            '',
+            'MARKETS COVERED',
+            marketText,
+            '',
+            'PROFILE CONTEXT',
+            `Company/client: ${companyName}`,
+            `Country: ${profile.country || article.country || ''}`,
+            `Region/state: ${profile.region || article.region || 'All regions'}`,
+            `Category selected by user: ${selectedCategory}`,
+            `Sub-category selected by user: ${selectedSubcategory}`,
+            `Topic/type: ${topic}`,
+            `Tracked competitors: ${competitors.join(', ') || 'None'}`,
+            `Maximum age preference: ${maxAgeDays} days`,
+            `Current year: ${currentYear}`,
+            '',
+            'AVAILABLE CATEGORIES AND SUB-CATEGORIES',
+            taxonomyPromptText(),
+            '',
+            'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
+            `- Any article with no clear connection to ${marketText}.`,
+            `- Any jurisdiction outside ${marketText}, unless it explicitly affects businesses, compliance, tax, investment, employment, governance, or market entry in ${marketText}.`,
+            '- Conference recaps, webinars, podcasts, awards, rankings, CSR, charity, tourism, sports, entertainment, human-interest stories, and generic opinion pieces with no factual business/regulatory update.',
+            '- Earnings reports, stock-price-only articles, product promotions, directory pages, homepage/listing pages, static portals, login/e-service pages, job-only posts, or event recaps with no useful business signal.',
+            '- Consumer lifestyle, retail, food, real estate/property, transport, defence, geopolitics, technology, AI, cybersecurity, infrastructure, energy, mining, or insurance articles with no regulatory/compliance/business-services angle.',
+            `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
+            '- Competitor intelligence only counts when a tracked competitor is explicitly named and the article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, or another competitive signal in the selected market.',
+            '',
+            'STEP 2: TOPIC RULE',
+            topicFilterInstructions(topic),
+            '',
+            'STEP 3: SCORING',
+            `Give 70-100 when the article has a new, concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, work-pass/employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, or direct competitor signal affecting ${marketText}.`,
+            `Give 50-69 when it has a clear ${marketText} impact and is useful for ${companyName}'s selected category, but the impact is indirect or trend-level.`,
+            'Give 40-49 when it is category-adjacent and potentially useful but not a strong direct update.',
+            'Give 0-39 when it is weak, unrelated, too old, or matches a reject rule. STORE only when score is at least 40.',
+            '',
+            'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
+            'For STORE decisions, use the profile category unless the article clearly belongs to a better category from the taxonomy.',
+            'Use only exact category names from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
+            `Valid sub-categories for the selected category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
+            'If valid sub-categories are provided, use one exact value from that list. If a specific sub-category was selected by the user, keep it unless the article should be ignored or is obviously a better fit elsewhere.',
+            '',
+            'STEP 5: OUTPUT',
+            `summary must explain in 2 short sentences what happened and why it matters to ${companyName} clients or users in ${marketText}.`,
+            'relevance_reason must mention the specific law/regulation/policy/announcement/source signal when available, the affected market, and the sub-category fit.',
+            '',
+            'If not relevant return category IGNORE, subcategory IGNORE, score 0, and a short reason.',
+            '',
+            'Return JSON shape:',
+            '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}',
+            '',
+            'ARTICLE',
+            `Title: ${article.title || ''}`,
+            `URL: ${article.url || ''}`,
+            `Source: ${article.sourceType || article.source || ''}`,
+            `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+          ].join('\n')
+        }
+      ]
+    });
+
+    const raw = resp.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    return {
+      decision: String(parsed.decision || '').toUpperCase() === 'STORE' ? 'STORE' : 'IGNORE',
+      category: parsed.category || 'IGNORE',
+      subcategory: parsed.subcategory || parsed.sub_category || '',
+      summary: parsed.summary || '',
+      relevance_score: Math.max(0, Math.min(100, parseInt(parsed.relevance_score, 10) || 0)),
+      relevance_reason: parsed.relevance_reason || parsed.relevanceReason || ''
+    };
+  } catch (err) {
+    console.warn('[ai] profile relevance failed:', err.message);
+    return fallbackProfileRelevance({ article, topic });
+  }
+}
+
+async function generateBlogPost({ article, style = {}, company = {}, keywords = [] }) {
+  const cli = getClient();
+  if (!cli) {
+    return {
+      ...fallbackBlog({ article, style, keywords }),
+      model: 'fallback'
+    };
+  }
+
+  const tone = style.tone || 'professional';
+  const format = style.format || 'insight_article';
+  const audience = style.audience || 'business decision-makers';
+  const length = style.length || 'medium';
+  const cta = style.ctaDescription || style.cta || '';
+  const pointOfView = style.pointOfView || 'third_person';
+  const requestedTopic = style.topic || article.title || '';
+  const customLength = style.customLength || '';
+  const metaTitle = style.metaTitle || '';
+  const metaDescription = style.metaDescription || '';
+  const primaryKeyword = style.primaryKeyword || '';
+  const searchIntent = style.searchIntent || 'informational';
+  const outlineMode = style.outlineMode || 'auto';
+  const customOutline = style.customOutline || '';
+  const focusPage = style.focusPage || '';
+  const internalLinkPages = style.internalLinkPages || '';
+  const ctaTitle = style.ctaTitle || '';
+  const ctaButtonText = style.ctaButtonText || '';
+  const ctaUrl = style.ctaUrl || '';
+  const keyPoints = style.keyPoints || '';
+  const competitorUrls = style.competitorUrls || '';
+  const referenceUrls = style.referenceUrls || '';
+  const includeFaq = style.includeFaq !== false;
+  const includeStats = style.includeStats !== false;
+  const sourceContext = blogSourceContext(article);
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: MODEL,
+      temperature: 0.35,
+      max_tokens: length === 'long' || length === 'custom' ? 3000 : length === 'short' ? 1100 : 2000,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a senior B2B blog writer, SEO strategist, and professional-services content editor.',
+            '',
+            'Your job is to create a long-form, human-sounding, SEO-friendly blog for the company website using the selected intelligence topic and provided source/reference content.',
+            '',
+            'IMPORTANT RULES',
+            '- Return ONLY valid JSON. No markdown outside JSON.',
+            '- Do not plagiarize.',
+            '- Do not copy source text verbatim.',
+            '- Do not invent facts, data, laws, statistics, dates, names, or claims.',
+            '- Use the selected article/source URL and provided source context as the primary reference.',
+            '- If additional reference URLs are provided, use them only as supporting context.',
+            '- If data/statistics are requested, include them only when supported by the source/reference material.',
+            '- Write in clear, logical, natural language.',
+            '- The blog must feel human-written, not AI-stuffed.',
+            '- Use SEO best practices, but avoid keyword stuffing.',
+            '- Make the introduction engaging enough to hook the reader.',
+            '- Make the conclusion summarize the blog and nudge the reader toward the CTA.',
+            '- If FAQ is requested, include useful search-friendly FAQs.',
+            '- Use proper heading hierarchy.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'CLIENT / COMPANY CONTEXT',
+            `Company name: ${company.name || 'The company'}`,
+            `Service / focus page: ${focusPage || 'Not provided'}`,
+            `Target audience: ${audience}`,
+            `Tone: ${tone}`,
+            `Point of view: ${pointOfView}`,
+            '',
+            'BLOG REQUIREMENTS',
+            `Topic: ${requestedTopic}`,
+            `Format: ${format}`,
+            `Length: ${length}${length === 'custom' && customLength ? ` (${customLength})` : ''}`,
+            `Target search intent: ${searchIntent}`,
+            '',
+            'SEO REQUIREMENTS',
+            `Primary SEO keyword: ${primaryKeyword || keywords[0] || ''}`,
+            `Secondary SEO keywords: ${keywords.filter((item) => item !== primaryKeyword).join(', ') || 'Use relevant category and market keywords.'}`,
+            `Meta title preference: ${metaTitle || 'Generate a concise SEO meta title.'}`,
+            `Meta description preference: ${metaDescription || 'Generate a concise SEO meta description.'}`,
+            '',
+            'CONTENT STRUCTURE',
+            `Outline mode: ${outlineMode}`,
+            `Custom outline:\n${outlineMode === 'custom' ? customOutline : 'Auto-generate a clear Table of Contents.'}`,
+            '',
+            'If outline mode is "auto", generate a clear Table of Contents before writing the body.',
+            'If outline mode is "custom", follow the custom outline as closely as possible.',
+            '',
+            'CTA REQUIREMENTS',
+            `CTA title: ${ctaTitle}`,
+            `CTA description: ${cta || 'Use a soft professional CTA.'}`,
+            `CTA button text: ${ctaButtonText}`,
+            `CTA URL: ${ctaUrl}`,
+            '',
+            'ADDITIONAL CONTEXT',
+            `Key points to cover:\n${keyPoints}`,
+            `Competitor URLs:\n${competitorUrls}`,
+            `Additional reference/source URLs:\n${referenceUrls}`,
+            `Include FAQ section: ${includeFaq ? 'Yes' : 'No'}`,
+            `Include statistics and data: ${includeStats ? 'Yes' : 'No'}`,
+            '',
+            'SOURCE INTELLIGENCE ITEM',
+            `Source title: ${article.title || ''}`,
+            `Source summary: ${article.summary || article.aiSummary || ''}`,
+            `Source context / raw material:\n${sourceContext || 'No additional context stored.'}`,
+            `Source URL: ${article.url || ''}`,
+            `Source query: ${article.sourceQuery || ''}`,
+            `Relevance reason: ${article.relevanceReason || ''}`,
+            `Market: ${[article.region, article.country].filter(Boolean).join(', ') || 'Not specified'}`,
+            `Category: ${article.category || ''}`,
+            `Sub-category: ${article.subcategory || ''}`,
+            `Source type: ${article.type || ''}`,
+            `Matched interests: ${Array.isArray(article.matchedInterests) ? article.matchedInterests.join(', ') : ''}`,
+            '',
+            'BLOG WRITING INSTRUCTIONS',
+            '1. Start with a strong, engaging introduction.',
+            '2. Include a Table of Contents.',
+            '3. Write a structured blog body with meaningful H2/H3 headings.',
+            '4. Explain why the topic matters to the target audience.',
+            '5. Use examples where helpful, but do not invent unsupported examples.',
+            '6. Include internal linking suggestions naturally if focus page or internal pages are provided.',
+            '7. Include practical takeaways.',
+            '8. If FAQ is requested, add 3-5 useful FAQs.',
+            '9. End with a concise conclusion and CTA.',
+            '10. Keep the blog coherent, flowing, and professionally written.',
+            '',
+            'OUTPUT FORMAT',
+            'Return ONLY valid JSON. No markdown outside JSON.',
+            '',
+            'JSON shape:',
+            '{',
+            '  "title": "<SEO-friendly blog title>",',
+            '  "excerpt": "<short blog summary, 2-3 sentences>",',
+            '  "bodyMarkdown": "<full blog in Markdown with H1, TOC, headings, body, FAQ if requested, conclusion and CTA>",',
+            '  "suggestedKeywords": ["<keyword 1>", "<keyword 2>", "<keyword 3>"],',
+            '  "metaTitle": "<SEO title, 50-60 characters, ideally question-style if suitable>",',
+            '  "metaDescription": "<SEO meta description, 150-160 characters>",',
+            '  "faq": [',
+            '    { "question": "<FAQ question>", "answer": "<FAQ answer>" }',
+            '  ],',
+            '  "cta": {',
+            '    "title": "<CTA title>",',
+            '    "description": "<CTA description>",',
+            '    "buttonText": "<CTA button text>",',
+            '    "url": "<CTA URL or empty string>"',
+            '  },',
+            '  "socialMediaCopy": "<short LinkedIn/social copy for promoting the blog>",',
+            '  "resources": [',
+            '    { "label": "<source/resource name>", "url": "<source/resource URL>" }',
+            '  ],',
+            '  "bannerBrief": "<short design brief for blog banner image>"',
+            '}'
+          ].join('\n')
+        }
+      ]
+    });
+
+    const raw = resp.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    if (!parsed.title || !parsed.bodyMarkdown) {
+      return {
+        ...fallbackBlog({ article, style, keywords }),
+        model: MODEL
+      };
+    }
+    return {
+      title: String(parsed.title).trim(),
+      excerpt: String(parsed.excerpt || '').trim(),
+      bodyMarkdown: String(parsed.bodyMarkdown).trim(),
+      suggestedKeywords: Array.isArray(parsed.suggestedKeywords) ? parsed.suggestedKeywords.map(String) : keywords,
+      metaTitle: String(parsed.metaTitle || parsed.title || '').trim(),
+      metaDescription: String(parsed.metaDescription || parsed.excerpt || '').trim(),
+      model: MODEL
+    };
+  } catch (err) {
+    console.warn('[ai] blog generation failed:', err.message);
+    return {
+      ...fallbackBlog({ article, style, keywords }),
+      model: MODEL
+    };
+  }
+}
+
+async function generateLinkedInPost({ article, options = {}, company = {} }) {
+  const cli = getClient();
+  if (!cli) {
+    return fallbackLinkedInPost({ article, options });
+  }
+
+  const sourceContext = blogSourceContext(article);
+  const postGoal = options.postGoal || 'thought_leadership';
+  const tone = options.tone || 'professional';
+  const audience = options.audience || 'business decision-makers';
+  const length = options.length || 'medium';
+  const hookStyle = options.hookStyle || 'proof';
+  const framework = options.framework || 'auto';
+  const topicTier = options.topicTier || 'auto';
+  const emotionalJob = options.emotionalJob || 'auto';
+  const icpPainPoints = options.icpPainPoints || '';
+  const marketReality = options.marketReality || '';
+  const personaProfile = options.personaProfile || '';
+  const proofElement = options.proofElement || '';
+  const authorityLine = options.authorityLine || '';
+  const takeaway = options.takeaway || '';
+  const cta = options.cta || '';
+  const includeCTA = options.includeCTA !== false;
+  const includeHashtags = options.includeHashtags !== false;
+  const customInstructions = options.customInstructions || '';
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: MODEL,
+      temperature: 0.55,
+      max_tokens: length === 'long' ? 1200 : length === 'short' ? 700 : 950,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a founder/operator/advisor LinkedIn ghostwriter.',
+            'You do not sound like a content writer or AI.',
+            'You write like someone who has done the work, learned the lesson, and can explain it plainly.',
+            '',
+            'Return ONLY valid JSON. No markdown outside JSON.',
+            '',
+            'HARD CONSTRAINTS',
+            'Never use these phrases:',
+            '- In today’s fast-paced world',
+            '- Thrilled to announce',
+            '- Game-changer',
+            '- Thought leader',
+            '- Leverage, unless used in a financial context',
+            '- Generic CTAs like What do you think?',
+            '',
+            'Never use motivational fluff, corporate filler, or AI-polished phrasing.',
+            'Use one clear idea only.',
+            'Use I only when the post is written as a lived/operator insight.',
+            'Do not invent facts, numbers, timeframes, clients, or results.',
+            'If proof is not provided by the user or source, use a cautious proof element from the source only.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'Create a LinkedIn post from the selected intelligence source.',
+            '',
+            'COMPANY / AUTHOR CONTEXT',
+            `Company/author: ${company.name || 'The company'}`,
+            `Audience / ICP: ${audience}`,
+            `Person profile: ${personaProfile || 'Founder/operator/advisor/consultant'}`,
+            `Tone: ${tone}`,
+            `Post goal: ${postGoal}`,
+            '',
+            'SOURCE INTELLIGENCE',
+            `Title: ${article.title || ''}`,
+            `Summary: ${article.summary || article.aiSummary || ''}`,
+            `URL: ${article.url || ''}`,
+            `Market: ${[article.region, article.country].filter(Boolean).join(', ') || 'Not specified'}`,
+            `Category: ${article.category || ''}`,
+            `Sub-category: ${article.subcategory || ''}`,
+            `Source type: ${article.type || ''}`,
+            `Relevance reason: ${article.relevanceReason || ''}`,
+            `Source context:\n${sourceContext || 'No extra source context stored.'}`,
+            '',
+            'USER STRATEGY INPUTS',
+            `ICP pain points:\n${icpPainPoints}`,
+            `Market realities:\n${marketReality}`,
+            `Proof element to use:\n${proofElement}`,
+            `Soft authority line to use:\n${authorityLine}`,
+            `Preferred takeaway:\n${takeaway}`,
+            `CTA direction:\n${cta}`,
+            `Custom instructions:\n${customInstructions}`,
+            '',
+            'STEP 1 - TOPIC INTELLIGENCE',
+            'Generate content topic options based on ICP pain points, market realities, founder/operator experience, industry misconceptions, and buyer psychology.',
+            'Each topic must be specific, relevant to ICP + person profile, and capable of triggering engagement or inbound.',
+            '',
+            'STEP 2 - CLASSIFY EACH TOPIC',
+            'For each topic, assign:',
+            '- Tier: Broad (reach), Narrow (authority), or Niche (conversion)',
+            '- Emotional Job: Inspire, Educate, Provoke, or Convert',
+            `Preferred tier: ${topicTier}`,
+            `Preferred emotional job: ${emotionalJob}`,
+            '',
+            'STEP 3 - SELECT BEST TOPIC',
+            'Pick the best topic based on highest relevance to ICP, strongest emotional tension, and best fit for authority positioning.',
+            '',
+            'STEP 4 - SELECT WRITING FRAMEWORK',
+            'Choose ONE framework:',
+            '- SLAY: story-led authority',
+            '- PAS: pain-driven inbound',
+            '- POV: high reach',
+            '- 5-Line Mirror: authority + relatability',
+            '- AIDA: conversion / announcement',
+            `Preferred framework: ${framework}`,
+            '',
+            'STEP 5 - HOOK GENERATION',
+            `Hook style preference: ${hookStyle}`,
+            'Generate proof-led, contrarian, and personal-story hook options.',
+            'Each hook line 1 must be under 8 words, create curiosity or tension, and avoid generic phrasing.',
+            'Select the strongest hook.',
+            '',
+            'STEP 6 - WRITE THE POST',
+            'Structure rules:',
+            '- First 5 lines must form a slippery slide.',
+            '- Max 2 lines per paragraph.',
+            '- No paragraph over 30 words.',
+            '- Mix short, medium, and punchy sentence lengths.',
+            '- Include exactly one proof element.',
+            '- Include one soft authority line.',
+            '- Include one clear takeaway: Rule of One.',
+            '',
+            'Voice rules:',
+            '- Write like someone who has done the work.',
+            '- Use I for lived insights when natural.',
+            '- No corporate jargon unless natural.',
+            '- No motivational fluff.',
+            '- No AI-polished tone.',
+            '',
+            'STEP 7 - CTA',
+            `Include CTA: ${includeCTA ? 'Yes' : 'No'}`,
+            'Write one tightly coupled CTA related directly to the topic.',
+            'It should feel like a natural next step, preferably curiosity-driven.',
+            '',
+            'STEP 8 - QUALITY CONTROL',
+            'Validate before output:',
+            '- Hook is strong and under 8 words.',
+            '- No banned phrases used.',
+            '- One clear idea only.',
+            '- Sounds human, not AI.',
+            '- Valuable to a cold reader.',
+            '- No generic ending.',
+            '',
+            `Include hashtags: ${includeHashtags ? 'Yes' : 'No'}`,
+            `Length: ${length}`,
+            '',
+            'OUTPUT JSON SHAPE',
+            '{',
+            '  "topicOptions": [',
+            '    { "topic": "<specific topic>", "tier": "Broad|Narrow|Niche", "emotionalJob": "Inspire|Educate|Provoke|Convert", "reason": "<why it works>" }',
+            '  ],',
+            '  "selectedTopic": "<best topic>",',
+            '  "topicTier": "Broad|Narrow|Niche",',
+            '  "emotionalJob": "Inspire|Educate|Provoke|Convert",',
+            '  "framework": "SLAY|PAS|POV|5-Line Mirror|AIDA",',
+            '  "hookOptions": ["<hook 1>", "<hook 2>", "<hook 3>"],',
+            '  "hook": "<selected hook under 8 words>",',
+            '  "postText": "<complete LinkedIn post with line breaks>",',
+            '  "cta": "<final CTA or empty string>",',
+            '  "hashtags": ["<hashtag 1>", "<hashtag 2>"],',
+            '  "qualityChecks": {',
+            '    "hookUnderEightWords": true,',
+            '    "noBannedPhrases": true,',
+            '    "oneClearIdea": true,',
+            '    "soundsHuman": true,',
+            '    "valuableToColdReader": true,',
+            '    "noGenericEnding": true',
+            '  }',
+            '}'
+          ].join('\n')
+        }
+      ]
+    });
+
+    const raw = resp.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    if (!parsed.postText || !parsed.hook) {
+      return {
+        ...fallbackLinkedInPost({ article, options }),
+        model: MODEL
+      };
+    }
+
+    return {
+      topicOptions: Array.isArray(parsed.topicOptions) ? parsed.topicOptions : [],
+      selectedTopic: String(parsed.selectedTopic || article.title || '').trim(),
+      topicTier: String(parsed.topicTier || '').trim(),
+      emotionalJob: String(parsed.emotionalJob || '').trim(),
+      framework: String(parsed.framework || '').trim(),
+      hookOptions: Array.isArray(parsed.hookOptions) ? parsed.hookOptions.map(String) : [],
+      hook: String(parsed.hook || '').trim(),
+      postText: String(parsed.postText || '').trim(),
+      cta: String(parsed.cta || '').trim(),
+      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.map(String) : [],
+      qualityChecks: parsed.qualityChecks || {},
+      model: MODEL
+    };
+  } catch (err) {
+    console.warn('[ai] linkedin generation failed:', err.message);
+    return {
+      ...fallbackLinkedInPost({ article, options }),
+      model: MODEL
+    };
+  }
+}
+
+module.exports = { isEnabled, summarizeArticle, classifyCategory, classifyProfileRelevance, generateBlogPost, generateLinkedInPost };

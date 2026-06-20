@@ -1,0 +1,161 @@
+const axios = require('axios');
+const FetchLog = require('../models/FetchLog');
+const User = require('../models/User');
+const { buildN8nPayload } = require('../services/queryBuilder');
+const { runProfileSearch } = require('../services/profileSearchRunner');
+const { persistProfileResults } = require('../services/profileResultsService');
+
+const runningUsers = new Set();
+
+function isValidTime(value) {
+  return /^\d{2}:\d{2}$/.test(String(value || ''));
+}
+
+function safeTimezone(value, fallback = 'Asia/Kolkata') {
+  const timezone = String(value || fallback);
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date());
+    return timezone;
+  } catch {
+    return fallback;
+  }
+}
+
+function zonedParts(date, timezone) {
+  const safeZone = safeTimezone(timezone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: safeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+function dateKeyInZone(date, timezone) {
+  const parts = zonedParts(date, timezone);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function minutesInZone(date, timezone) {
+  const parts = zonedParts(date, timezone);
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
+function shouldRunNow(user, now = new Date()) {
+  const schedule = user.fetchSchedule || {};
+  if (!schedule.enabled) return false;
+
+  const timezone = safeTimezone(schedule.timezone || user.timezone || 'Asia/Kolkata');
+  const time = isValidTime(schedule.time) ? schedule.time : '07:00';
+  const [hour, minute] = time.split(':').map(Number);
+  const targetMinutes = hour * 60 + minute;
+  const currentMinutes = minutesInZone(now, timezone);
+
+  if (currentMinutes < targetMinutes || currentMinutes > targetMinutes + 9) {
+    return false;
+  }
+
+  if (!schedule.lastRunAt) return true;
+
+  const lastKey = dateKeyInZone(new Date(schedule.lastRunAt), timezone);
+  const todayKey = dateKeyInZone(now, timezone);
+  if (lastKey === todayKey) return false;
+
+  if (schedule.frequency === 'weekly') {
+    const elapsedMs = now.getTime() - new Date(schedule.lastRunAt).getTime();
+    return elapsedMs >= 6.5 * 24 * 60 * 60 * 1000;
+  }
+
+  return true;
+}
+
+async function triggerUser(user) {
+  const useN8nWebhook = process.env.PROFILE_SEARCH_USE_N8N === 'true';
+  const webhookUrl = process.env.N8N_WEBHOOK_URL;
+  if (useN8nWebhook && !webhookUrl) throw new Error('N8N_WEBHOOK_URL is not configured');
+
+  const startedAt = new Date();
+  const publicApiUrl = String(process.env.PUBLIC_API_URL || process.env.API_BASE_URL || '').replace(/\/$/, '');
+  const payload = buildN8nPayload(user, {
+    userId: user._id.toString(),
+    trigger: 'schedule',
+    callbackUrl: process.env.N8N_CALLBACK_URL || (publicApiUrl ? `${publicApiUrl}/api/n8n/results` : ''),
+    callbackSecret: process.env.N8N_CALLBACK_SECRET || '',
+    startedAt: startedAt.toISOString()
+  });
+
+  const log = await FetchLog.create({
+    triggeredBy: 'n8n',
+    userId: user._id,
+    country: payload.country,
+    region: payload.region,
+    sector: payload.sector,
+    query: payload.query,
+    status: 'running',
+    startedAt,
+    notes: 'Scheduled profile intelligence trigger'
+  });
+
+  payload.logId = String(log._id);
+
+  try {
+    if (!useN8nWebhook) {
+      const resultPayload = await runProfileSearch(payload);
+      await persistProfileResults(resultPayload);
+      user.fetchSchedule.lastRunAt = startedAt;
+      await user.save();
+      return;
+    }
+
+    await axios.post(webhookUrl, payload, {
+      timeout: parseInt(process.env.N8N_WEBHOOK_TIMEOUT_MS, 10) || 1000 * 60 * 20,
+      headers: {
+        ...(process.env.N8N_WEBHOOK_SECRET ? { 'x-n8n-secret': process.env.N8N_WEBHOOK_SECRET } : {})
+      }
+    });
+
+    user.fetchSchedule.lastRunAt = startedAt;
+    await user.save();
+  } catch (error) {
+    await FetchLog.findByIdAndUpdate(log._id, {
+      status: 'failed',
+      finishedAt: new Date(),
+      durationMs: Date.now() - startedAt.getTime(),
+      totalErrors: 1,
+      notes: `Scheduled n8n trigger failed: ${error.message}`
+    });
+    throw error;
+  }
+}
+
+async function runDueSchedules() {
+  const candidates = await User.find({
+    isActive: true,
+    role: { $in: ['admin', 'super_admin'] },
+    'fetchSchedule.enabled': true
+  }).limit(parseInt(process.env.SCHEDULE_SCAN_LIMIT, 10) || 200);
+
+  const now = new Date();
+  const due = candidates.filter((user) => shouldRunNow(user, now));
+  const batchSize = parseInt(process.env.SCHEDULE_BATCH_SIZE, 10) || 20;
+
+  for (const user of due.slice(0, batchSize)) {
+    const id = user._id.toString();
+    if (runningUsers.has(id)) continue;
+    runningUsers.add(id);
+    triggerUser(user)
+      .catch((err) => console.error(`[schedule] failed for ${id}:`, err.message))
+      .finally(() => runningUsers.delete(id));
+  }
+
+  return { checked: candidates.length, due: due.length, triggered: Math.min(due.length, batchSize) };
+}
+
+module.exports = {
+  runDueSchedules,
+  shouldRunNow
+};

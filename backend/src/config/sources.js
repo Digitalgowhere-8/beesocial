@@ -120,6 +120,60 @@ const COMPETITOR_SOURCES = [
     name: 'Hawksford',
     origin: 'hawksford.com',
     feedUrl: 'https://www.hawksford.com/knowledge-hub'
+  },
+  {
+    id: 'sovereign-group',
+    name: 'Sovereign Group',
+    origin: 'sovereigngroup.com',
+    feedUrl: 'https://www.sovereigngroup.com/news-and-views/'
+  },
+  {
+    id: 'pro-partner-group',
+    name: 'PRO Partner Group',
+    origin: 'propartnergroup.com',
+    feedUrl: 'https://www.propartnergroup.com/blog/'
+  },
+  {
+    id: 'amicorp',
+    name: 'Amicorp',
+    origin: 'amicorp.com',
+    feedUrl: 'https://www.amicorp.com/news/'
+  },
+  {
+    id: 'bgl-uruguay',
+    name: 'BGL Uruguay',
+    origin: 'bgl.com.uy',
+    feedUrl: 'https://bgl.com.uy/'
+  },
+  {
+    id: 'bdo-brazil',
+    name: 'BDO Brazil',
+    origin: 'bdobrazil.com.br',
+    feedUrl: 'https://www.bdobrazil.com.br/'
+  },
+  {
+    id: 'trident-trust',
+    name: 'Trident Trust',
+    origin: 'tridenttrust.com',
+    feedUrl: 'https://www.tridenttrust.com/news-and-insights/'
+  },
+  {
+    id: 'dixcart',
+    name: 'Dixcart',
+    origin: 'dixcart.com',
+    feedUrl: 'https://www.dixcart.com/articles/'
+  },
+  {
+    id: 'maples',
+    name: 'Maples Group',
+    origin: 'maples.com',
+    feedUrl: 'https://maples.com/news/'
+  },
+  {
+    id: 'cogency-global',
+    name: 'Cogency Global',
+    origin: 'cogencyglobal.com',
+    feedUrl: 'https://www.cogencyglobal.com/blog'
   }
 ];
 

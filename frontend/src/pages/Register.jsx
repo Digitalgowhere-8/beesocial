@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Loader2, ArrowRight, Eye, EyeOff, UserPlus, KeyRound, ArrowLeft } from 'lucide-react';
 
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [stage, setStage] = useState('select'); // 'select' or 'form'
   const [form, setForm] = useState({ name: '', email: '', password: '', company: '', designation: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,7 +76,7 @@ export default function Register() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/logo.png" style={{ filter: 'brightness(0) invert(1)', height: '52px', width: 'auto' }} alt="Bee Social Logo" />
+          <img src="/logo.png" style={{ filter: 'brightness(0) invert(1)', height: '52px', width: 'auto' }} alt="OpportunityOS AI Logo" />
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col justify-start fade-in pt-40 xl:pt-44 ml-6 xl:ml-10" style={{ animationDelay: '0.1s' }}>
@@ -84,31 +85,31 @@ export default function Register() {
             style={{ background: 'rgba(255,255,255,0.18)', color: 'white', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.25)' }}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-green-300 inline-block" style={{ boxShadow: '0 0 4px #86efac' }} />
-            Live Market Signal
+            Live Opportunity Signal
           </div>
 
           <h1
             className="max-w-[800px] text-white font-black leading-[1.08] mb-8"
             style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"DM Sans", system-ui, sans-serif' }}
           >
-            The Market Intelligence<br />
-            that Runs Your Content<br />
-            Pipeline, On Autopilot.
+            AI-curated opportunities<br />
+            for every market<br />
+            and service category.
           </h1>
 
           <div className="max-w-[720px] text-white/70 text-[11px] font-semibold uppercase tracking-[0.14em] leading-[1.9]">
-            100+ TRUSTED SOURCES &nbsp;&middot;&nbsp; GOVERNMENT PORTALS &nbsp;&middot;&nbsp; INDUSTRY PUBLICATIONS &nbsp;&middot;&nbsp; MARKET BRIEFINGS
+            GOVERNMENT SCHEMES &nbsp;&middot;&nbsp; GRANTS &nbsp;&middot;&nbsp; TENDERS &nbsp;&middot;&nbsp; POLICY UPDATES &nbsp;&middot;&nbsp; MARKET BRIEFINGS
           </div>
         </div>
 
         <div className="absolute z-10 left-0 right-0 bottom-0 w-full overflow-hidden flex items-end justify-center pointer-events-none" style={{ animationDelay: '0.2s' }}>
-          <img src="/skyline.png" className="w-full h-auto opacity-45 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="Singapore Skyline" />
+          <img src="/skyline.png" className="w-full h-auto opacity-45 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="Opportunity skyline" />
         </div>
       </div>
 
       <div className="flex-1 min-h-screen flex items-center justify-center px-4 py-24 sm:p-10 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
         <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
-          <img src="/logo.png" style={{ height: '38px', width: 'auto' }} alt="Bee Social Logo" />
+          <img src="/logo.png" style={{ height: '38px', width: 'auto' }} alt="OpportunityOS AI Logo" />
         </div>
 
         <div className="relative z-10 w-full max-w-md fade-in mt-12 lg:mt-0">
@@ -119,61 +120,114 @@ export default function Register() {
               border: '1px solid rgba(209,18,67,0.05)'
             }}
           >
-            <h2 className="text-2xl font-black text-gray-900 mb-1 tracking-tight">Request an account</h2>
-            <p className="text-gray-400 text-sm mb-6">Your account will be reviewed before dashboard access is enabled.</p>
+            {stage === 'select' ? (
+              <>
+                <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+                  Welcome to Ascentium
+                </h2>
+                <p className="text-gray-400 text-sm mb-6">Please choose how you would like to proceed:</p>
 
-            <form onSubmit={submit} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Full Name</label>
-                  <input required style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Full name" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Email</label>
-                  <input type="email" required style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="name@company.com" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Company</label>
-                  <input style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.company} onChange={(e) => update('company', e.target.value)} placeholder="Company name" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Designation</label>
-                  <input style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.designation} onChange={(e) => update('designation', e.target.value)} placeholder="Role or title" />
-                </div>
-              </div>
+                <div className="space-y-4">
+                  {/* Option 1: New User */}
+                  <button
+                    type="button"
+                    onClick={() => setStage('form')}
+                    className="w-full text-left p-5 rounded-2xl border border-gray-100 hover:border-[#D11243]/20 bg-gray-50/50 hover:bg-[#D11243]/5 transition-all duration-300 group flex items-start gap-4"
+                    style={{ transition: 'all 0.25s ease' }}
+                  >
+                    <div className="p-3 rounded-xl bg-[#D11243]/10 text-[#D11243] group-hover:scale-105 transition-transform duration-200">
+                      <UserPlus size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-800 text-sm group-hover:text-[#D11243] transition-colors">I am a new user</h3>
+                      <p className="text-xs text-gray-400 mt-1 leading-normal">Request a new dashboard account. Admin approval is required before access is granted.</p>
+                    </div>
+                  </button>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Password</label>
-                <div className="relative">
-                  <input type={showPass ? 'text' : 'password'} required minLength={6} style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="At least 6 characters" />
-                  <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {/* Option 2: Existing User */}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    className="w-full text-left p-5 rounded-2xl border border-gray-100 hover:border-[#D11243]/20 bg-gray-50/50 hover:bg-[#D11243]/5 transition-all duration-300 group flex items-start gap-4"
+                    style={{ transition: 'all 0.25s ease' }}
+                  >
+                    <div className="p-3 rounded-xl bg-[#D11243]/10 text-[#D11243] group-hover:scale-105 transition-transform duration-200">
+                      <KeyRound size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-800 text-sm group-hover:text-[#D11243] transition-colors">I already have an account</h3>
+                      <p className="text-xs text-gray-400 mt-1 leading-normal">Sign in securely using your credentials and jump straight to the console.</p>
+                    </div>
                   </button>
                 </div>
-              </div>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStage('select')}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-[#D11243] transition-colors mb-4 group"
+                >
+                  <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform duration-200" /> Back
+                </button>
 
-              {error && (
-                <div className="text-xs rounded-lg px-3 py-2 font-medium" style={{ background: '#FFF0F3', color: '#D11243', border: '1px solid rgba(209,18,67,0.15)' }}>
-                  {error}
-                </div>
-              )}
+                <h2 className="text-2xl font-black text-gray-900 mb-1 tracking-tight">Request an account</h2>
+                <p className="text-gray-400 text-sm mb-6">Your account will be reviewed before dashboard access is enabled.</p>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-2 transition-all mt-2"
-                style={{ background: 'linear-gradient(90deg, #D11243, #a50d33)', boxShadow: '0 4px 14px rgba(209,18,67,0.35)' }}
-              >
-                {loading ? <Loader2 size={15} className="animate-spin" /> : <>Submit Request <ArrowRight size={14} /></>}
-              </button>
-            </form>
+                <form onSubmit={submit} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Full Name</label>
+                      <input required style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Full name" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Email</label>
+                      <input type="email" required style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="name@company.com" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Company</label>
+                      <input style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.company} onChange={(e) => update('company', e.target.value)} placeholder="Company name" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Designation</label>
+                      <input style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.designation} onChange={(e) => update('designation', e.target.value)} placeholder="Role or title" />
+                    </div>
+                  </div>
 
-            <p className="text-center text-xs text-gray-400 mt-5">
-              Already have an account?{' '}
-              <Link to="/login" className="font-bold hover:underline" style={{ color: '#D11243' }}>
-                Sign in
-              </Link>
-            </p>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Password</label>
+                    <div className="relative">
+                      <input type={showPass ? 'text' : 'password'} required minLength={6} style={inputStyle} onFocus={handleFocus} onBlur={handleBlur} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="At least 6 characters" />
+                      <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="text-xs rounded-lg px-3 py-2 font-medium" style={{ background: '#FFF0F3', color: '#D11243', border: '1px solid rgba(209,18,67,0.15)' }}>
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-2 transition-all mt-2"
+                    style={{ background: 'linear-gradient(90deg, #D11243, #a50d33)', boxShadow: '0 4px 14px rgba(209,18,67,0.35)' }}
+                  >
+                    {loading ? <Loader2 size={15} className="animate-spin" /> : <>Submit Request <ArrowRight size={14} /></>}
+                  </button>
+                </form>
+
+                <p className="text-center text-xs text-gray-400 mt-5">
+                  Already have an account?{' '}
+                  <button type="button" onClick={() => navigate('/login')} className="font-bold hover:underline" style={{ color: '#D11243' }}>
+                    Sign in
+                  </button>
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

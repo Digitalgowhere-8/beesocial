@@ -3,9 +3,10 @@ import api from '../api/axios';
 import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 
 const CRIMSON = '#D11243';
-const COUNTRY_OPTIONS = ['Singapore', 'Hong Kong', 'China'];
+const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 
 export default function Filters({ initial = {}, onChange, showAdmin = false }) {
+  const { region: _region, ...initialWithoutRegion } = initial || {};
   const [meta, setMeta] = useState(null);
   const [filters, setFilters] = useState({
     type: '',
@@ -16,8 +17,9 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
     from: '',
     to: '',
     q: '',
+    saved: '',
     publishedOnly: '',
-    ...initial,
+    ...initialWithoutRegion,
   });
   const [open, setOpen] = useState(false);
 
@@ -27,15 +29,18 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
 
   const subcatOptions = useMemo(() => {
     if (!meta || !filters.category) return [];
-    return meta.categories[filters.category] || [];
+    return (meta.categories || meta.dataCategories || {})[filters.category] || [];
   }, [meta, filters.category]);
 
   const sourceOptions = useMemo(() => {
     if (!meta) return [];
+    const sources = { ...EMPTY_SOURCES, ...(meta.sources || {}) };
     if (!filters.type)
-      return [...meta.sources.news, ...meta.sources.govt, ...meta.sources.competitor, ...meta.sources.evergreen];
-    return meta.sources[filters.type] || [];
+      return [...sources.news, ...sources.govt, ...sources.competitor, ...sources.evergreen];
+    return sources[filters.type] || [];
   }, [meta, filters.type]);
+
+  const categoryOptions = useMemo(() => Object.keys(meta?.categories || meta?.dataCategories || {}), [meta]);
 
   const update = (k, v) => {
     const next = { ...filters, [k]: v };
@@ -46,7 +51,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
   };
 
   const reset = () => {
-    const blank = { type: '', category: '', subcategory: '', source: '', country: '', from: '', to: '', q: '', publishedOnly: '' };
+    const blank = { type: '', category: '', subcategory: '', source: '', country: '', from: '', to: '', q: '', saved: '', publishedOnly: '' };
     setFilters(blank);
     onChange?.(blank);
   };
@@ -138,10 +143,12 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
               <select style={inputBase} value={filters.type} onChange={(e) => update('type', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All</option>
-                <option value="news">News</option>
-                <option value="govt">Government</option>
-                <option value="competitor">Competitor</option>
-                <option value="evergreen">Evergreen</option>
+                {(meta?.types || [
+                  { id: 'news', label: 'News Articles' },
+                  { id: 'govt', label: 'Government Updates' },
+                  { id: 'competitor', label: 'Competitor Intel' },
+                  { id: 'evergreen', label: 'Evergreen Guides' },
+                ]).map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
             </div>
             <div>
@@ -149,21 +156,21 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
               <select style={inputBase} value={filters.source} onChange={(e) => update('source', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All sources</option>
-                {sourceOptions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {sourceOptions.map((s, index) => (
+                  <option key={`${s.id}-${index}`} value={s.id}>{s.name}</option>
                 ))}
               </select>
             </div>
           </div>
 
           {/* Row 2 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Category</label>
               <select style={inputBase} value={filters.category} onChange={(e) => update('category', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All categories</option>
-                {meta && Object.keys(meta.categories).map((c) => (
+                {categoryOptions.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -186,7 +193,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
               <select style={inputBase} value={filters.country} onChange={(e) => update('country', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All countries</option>
-                {COUNTRY_OPTIONS.map((country) => (
+                {(meta?.countries || []).map((country) => (
                   <option key={country} value={country}>{country}</option>
                 ))}
               </select>
@@ -200,6 +207,15 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">To</label>
               <input type="date" style={inputBase} value={filters.to}
                 onChange={(e) => update('to', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Saved</label>
+              <select style={inputBase} value={filters.saved}
+                onChange={(e) => update('saved', e.target.value)}
+                onFocus={handleFocus} onBlur={handleBlur}>
+                <option value="">All</option>
+                <option value="true">Saved only</option>
+              </select>
             </div>
             {showAdmin && (
               <div>
