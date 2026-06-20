@@ -132,6 +132,10 @@ async function triggerUser(user) {
   }
 }
 
+// Stagger delay between triggers to avoid simultaneous API rate limit hits.
+// Default: 3000ms (3 seconds) between each user. Override via SCHEDULE_STAGGER_MS env var.
+const STAGGER_MS = parseInt(process.env.SCHEDULE_STAGGER_MS, 10) || 3000;
+
 async function runDueSchedules() {
   const candidates = await User.find({
     isActive: true,
@@ -143,13 +147,22 @@ async function runDueSchedules() {
   const due = candidates.filter((user) => shouldRunNow(user, now));
   const batchSize = parseInt(process.env.SCHEDULE_BATCH_SIZE, 10) || 20;
 
+  let staggerIndex = 0;
   for (const user of due.slice(0, batchSize)) {
     const id = user._id.toString();
     if (runningUsers.has(id)) continue;
     runningUsers.add(id);
-    triggerUser(user)
-      .catch((err) => console.error(`[schedule] failed for ${id}:`, err.message))
-      .finally(() => runningUsers.delete(id));
+
+    // Delay each trigger by (index × STAGGER_MS) so they don't all fire simultaneously.
+    // e.g. User 1 → 0s, User 2 → 3s, User 3 → 6s, User 4 → 9s ...
+    const delay = staggerIndex * STAGGER_MS;
+    staggerIndex += 1;
+
+    setTimeout(() => {
+      triggerUser(user)
+        .catch((err) => console.error(`[schedule] failed for ${id}:`, err.message))
+        .finally(() => runningUsers.delete(id));
+    }, delay);
   }
 
   return { checked: candidates.length, due: due.length, triggered: Math.min(due.length, batchSize) };
