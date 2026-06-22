@@ -76,6 +76,7 @@ app.use('/api/blogs/generate', expensiveLimit);
 app.use('/api/blogs/linkedin/generate', expensiveLimit);
 app.use('/api/admin/fetch', expensiveLimit);
 app.use('/api/admin/n8n/run', expensiveLimit);
+app.use('/api/admin/super/fetch/run', expensiveLimit);
 
 // --------- Health ---------
 app.get('/api/health', (_req, res) => {

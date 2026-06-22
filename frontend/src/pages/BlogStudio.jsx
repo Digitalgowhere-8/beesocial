@@ -284,7 +284,7 @@ export default function BlogStudio() {
       setSelectedBlog(data.item);
       await loadBlogs();
     } catch (err) {
-      setError(err.message || 'Blog generation failed');
+      setError(err.response?.data?.message || err.message || 'Blog generation failed');
     } finally {
       setGenerating(false);
     }

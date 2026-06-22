@@ -41,13 +41,18 @@ function tenantAdminId(user) {
 }
 
 function tenantQuery(user) {
-  if (user.role === 'super_admin') return {};
   return { tenantAdminId: tenantAdminId(user) };
 }
 
 function articleTenantQuery(user) {
   if (user.role === 'super_admin') return {};
-  return { userId: tenantAdminId(user) };
+  return {
+    $or: [
+      { userId: tenantAdminId(user) },
+      { userId: { $exists: false } },
+      { userId: null }
+    ]
+  };
 }
 
 function slugify(value) {

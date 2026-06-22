@@ -4,6 +4,8 @@ const DEFAULT_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergr
   .split(',')
   .map((topic) => topic.trim().toLowerCase())
   .filter(Boolean);
+const DEFAULT_TARGET_PER_TOPIC = 150;
+const MAX_TARGET_PER_TOPIC = 150;
 const CATEGORY_QUERY_MAP = {
   'Corporate Services':
     'company incorporation company registration company formation company secretary corporate compliance entity management business setup market entry branch office representative office share registry acquisition liquidation regulatory update',
@@ -262,6 +264,58 @@ function currentIntelYear(profile = {}) {
   return Math.min(2100, Number(profile.year || profile.currentYear || new Date().getFullYear()) || new Date().getFullYear());
 }
 
+function categorySubcategoryTerms(category, limit = 5) {
+  const subcategories = Object.keys(CATEGORIES[cleanText(category)]?.subcategories || {});
+  return subcategories.slice(0, limit).join(' ');
+}
+
+function categoryKeywordTerms(category, limit = 10) {
+  const selectedCategory = cleanText(category);
+  const categoryKeywords = cleanList(CATEGORIES[selectedCategory]?.keywords).slice(0, 4);
+  const subcategoryKeywords = Object.values(CATEGORIES[selectedCategory]?.subcategories || {})
+    .flatMap((keywords) => cleanList(keywords).slice(0, 2))
+    .slice(0, limit);
+  return [...new Set([...categoryKeywords, ...subcategoryKeywords])].join(' ');
+}
+
+function buildCategoryQueryVariants(topic, category, profile = {}) {
+  const country = cleanText(profile.country) || defaultCountry();
+  const region = cleanText(profile.region);
+  const location = buildLocation({ country, region });
+  const year = currentIntelYear(profile);
+  const competitors = uniqueList(profile.competitors);
+  const base = categoryQuery(category);
+  const subcategoryTerms = categorySubcategoryTerms(category);
+  const keywordTerms = categoryKeywordTerms(category);
+
+  if (topic === 'evergreen') {
+    return [
+      compactQuery([location, category, subcategoryTerms, 'requirements guide checklist', year]),
+      compactQuery([location, keywordTerms || base, 'compliance guide requirements']),
+      compactQuery([location, 'how to', category, 'business services'])
+    ];
+  }
+
+  if (topic === 'competitor') {
+    const competitorText = competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '';
+    return [
+      compactQuery([competitorText, location, category, 'expansion acquisition partnership new office service launch', year]),
+      compactQuery([competitorText, location, base, 'competitor intelligence market update', year]),
+      compactQuery([competitorText, location, 'professional services corporate services expansion', year])
+    ];
+  }
+
+  const intent = topic === 'govt'
+    ? 'policy regulatory announcement law rule circular update'
+    : 'latest news announcement policy compliance business update';
+
+  return [
+    compactQuery([location, category, subcategoryTerms, intent, year]),
+    compactQuery([location, keywordTerms || base, 'latest announcement update', year]),
+    compactQuery([location, category, 'regulation compliance tax business news', year])
+  ];
+}
+
 function buildTopicQueries(profile = {}) {
   const variants = buildTopicQueryVariants(profile);
   return Object.fromEntries(
@@ -279,7 +333,7 @@ function buildTopicQueryVariants(profile = {}) {
   for (const topic of topics) {
     queries[topic] = customQueryOverride
       ? [customQueryOverride]
-      : categories.map((category) => topicQueryForCategory(topic, category, competitors)).filter(Boolean);
+      : categories.flatMap((category) => buildCategoryQueryVariants(topic, category, { ...profile, competitors })).filter(Boolean);
   }
 
   return queries;
@@ -290,7 +344,12 @@ function buildTopicQueryCategories(profile = {}) {
   const customQueryOverride = cleanText(profile.customQueryOverride || profile.custom_query_override || profile.query);
   const categories = selectedCategories(profile);
   return Object.fromEntries(
-    topics.map((topic) => [topic, customQueryOverride ? [categories[0] || defaultCategory()] : categories])
+    topics.map((topic) => [
+      topic,
+      customQueryOverride
+        ? [categories[0] || defaultCategory()]
+        : categories.flatMap((category) => buildCategoryQueryVariants(topic, category, profile).map(() => category))
+    ])
   );
 }
 
@@ -333,7 +392,10 @@ function buildN8nPayload(profile = {}, extra = {}) {
   const timezone = cleanText(profile.fetchSchedule?.timezone || profile.schedule?.timezone || profile.timezone) || defaultTimezone();
   const topics = normalizeTopics(profile.topics);
   const days = Math.max(1, Math.min(365, Number(profile.days || profile.maxAgeDays || 30) || 30));
-  const targetPerTopic = Math.max(1, Math.min(10, Number(profile.targetPerTopic || profile.maxPerTopic || 10) || 10));
+  const targetPerTopic = Math.max(
+    1,
+    Math.min(MAX_TARGET_PER_TOPIC, Number(profile.targetPerTopic || profile.maxPerTopic || DEFAULT_TARGET_PER_TOPIC) || DEFAULT_TARGET_PER_TOPIC)
+  );
   const sourceDomains = cleanSourceDomains(
     profile.preferredDomains ||
     profile.preferred_domains ||

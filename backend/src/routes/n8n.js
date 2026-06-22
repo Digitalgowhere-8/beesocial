@@ -260,7 +260,7 @@ router.post('/saved-searches', protect, requireProfileAutomation, asyncHandler(a
     sources: cleanList(sources || preferredDomains),
     strictSources: Boolean(strictSources),
     days: Number(days || req.user.days || 30),
-    targetPerTopic: Number(targetPerTopic || 10),
+    targetPerTopic: Number(targetPerTopic || 150),
     minTavilyScore: minTavilyScore === undefined || minTavilyScore === null || minTavilyScore === '' ? undefined : Number(minTavilyScore),
     query: query || customQueryOverride || '',
     language: language || req.user.language || 'en',
@@ -307,7 +307,7 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
         : cleanList(user.sources),
       strictSources: Boolean(req.body.strictSources || req.body.strict_sources),
       days: Number(req.body.days || user.days || 30),
-      targetPerTopic: Number(req.body.targetPerTopic || req.body.maxPerTopic || 10),
+      targetPerTopic: Number(req.body.targetPerTopic || req.body.maxPerTopic || 150),
       minTavilyScore: req.body.minTavilyScore === undefined || req.body.minTavilyScore === null || req.body.minTavilyScore === ''
         ? undefined
         : Number(req.body.minTavilyScore),

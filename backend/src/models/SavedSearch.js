@@ -17,7 +17,7 @@ const savedSearchSchema = new mongoose.Schema(
     sources: [{ type: String, trim: true }],
     strictSources: { type: Boolean, default: false },
     days: { type: Number, default: 30, min: 1, max: 365 },
-    targetPerTopic: { type: Number, default: 10, min: 1, max: 20 },
+    targetPerTopic: { type: Number, default: 150, min: 1, max: 150 },
     minTavilyScore: { type: Number, min: 0, max: 100 },
     query: { type: String, default: '', trim: true, maxlength: 500 },
     language: { type: String, default: 'en', trim: true, maxlength: 10 },

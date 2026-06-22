@@ -11,6 +11,12 @@ const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
+const {
+  getPlatformFetchConfig,
+  savePlatformFetchConfig,
+  triggerPlatformFetch,
+  getPlatformFetchStatus
+} = require('../services/platformFetchService');
 
 const router = express.Router();
 
@@ -626,6 +632,37 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     },
     topUsers,
     recentRuns
+  });
+}));
+
+router.get('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const config = await getPlatformFetchConfig();
+  res.json({ config });
+}));
+
+router.put('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const config = await savePlatformFetchConfig(req.body || {});
+  res.json({ config });
+}));
+
+router.get('/super/fetch/status', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  res.json(getPlatformFetchStatus());
+}));
+
+router.post('/super/fetch/run', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const config = req.body?.config
+    ? await savePlatformFetchConfig(req.body.config)
+    : await getPlatformFetchConfig();
+  const result = await triggerPlatformFetch({
+    triggeredByUser: req.user._id,
+    config,
+    trigger: 'manual'
+  });
+  res.json({
+    ok: true,
+    message: 'Platform fetch queued',
+    logId: result.logId,
+    config: result.config
   });
 }));
 

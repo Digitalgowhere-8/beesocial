@@ -33,6 +33,7 @@ function isEnabled() {
 }
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
   const title = article?.title || 'Market intelligence update';
@@ -245,7 +246,7 @@ function topicFilterInstructions(topic) {
     competitor:
       'STORE tracked competitor activity, acquisitions, partnerships, new offices, service launches, hiring, senior appointments, funding, client wins, market entry, expansion, thought leadership, or other competitive intelligence with a real business signal.',
     evergreen:
-      'STORE evergreen guides, explainers, checklists, official guidance, compliance requirements, how-to resources, filing guides, market-entry guides, tax/accounting guides, or practical reference content that remains useful for clients or advisors.'
+      'STORE only true evergreen reference content: guides, explainers, checklists, official guidance, compliance requirements, how-to resources, filing guides, market-entry guides, tax/accounting guides, FAQs, handbooks, manuals, or practical resources that remain useful for clients or advisors beyond the current news cycle. REJECT ordinary blogs, blog posts, latest-news articles, press releases, opinion pieces, event/webinar pages, promotional thought-leadership, and time-sensitive announcements even if they mention a relevant category.'
   };
   return map[topic] || map.news;
 }
@@ -253,8 +254,8 @@ function topicFilterInstructions(topic) {
 function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
   const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
   return {
-    decision: score >= 40 ? 'STORE' : 'IGNORE',
-    category: score >= 40 ? (article.category || 'General') : 'IGNORE',
+    decision: score >= PROFILE_RELEVANCE_MIN_SCORE ? 'STORE' : 'IGNORE',
+    category: score >= PROFILE_RELEVANCE_MIN_SCORE ? (article.category || 'General') : 'IGNORE',
     subcategory: article.subcategory || '',
     summary: article.summary || article.aiSummary || '',
     relevance_score: score,
@@ -278,7 +279,9 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   const competitors = listPromptValues(profile.competitors || article.competitors);
   const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || article.days || 30) || 30));
   const selectedCategory = profile.category || article.category || 'General';
+  const selectedCategories = listPromptValues(profile.categories || article.categories || selectedCategory);
   const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
+  const mainCategories = Object.keys(CATEGORIES || {});
 
   try {
     const resp = await cli.chat.completions.create({
@@ -306,6 +309,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
             `Country: ${profile.country || article.country || ''}`,
             `Region/state: ${profile.region || article.region || 'All regions'}`,
             `Category selected by user: ${selectedCategory}`,
+            `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
             `Sub-category selected by user: ${selectedSubcategory}`,
             `Topic/type: ${topic}`,
             `Tracked competitors: ${competitors.join(', ') || 'None'}`,
@@ -317,27 +321,27 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
             '',
             'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
             `- Any article with no clear connection to ${marketText}.`,
-            `- Any jurisdiction outside ${marketText}, unless it explicitly affects businesses, compliance, tax, investment, employment, governance, or market entry in ${marketText}.`,
-            '- Conference recaps, webinars, podcasts, awards, rankings, CSR, charity, tourism, sports, entertainment, human-interest stories, and generic opinion pieces with no factual business/regulatory update.',
-            '- Earnings reports, stock-price-only articles, product promotions, directory pages, homepage/listing pages, static portals, login/e-service pages, job-only posts, or event recaps with no useful business signal.',
-            '- Consumer lifestyle, retail, food, real estate/property, transport, defence, geopolitics, technology, AI, cybersecurity, infrastructure, energy, mining, or insurance articles with no regulatory/compliance/business-services angle.',
+            `- Any jurisdiction outside ${marketText}, unless it mentions or clearly affects businesses, compliance, tax, investment, employment, governance, market entry, trade, economy, or professional services in ${marketText}.`,
+            `- Any article that does not fit at least one of the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
+            '- Broken pages, directory pages, homepage/listing pages, login/e-service pages, job-only posts, stock-price-only pages, pure product promotions, sports, entertainment, human-interest stories, or generic opinion pieces with no factual update.',
             `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
-            '- Competitor intelligence only counts when a tracked competitor is explicitly named and the article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, or another competitive signal in the selected market.',
+            '- Competitor intelligence should be kept when a tracked competitor is explicitly named or the source/article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, thought leadership, or another market signal in the selected market.',
             '',
             'STEP 2: TOPIC RULE',
             topicFilterInstructions(topic),
             '',
             'STEP 3: SCORING',
-            `Give 70-100 when the article has a new, concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, work-pass/employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, or direct competitor signal affecting ${marketText}.`,
-            `Give 50-69 when it has a clear ${marketText} impact and is useful for ${companyName}'s selected category, but the impact is indirect or trend-level.`,
-            'Give 40-49 when it is category-adjacent and potentially useful but not a strong direct update.',
-            'Give 0-39 when it is weak, unrelated, too old, or matches a reject rule. STORE only when score is at least 40.',
+            `Give 70-100 when the article has a concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, economy/trade update, or competitor signal affecting ${marketText}.`,
+            `Give ${PROFILE_RELEVANCE_MIN_SCORE}-69 when it is a useful ${marketText} business, economy, regulatory, tax, employment, market-entry, professional-services, or competitor update that fits any taxonomy category.`,
+            'Give 0 when it is unrelated to the country, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
+            `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}. If the article is not strong enough for ${PROFILE_RELEVANCE_MIN_SCORE}, return IGNORE with score 0.`,
             '',
             'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
-            'For STORE decisions, use the profile category unless the article clearly belongs to a better category from the taxonomy.',
-            'Use only exact category names from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
+            `For STORE decisions, the article only needs to match ONE relevant category from the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
+            'Do not reject an article only because it does not match the first/profile category. If it is about the selected country and fits any taxonomy category, STORE it.',
+            'Use the best exact category name from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
             `Valid sub-categories for the selected category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
-            'If valid sub-categories are provided, use one exact value from that list. If a specific sub-category was selected by the user, keep it unless the article should be ignored or is obviously a better fit elsewhere.',
+            'Use the best exact sub-category under the chosen category. If valid sub-categories are provided for the profile category, prefer them only when they fit; otherwise use the taxonomy list above.',
             '',
             'STEP 5: OUTPUT',
             `summary must explain in 2 short sentences what happened and why it matters to ${companyName} clients or users in ${marketText}.`,

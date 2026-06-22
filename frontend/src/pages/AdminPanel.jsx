@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import Filters from '../components/Filters';
@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
-  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle
+  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -48,6 +48,7 @@ const ADMIN_TABS = [
 
 const SUPER_ADMIN_TABS = [
   { key: 'platform', label: 'Platform Overview', icon: Crown, hint: 'Global health' },
+  { key: 'fetch',    label: 'Platform Fetch',    icon: Globe2, hint: 'Shared intelligence' },
   { key: 'users',    label: 'Users & Access',    icon: ShieldCheck, hint: 'Companies and members' },
   { key: 'plans',    label: 'Plan Builder',       icon: Database, hint: 'Limits and billing' },
   { key: 'settings', label: 'System Settings',   icon: KeyRound, hint: 'Platform controls' },
@@ -184,6 +185,7 @@ export default function AdminPanel() {
         </div>
 
         {tab === 'platform' && isSuperAdmin  && <SuperAdminPlatform />}
+        {tab === 'fetch'    && isSuperAdmin  && <SuperAdminFetchTab />}
         {tab === 'users'                       && <UsersTab dbPlans={dbPlans} />}
         {tab === 'plans'    && isSuperAdmin    && <PlanBuilderTab dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
         {tab === 'settings' && isSuperAdmin    && <SystemSettingsTab />}
@@ -571,6 +573,338 @@ function ArticlesTab() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============== SUPER ADMIN FETCH ===============
+
+function SuperAdminFetchTab() {
+  const { runProgress, setRunProgress } = useAuth();
+  const [profileMeta, setProfileMeta] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [status, setStatus] = useState({ running: false, logId: '' });
+  const [lastLog, setLastLog] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [autosaveStatus, setAutosaveStatus] = useState('saved');
+  const hasLocalEditsRef = useRef(false);
+  const saveTimerRef = useRef(null);
+  const saveVersionRef = useRef(0);
+  const browserTimezones = useMemo(() => getBrowserTimezones(), []);
+
+  const load = useCallback(async () => {
+    const [meta, cfg, stat, logs] = await Promise.all([
+      api.get('/articles/meta/filters'),
+      api.get('/admin/super/fetch/config'),
+      api.get('/admin/super/fetch/status'),
+      api.get('/admin/logs', { params: { limit: 1 } })
+    ]);
+    setProfileMeta(meta.data);
+    if (!hasLocalEditsRef.current) {
+      setConfig(cfg.data.config);
+    }
+    setStatus(stat.data);
+    setLastLog(logs.data.items?.[0] || null);
+  }, []);
+
+  useEffect(() => {
+    load().catch((e) => setMsg(`Error: ${e.message}`));
+    const id = setInterval(() => load().catch(() => {}), 5000);
+    return () => {
+      clearInterval(id);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    if (runProgress && !['running', 'queued'].includes(runProgress.status)) {
+      setRunning(false);
+      load().catch(() => {});
+    }
+  }, [runProgress?.status, load]);
+
+  const countries = profileMeta?.fetchCountries || [];
+  const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
+  const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
+  const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
+
+  const persistConfig = useCallback(async (configToSave, { manual = false, version: providedVersion } = {}) => {
+    if (!configToSave) return configToSave;
+    const version = providedVersion || ++saveVersionRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (manual) setSaving(true);
+    setAutosaveStatus('saving');
+    try {
+      const { data } = await api.put('/admin/super/fetch/config', configToSave);
+      if (version === saveVersionRef.current) {
+        hasLocalEditsRef.current = false;
+        setConfig(data.config);
+        setAutosaveStatus('saved');
+      }
+      return data.config;
+    } catch (e) {
+      if (version === saveVersionRef.current) {
+        setAutosaveStatus('error');
+        setMsg(`Error: ${e.message}`);
+      }
+      throw e;
+    } finally {
+      if (manual) setSaving(false);
+    }
+  }, []);
+
+  const scheduleAutosave = useCallback((nextConfig) => {
+    if (!nextConfig) return;
+    hasLocalEditsRef.current = true;
+    const version = ++saveVersionRef.current;
+    setAutosaveStatus('pending');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      persistConfig(nextConfig, { version }).catch(() => {});
+    }, 700);
+  }, [persistConfig]);
+
+  const changeConfig = useCallback((updater) => {
+    setConfig((prev) => {
+      const next = typeof updater === 'function' ? updater(prev || {}) : updater;
+      scheduleAutosave(next);
+      return next;
+    });
+  }, [scheduleAutosave]);
+
+  const update = (key, value) => changeConfig((prev) => ({ ...(prev || {}), [key]: value }));
+  const updateSchedule = (key, value) => changeConfig((prev) => ({
+    ...(prev || {}),
+    schedule: { ...((prev || {}).schedule || {}), [key]: value }
+  }));
+
+  const toggleCountry = (country) => {
+    const next = selectedCountries.includes(country)
+      ? selectedCountries.filter((item) => item !== country)
+      : [...selectedCountries, country];
+    update('countries', next);
+  };
+
+  const toggleTopic = (topic) => {
+    const next = selectedTopics.includes(topic)
+      ? selectedTopics.filter((item) => item !== topic)
+      : [...selectedTopics, topic];
+    if (next.length) update('topics', next);
+  };
+
+  const saveConfig = async () => {
+    setMsg('');
+    try {
+      const saved = await persistConfig(config, { manual: true });
+      setMsg(saved.schedule?.enabled ? 'Platform fetch settings and scheduler saved.' : 'Platform fetch settings saved.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    }
+  };
+
+  const runFetch = async () => {
+    setRunning(true);
+    setMsg('');
+    try {
+      const configForRun = hasLocalEditsRef.current ? await persistConfig(config) : config;
+      const { data } = await api.post('/admin/super/fetch/run', { config: configForRun });
+      const logId = data.logId || data.runId;
+      setConfig(data.config || config);
+      setRunProgress({
+        runId: logId,
+        logId,
+        status: 'running',
+        step: 'queued',
+        percent: 5,
+        messages: [{ at: new Date().toISOString(), step: 'queued', message: 'Platform fetch queued for selected countries and topics.' }]
+      });
+      setMsg(`Platform fetch started. Log ID: ${logId}`);
+      await load();
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (!config || !profileMeta) return <Loader />;
+
+  return (
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
+              <Globe2 size={18} />
+            </span>
+            <div className="min-w-0">
+              <div className="eyebrow mb-1 text-brand-crimson/80">Shared fetch</div>
+              <h3 className="text-xl font-black tracking-tight text-gray-900">Platform Intelligence Fetch</h3>
+              <p className="mt-1 text-sm text-gray-500">Super admin runs once; published results become visible across all admins and users.</p>
+            </div>
+          </div>
+          <span className={[
+            'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
+            isBusy ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+          ].join(' ')}>
+            <span className={`h-2 w-2 rounded-full ${isBusy ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+            {isBusy ? 'Running...' : 'Idle'}
+          </span>
+        </div>
+
+        <FetchField label="Countries">
+          <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
+            {countries.map((country) => {
+              const checked = selectedCountries.includes(country);
+              return (
+                <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0 truncate">{country}</span>
+                </label>
+              );
+            })}
+          </div>
+        </FetchField>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <FetchField label="Topics">
+            <div className="grid grid-cols-1 gap-2">
+              {TOPIC_OPTIONS.map((topic) => (
+                <label key={topic.key} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-brand-pink/20 text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
+                  <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0 truncate font-black">{topic.label}</span>
+                </label>
+              ))}
+            </div>
+          </FetchField>
+          <FetchField label="Data age">
+            <select className="select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+            </select>
+          </FetchField>
+          <FetchField label="Minimum score">
+            <input type="number" min="0" max="100" className="input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
+          </FetchField>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow mb-1">Scheduler</div>
+              <h4 className="text-base font-black tracking-tight text-gray-900">Automatic platform fetch</h4>
+            </div>
+            <Clock3 size={17} className="text-brand-crimson" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr_1fr_1.2fr] md:items-end">
+            <label className="flex h-[44px] items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 text-sm font-bold text-gray-700">
+              <input type="checkbox" checked={Boolean(config.schedule?.enabled)} onChange={(e) => updateSchedule('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+              Enable schedule
+            </label>
+            <FetchField label="Frequency">
+              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </FetchField>
+            <FetchField label="Time">
+              <input type="time" className="input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
+            </FetchField>
+            <FetchField label="Timezone">
+              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
+                {browserTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+              </select>
+            </FetchField>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="font-black text-gray-900">{selectedCountries.length} countries, {selectedTopics.length} topics selected</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">All categories and subcategories are classified during fetch</div>
+            <div className={`mt-1 text-[11px] font-black uppercase tracking-wider ${
+              autosaveStatus === 'error' ? 'text-red-500'
+                : autosaveStatus === 'saved' ? 'text-emerald-600'
+                  : 'text-amber-600'
+            }`}>
+              {autosaveStatus === 'saving' ? 'Saving changes...'
+                : autosaveStatus === 'pending' ? 'Changes will save automatically'
+                  : autosaveStatus === 'error' ? 'Autosave failed'
+                    : 'Changes saved'}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save
+            </button>
+            <button type="button" onClick={runFetch} disabled={isBusy || !selectedCountries.length || !selectedTopics.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400">
+              {isBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Run fetch
+            </button>
+          </div>
+        </div>
+
+        {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
+        {runProgress && (
+          <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Live process</div>
+                <h4 className="text-base font-black tracking-tight text-gray-900">{runProgress.status === 'success' ? 'Fetch complete' : runProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}</h4>
+              </div>
+              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{runProgress.step || runProgress.status}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+              <div className={`h-full rounded-full transition-all ${runProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`} style={{ width: `${Math.max(5, Math.min(100, Number(runProgress.percent || 35)))}%` }} />
+            </div>
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+              {(runProgress.messages || []).slice(-14).map((item, index) => (
+                <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-crimson" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>
+                    <div className="text-sm font-medium leading-relaxed text-gray-700">{item.message}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow mb-1">Last run</div>
+              <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+            </div>
+            <Activity size={17} className="text-brand-crimson" />
+          </div>
+          {!lastLog ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <Stat label="Status" value={lastLog.status} />
+              <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
+              <Stat label="Fetched" value={lastLog.totalFetched} />
+              <Stat label="Inserted" value={lastLog.totalInserted} highlight />
+              <Stat label="Duplicates" value={lastLog.totalDuplicates} />
+              <Stat label="Errors" value={lastLog.totalErrors} />
+              <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
