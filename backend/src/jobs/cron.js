@@ -9,6 +9,7 @@
 const cron = require('node-cron');
 const orchestrator = require('../services/orchestrator');
 const { runDueSchedules } = require('./userSchedule');
+const { runDuePlatformFetch } = require('../services/platformFetchService');
 
 let task = null;
 
@@ -29,6 +30,8 @@ function startUserScheduleScan() {
       try {
         const result = await runDueSchedules();
         if (result.triggered) console.log('[schedule] triggered due profiles', result);
+        const platformResult = await runDuePlatformFetch();
+        if (platformResult.triggered) console.log('[schedule] triggered platform fetch', platformResult);
       } catch (err) {
         console.error('[schedule] scan failed', err);
       }

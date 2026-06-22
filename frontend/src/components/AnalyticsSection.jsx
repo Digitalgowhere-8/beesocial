@@ -614,14 +614,14 @@ function CategoryMomentumCard({ categories, className = '' }) {
   const max = Math.max(...categories.map((item) => item.count), 1);
 
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white px-3 py-3 shadow-card sm:px-4 sm:py-4 lg:py-[clamp(0.65rem,1.4vh,1rem)] ${className}`}>
+    <section className={`flex flex-col rounded-lg border border-gray-100 bg-white px-3 py-3 shadow-card sm:px-4 sm:py-4 lg:py-[clamp(0.65rem,1.4vh,1rem)] ${className}`}>
       <div className="mb-[clamp(0.35rem,1vh,0.75rem)] flex shrink-0 items-center gap-2">
         <Sparkles size={15} className="shrink-0 text-brand-crimson" />
         <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
       </div>
-      <div className="grid min-h-0 flex-1 grid-rows-5 gap-[clamp(0.1rem,0.45vh,0.35rem)] overflow-hidden">
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.28rem,0.65vh,0.45rem)] overflow-y-auto pr-1">
         {categories.length ? categories.map((item) => (
-          <div key={item.label} className="flex min-h-0 flex-col justify-center">
+          <div key={item.label} className="flex min-h-[34px] shrink-0 flex-col justify-center">
             <div className="mb-[clamp(0.1rem,0.35vh,0.25rem)] flex items-center justify-between gap-2">
               <span className="truncate text-[clamp(10px,1.45vh,12px)] font-bold leading-none text-gray-700">{item.label}</span>
               <span className="shrink-0 text-[10px] font-black leading-none text-gray-400">{item.count}</span>
@@ -652,8 +652,7 @@ function buildMarketDistribution(items) {
 
   return rows
     .map((row) => ({ ...row, types: [...row.types] }))
-    .sort((a, b) => b.count - a.count || b.latest - a.latest)
-    .slice(0, 3);
+    .sort((a, b) => b.count - a.count || b.latest - a.latest);
 }
 
 function MarketDistributionCard({ markets, className = '' }) {
@@ -661,8 +660,8 @@ function MarketDistributionCard({ markets, className = '' }) {
   const total = markets.reduce((sum, market) => sum + market.count, 0);
 
   return (
-    <section className={`rounded-lg border border-gray-100 bg-white p-3 shadow-card sm:p-4 ${className}`}>
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <section className={`flex flex-col rounded-lg border border-gray-100 bg-white p-3 shadow-card sm:p-4 ${className}`}>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Globe size={16} className="text-brand-crimson" />
           <h3 className="truncate text-sm font-black text-gray-900">Market Distribution</h3>
@@ -671,12 +670,12 @@ function MarketDistributionCard({ markets, className = '' }) {
           {total} signals
         </span>
       </div>
-      <div className="grid min-h-0 flex-1 grid-rows-3 gap-[clamp(0.35rem,0.8vh,0.5rem)] overflow-hidden">
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.35rem,0.8vh,0.5rem)] overflow-y-auto pr-1">
         {markets.length ? markets.map((market, index) => {
           const pct = Math.round((market.count / max) * 100);
           const color = index === 0 ? CRIMSON : index === 1 ? '#10b981' : index === 2 ? '#3b82f6' : '#f59e0b';
           return (
-            <div key={market.market} className="flex min-h-0 flex-col justify-center rounded-lg border border-gray-100 px-3 py-[clamp(0.28rem,0.65vh,0.5rem)]">
+            <div key={market.market} className="flex min-h-[58px] shrink-0 flex-col justify-center rounded-lg border border-gray-100 px-3 py-[clamp(0.28rem,0.65vh,0.5rem)]">
               <div className="mb-[clamp(0.18rem,0.45vh,0.35rem)] grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <div className="flex min-w-0 items-baseline gap-2">
                   <div className="truncate text-[12px] font-black text-gray-800">{market.market}</div>

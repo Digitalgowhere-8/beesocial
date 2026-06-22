@@ -72,7 +72,7 @@ function defaultCountry() {
   return String(process.env.DEFAULT_FETCH_COUNTRY || '').trim();
 }
 
-async function persistProfileResults(body = {}) {
+async function persistProfileResults(body = {}, options = {}) {
   const rawItems = Array.isArray(body.results) ? body.results : [];
   const items = dedupeResultItems(rawItems);
   const userObjectId = mongoose.Types.ObjectId.isValid(body.userId) ? new mongoose.Types.ObjectId(body.userId) : null;
@@ -126,6 +126,13 @@ async function persistProfileResults(body = {}) {
             aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
             blogContext,
             tavilyAnswer,
+            rawData: item.rawData || item.raw || {
+              sourceQuery: item.source_query || item.sourceQuery || body.query || '',
+              queryCategory: item.queryCategory || '',
+              tavilyScore: item.tavilyScore || item.tavily_score || null,
+              blogContext,
+              tavilyAnswer
+            },
             urlHash: storedHash,
             fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
@@ -139,9 +146,12 @@ async function persistProfileResults(body = {}) {
     };
   });
 
+  let writeResult = null;
   if (ops.length) {
-    await Article.bulkWrite(ops, { ordered: false });
+    writeResult = await Article.bulkWrite(ops, { ordered: false });
   }
+  const inserted = Number(writeResult?.upsertedCount || 0);
+  const duplicates = Math.max(0, items.length - inserted);
 
   if (userObjectId && items.length) {
     const hashes = items.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
@@ -184,6 +194,10 @@ async function persistProfileResults(body = {}) {
     }
   }
 
+  if (options.skipLog) {
+    return { ok: true, processed: items.length, inserted, duplicates };
+  }
+
   const update = {
     triggeredBy: 'n8n',
     status: 'success',
@@ -192,8 +206,8 @@ async function persistProfileResults(body = {}) {
     durationMs: body.finishedAt && body.startedAt ? Math.max(new Date(body.finishedAt).getTime() - new Date(body.startedAt).getTime(), 0) : 0,
     perSource: normalizePerSource(body.perSource),
     totalFetched: Number(body.totalFetched ?? body.fetched ?? body.resultCount ?? items.length),
-    totalInserted: items.length,
-    totalDuplicates: Number(body.totalDuplicates ?? body.duplicates ?? 0),
+    totalInserted: Number(body.totalInserted ?? body.inserted ?? inserted),
+    totalDuplicates: Number(body.totalDuplicates ?? body.duplicates ?? duplicates),
     totalErrors: Number(body.totalErrors ?? body.errors ?? 0),
     notes: body.notes || 'code profile-search results received',
     userId: userObjectId || undefined,
@@ -216,7 +230,7 @@ async function persistProfileResults(body = {}) {
     throw err;
   }
 
-  return { ok: true, processed: items.length, logId: log._id };
+  return { ok: true, processed: items.length, inserted, duplicates, logId: log._id };
 }
 
 module.exports = {

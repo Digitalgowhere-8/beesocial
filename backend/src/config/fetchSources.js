@@ -18,7 +18,6 @@ function cleanDomain(value) {
 
 const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
   Singapore: [
-    'mas.gov.sg',
     'acra.gov.sg',
     'iras.gov.sg',
     'mom.gov.sg',
@@ -143,13 +142,12 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
 
 const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
   Singapore: [
-    'mas.gov.sg',
     'acra.gov.sg',
     'iras.gov.sg',
     'mom.gov.sg',
     'edb.gov.sg',
-    'mti.gov.sg',
-    'gov.sg'
+    'gov.sg',
+    'mfa.gov.sg'
   ],
   India: [
     'mca.gov.in',
@@ -168,13 +166,12 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'vietnam.gov.vn'
   ],
   'Hong Kong': [
-    'sfc.hk',
-    'hkma.gov.hk',
     'cr.gov.hk',
     'ird.gov.hk',
     'labour.gov.hk',
+    'investhk.gov.hk',
+    'gov.hk',
     'immd.gov.hk',
-    'info.gov.hk'
   ],
   China: [
     'mofcom.gov.cn',
@@ -226,7 +223,8 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'tax.gov.ae',
     'mohre.gov.ae',
     'difc.com',
-    'dubai.ae'
+    'dubai.ae',
+    'u.ae'
   ],
   'Abu Dhabi (UAE)': [
     'added.gov.ae',
@@ -238,6 +236,7 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'montevideo.gub.uy',
     'gub.uy',
     'efactura.dgi.gub.uy',
+    'dgi.gub.uy',
     'uruguayxxi.gub.uy'
   ],
   'Sao Paulo (Brazil)': [
@@ -255,7 +254,8 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'gov.ky',
     'ciregistry.ky',
     'cima.ky',
-    'ditc.ky'
+    'ditc.ky',
+    'dlp.jk.gov.in'
   ],
   'Miami (United States)': [
     'miami.gov',
@@ -330,6 +330,29 @@ const GLOBAL_NEWS_SOURCE_DOMAINS = [
   'lexology.com',
   'conventuslaw.com',
   'asia.nikkei.com'
+];
+
+const TRUSTED_INTELLIGENCE_DOMAINS = [
+  'mas.gov.sg',
+  'acra.gov.sg',
+  'iras.gov.sg',
+  'mom.gov.sg',
+  'edb.gov.sg',
+  'mti.gov.sg',
+  'sfc.hk',
+  'hkma.gov.hk',
+  'cr.gov.hk',
+  'ird.gov.hk',
+  'csrc.gov.cn',
+  'mofcom.gov.cn',
+  'businesstimes.com.sg',
+  'straitstimes.com',
+  'channelnewsasia.com',
+  'mondaq.com',
+  'lexology.com',
+  'conventuslaw.com',
+  'asia.nikkei.com',
+  'scmp.com'
 ];
 
 const COUNTRY_ALIASES = {
@@ -410,8 +433,17 @@ function configuredFetchCountries() {
 
 function mergeSourceDomains({ country, type = 'news', userSources = [], strictSources = false }) {
   const defaults = defaultSourceDomainsForCountry(country, type);
+  if (type === 'govt') {
+    return {
+      includeDomains: [...new Set(defaults.map(cleanDomain).filter(Boolean))],
+      strictSources: true,
+      defaultDomains: defaults,
+      userDomains: []
+    };
+  }
   const userDomains = cleanList(userSources).map(cleanDomain).filter(Boolean);
-  const merged = [...new Set([...defaults, ...userDomains].map(cleanDomain).filter(Boolean))];
+  const trusted = type === 'competitor' ? [] : TRUSTED_INTELLIGENCE_DOMAINS;
+  const merged = [...new Set([...defaults, ...trusted, ...userDomains].map(cleanDomain).filter(Boolean))];
 
   return {
     includeDomains: merged,
@@ -427,6 +459,7 @@ module.exports = {
   COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY,
   DEFAULT_COMPETITOR_SOURCE_DOMAINS,
   GLOBAL_NEWS_SOURCE_DOMAINS,
+  TRUSTED_INTELLIGENCE_DOMAINS,
   canonicalCountry,
   configuredFetchCountries,
   defaultSourceDomainsForCountry,

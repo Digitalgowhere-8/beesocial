@@ -44,9 +44,10 @@ async function search(query, opts = {}) {
   } catch (error) {
     const status = error.response?.status;
     const details = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error;
+    const detailText = typeof details === 'object' && details !== null ? JSON.stringify(details) : details;
     const message = [
       status ? `Tavily status ${status}` : 'Tavily request failed',
-      details ? String(details) : error.message
+      detailText ? String(detailText) : error.message
     ].filter(Boolean).join(': ');
     throw new Error(message);
   }
