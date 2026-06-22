@@ -9,6 +9,8 @@ const { generateBlogPost, generateLinkedInPost } = require('../services/aiServic
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
+const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
+const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -41,13 +43,18 @@ function tenantAdminId(user) {
 }
 
 function tenantQuery(user) {
-  if (user.role === 'super_admin') return {};
   return { tenantAdminId: tenantAdminId(user) };
 }
 
 function articleTenantQuery(user) {
   if (user.role === 'super_admin') return {};
-  return { userId: tenantAdminId(user) };
+  return {
+    $or: [
+      { userId: tenantAdminId(user) },
+      { userId: { $exists: false } },
+      { userId: null }
+    ]
+  };
 }
 
 function slugify(value) {
@@ -71,6 +78,74 @@ function blogSourceContext(article = {}) {
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 7000);
+}
+
+function monthStart() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+function limitReachedPayload({ message, limitType, used, limit }) {
+  return {
+    code: 'LIMIT_REACHED',
+    message,
+    limitType,
+    used: Number(used || 0),
+    limit: Number(limit || 0),
+    upgradePath: `/premium?limit=${encodeURIComponent(limitType || 'usage')}`
+  };
+}
+
+async function requireGenerationLimit(req, res, next) {
+  if (req.user?.role === 'super_admin') return next();
+  const tenantId = tenantAdminId(req.user);
+  const since = monthStart();
+  const blogLimit = Number(req.user?.limits?.blogGenerationsMonthly ?? 0);
+  const socialLimit = Number(req.user?.limits?.socialPostsMonthly ?? 0);
+  const tokenLimit = Number(req.user?.limits?.tokenBudgetMonthly ?? 0);
+
+  if (req.path === '/generate' && blogLimit > 0) {
+    const used = await BlogPost.countDocuments({ tenantAdminId: tenantId, createdAt: { $gte: since } });
+    if (used >= blogLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'blogGenerationsMonthly',
+        used,
+        limit: blogLimit,
+        message: `Monthly blog generation limit reached (${used}/${blogLimit}). Upgrade to generate more blogs.`
+      }));
+    }
+  }
+
+  if (req.path === '/linkedin/generate' && socialLimit > 0) {
+    const used = await SocialPost.countDocuments({ tenantAdminId: tenantId, createdAt: { $gte: since } });
+    if (used >= socialLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'socialPostsMonthly',
+        used,
+        limit: socialLimit,
+        message: `Monthly post generation limit reached (${used}/${socialLimit}). Upgrade to generate more posts.`
+      }));
+    }
+  }
+
+  if (tokenLimit > 0) {
+    const [blogCount, socialCount] = await Promise.all([
+      BlogPost.countDocuments({ tenantAdminId: tenantId, createdAt: { $gte: since } }),
+      SocialPost.countDocuments({ tenantAdminId: tenantId, createdAt: { $gte: since } })
+    ]);
+    const used = (blogCount * AVG_TOKENS_PER_BLOG) + (socialCount * AVG_TOKENS_PER_SOCIAL_POST);
+    const nextCost = req.path === '/generate' ? AVG_TOKENS_PER_BLOG : AVG_TOKENS_PER_SOCIAL_POST;
+    if (used + nextCost > tokenLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'tokenBudgetMonthly',
+        used,
+        limit: tokenLimit,
+        message: `Monthly token budget is too low for this generation (${used}/${tokenLimit}). Upgrade to continue.`
+      }));
+    }
+  }
+
+  next();
 }
 
 async function uniqueSlug(tenantId, title, excludeId = null) {
@@ -198,7 +273,7 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 }));
 
-router.post('/generate', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyncHandler(async (req, res) => {
   const { error, value } = generateSchema.validate(req.body || {});
   if (error) return res.status(400).json({ message: error.message });
   if (!mongoose.Types.ObjectId.isValid(value.articleId)) {
@@ -254,7 +329,7 @@ router.post('/generate', protect, requireBlogAdmin, asyncHandler(async (req, res
   res.status(201).json({ item });
 }));
 
-router.post('/linkedin/generate', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLimit, asyncHandler(async (req, res) => {
   const { error, value } = generateLinkedInSchema.validate(req.body || {});
   if (error) return res.status(400).json({ message: error.message });
   if (!mongoose.Types.ObjectId.isValid(value.articleId)) {

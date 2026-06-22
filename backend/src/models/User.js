@@ -30,7 +30,9 @@ const userSchema = new mongoose.Schema(
       fetchesPerMonth: { type: Number, default: 30, min: 0, max: 100000 },
       resultsPerFetch: { type: Number, default: 10, min: 1, max: 100 },
       storageItems: { type: Number, default: 1000, min: 0, max: 1000000 },
-      tokenBudgetMonthly: { type: Number, default: 100000, min: 0, max: 100000000 }
+      tokenBudgetMonthly: { type: Number, default: 100000, min: 0, max: 100000000 },
+      blogGenerationsMonthly: { type: Number, default: 10, min: 0, max: 100000 },
+      socialPostsMonthly: { type: Number, default: 20, min: 0, max: 100000 }
     },
 
     // Profile fields

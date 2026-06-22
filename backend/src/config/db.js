@@ -8,7 +8,7 @@ const DEFAULT_PLANS = [
     price: '$0',
     priceNote: 'Free forever',
     memberLimit: 1,
-    limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000 },
+    limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000, blogGenerationsMonthly: 3, socialPostsMonthly: 5 },
     access: { canFetch: true, canCreateMembers: false, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
   },
   {
@@ -17,7 +17,7 @@ const DEFAULT_PLANS = [
     price: '$29',
     priceNote: 'per month',
     memberLimit: 3,
-    limits: { fetchesPerMonth: 50, storageItems: 2000, tokenBudgetMonthly: 500000 },
+    limits: { fetchesPerMonth: 50, storageItems: 2000, tokenBudgetMonthly: 500000, blogGenerationsMonthly: 25, socialPostsMonthly: 50 },
     access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: false, canUseSavedSearches: true, canUseScheduler: true }
   },
   {
@@ -26,7 +26,7 @@ const DEFAULT_PLANS = [
     price: '$99',
     priceNote: 'per month',
     memberLimit: 10,
-    limits: { fetchesPerMonth: 300, storageItems: 15000, tokenBudgetMonthly: 3500000 },
+    limits: { fetchesPerMonth: 300, storageItems: 15000, tokenBudgetMonthly: 3500000, blogGenerationsMonthly: 150, socialPostsMonthly: 300 },
     access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
   },
   {
@@ -35,18 +35,46 @@ const DEFAULT_PLANS = [
     price: '$299',
     priceNote: 'per month',
     memberLimit: 999,
-    limits: { fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000 },
+    limits: { fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000, blogGenerationsMonthly: 1000, socialPostsMonthly: 2000 },
+    access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
+  },
+  {
+    planId: 'premium',
+    label: 'Premium',
+    price: '$99',
+    priceNote: 'per month',
+    memberLimit: 10,
+    limits: { fetchesPerMonth: 300, storageItems: 15000, tokenBudgetMonthly: 3500000, blogGenerationsMonthly: 150, socialPostsMonthly: 300 },
     access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
   }
 ];
 
 async function seedDefaultPlans() {
   try {
-    const count = await Plan.countDocuments();
-    if (count === 0) {
-      await Plan.insertMany(DEFAULT_PLANS);
-      console.log('[db] Seeded default plan configurations');
+    for (const plan of DEFAULT_PLANS) {
+      await Plan.findOneAndUpdate(
+        { planId: plan.planId },
+        {
+          $setOnInsert: {
+            planId: plan.planId,
+            label: plan.label,
+            price: plan.price,
+            priceNote: plan.priceNote,
+            memberLimit: plan.memberLimit,
+            'limits.fetchesPerMonth': plan.limits.fetchesPerMonth,
+            'limits.storageItems': plan.limits.storageItems,
+            'limits.tokenBudgetMonthly': plan.limits.tokenBudgetMonthly,
+            access: plan.access
+          },
+          $set: {
+            'limits.blogGenerationsMonthly': plan.limits.blogGenerationsMonthly,
+            'limits.socialPostsMonthly': plan.limits.socialPostsMonthly
+          }
+        },
+        { upsert: true }
+      );
     }
+    console.log('[db] Ensured default plan configurations');
   } catch (err) {
     console.error('[db] Seeding default plans failed:', err.message);
   }

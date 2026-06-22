@@ -24,6 +24,16 @@ api.interceptors.response.use(
         window.location.href = '/maintenance';
       }
     }
+    if (err.response?.status === 402 && err.response?.data?.code === 'LIMIT_REACHED') {
+      try {
+        sessionStorage.setItem('limit_reached_notice', JSON.stringify(err.response.data));
+      } catch {
+        // Ignore storage failures; navigation still gives the user an upgrade path.
+      }
+      if (window.location.pathname !== '/premium') {
+        window.location.href = err.response.data.upgradePath || '/premium';
+      }
+    }
     // Auto-logout on 401 (token expired) - except for /auth/* endpoints
     if (err.response?.status === 401 && !/\/auth\//.test(err.config?.url || '')) {
       localStorage.removeItem('opportunityos_token');

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import Filters from '../components/Filters';
@@ -8,17 +8,17 @@ import { useAuth } from '../context/AuthContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
-  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle
+  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 // Plan limits matching backend PLAN_DEFAULTS — used for auto-fill
 const PLAN_DEFAULTS_UI = {
-  free:       { memberLimit: 1,   fetchesPerMonth: 10,   storageItems: 100,    tokenBudgetMonthly: 50000 },
-  growth:     { memberLimit: 3,   fetchesPerMonth: 50,   storageItems: 2000,   tokenBudgetMonthly: 500000 },
-  scale:      { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000 },
-  enterprise: { memberLimit: 999, fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000 },
-  premium:    { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000 }
+  free:       { memberLimit: 1,   fetchesPerMonth: 10,   storageItems: 100,    tokenBudgetMonthly: 50000,    blogGenerationsMonthly: 3,    socialPostsMonthly: 5 },
+  growth:     { memberLimit: 3,   fetchesPerMonth: 50,   storageItems: 2000,   tokenBudgetMonthly: 500000,   blogGenerationsMonthly: 25,   socialPostsMonthly: 50 },
+  scale:      { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000,  blogGenerationsMonthly: 150,  socialPostsMonthly: 300 },
+  enterprise: { memberLimit: 999, fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000, blogGenerationsMonthly: 1000, socialPostsMonthly: 2000 },
+  premium:    { memberLimit: 10,  fetchesPerMonth: 300,  storageItems: 15000,  tokenBudgetMonthly: 3500000,  blogGenerationsMonthly: 150,  socialPostsMonthly: 300 }
 };
 
 const PLAN_BADGE = {
@@ -39,7 +39,7 @@ const MEMBER_ACCESS_OPTIONS = [
 // =============== TABS ===============
 
 const ADMIN_TABS = [
-  { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review content' },
+  { key: 'articles', label: 'My Articles', icon: FileText, hint: 'Fetched data' },
   { key: 'fetch',    label: 'Fetch',    icon: Play, hint: 'Run sources' },
   { key: 'logs',     label: 'Logs',     icon: Activity, hint: 'System activity' },
   { key: 'users',    label: 'Users',    icon: Users, hint: 'Team access' },
@@ -48,6 +48,8 @@ const ADMIN_TABS = [
 
 const SUPER_ADMIN_TABS = [
   { key: 'platform', label: 'Platform Overview', icon: Crown, hint: 'Global health' },
+  { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review content' },
+  { key: 'fetch',    label: 'Platform Fetch',    icon: Globe2, hint: 'Shared intelligence' },
   { key: 'users',    label: 'Users & Access',    icon: ShieldCheck, hint: 'Companies and members' },
   { key: 'plans',    label: 'Plan Builder',       icon: Database, hint: 'Limits and billing' },
   { key: 'settings', label: 'System Settings',   icon: KeyRound, hint: 'Platform controls' },
@@ -156,7 +158,7 @@ export default function AdminPanel() {
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm animate-fade-in-up stagger-1">
-        <div className="hide-scrollbar grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-2 overflow-x-auto lg:grid-flow-row lg:grid-cols-5">
+        <div className="hide-scrollbar grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-2 overflow-x-auto lg:grid-flow-row lg:grid-cols-6">
           {tabs.map((t) => {
             const active = t.key === tab;
             return (
@@ -184,10 +186,12 @@ export default function AdminPanel() {
         </div>
 
         {tab === 'platform' && isSuperAdmin  && <SuperAdminPlatform />}
+        {tab === 'articles' && isSuperAdmin  && <ArticlesTab />}
+        {tab === 'fetch'    && isSuperAdmin  && <SuperAdminFetchTab />}
         {tab === 'users'                       && <UsersTab dbPlans={dbPlans} />}
         {tab === 'plans'    && isSuperAdmin    && <PlanBuilderTab dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
         {tab === 'settings' && isSuperAdmin    && <SystemSettingsTab />}
-        {tab === 'articles' && !isSuperAdmin   && <ArticlesTab />}
+        {tab === 'articles' && !isSuperAdmin   && <ArticlesTab ownerOnly />}
         {tab === 'fetch'    && !isSuperAdmin   && <FetchTab />}
         {tab === 'logs'     && !isSuperAdmin   && <LogsTab />}
         {tab === 'stats'    && !isSuperAdmin   && <StatsTab />}
@@ -414,7 +418,7 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
 
 // =============== ARTICLES TAB ===============
 
-function ArticlesTab() {
+function ArticlesTab({ ownerOnly = false }) {
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 });
   const [loading, setLoading] = useState(true);
@@ -425,6 +429,7 @@ function ArticlesTab() {
     setLoading(true);
     try {
       const params = { page, limit: 24 };
+      if (ownerOnly) params.ownerOnly = 'true';
       for (const [k, v] of Object.entries(f || {})) if (v) params[k] = v;
       const { data } = await api.get('/articles', { params });
       setItems(data.items);
@@ -432,7 +437,7 @@ function ArticlesTab() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, ownerOnly]);
 
   useEffect(() => { load(filters, 1); }, [filters, load]);
 
@@ -571,6 +576,338 @@ function ArticlesTab() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============== SUPER ADMIN FETCH ===============
+
+function SuperAdminFetchTab() {
+  const { runProgress, setRunProgress } = useAuth();
+  const [profileMeta, setProfileMeta] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [status, setStatus] = useState({ running: false, logId: '' });
+  const [lastLog, setLastLog] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [autosaveStatus, setAutosaveStatus] = useState('saved');
+  const hasLocalEditsRef = useRef(false);
+  const saveTimerRef = useRef(null);
+  const saveVersionRef = useRef(0);
+  const browserTimezones = useMemo(() => getBrowserTimezones(), []);
+
+  const load = useCallback(async () => {
+    const [meta, cfg, stat, logs] = await Promise.all([
+      api.get('/articles/meta/filters'),
+      api.get('/admin/super/fetch/config'),
+      api.get('/admin/super/fetch/status'),
+      api.get('/admin/logs', { params: { limit: 1 } })
+    ]);
+    setProfileMeta(meta.data);
+    if (!hasLocalEditsRef.current) {
+      setConfig(cfg.data.config);
+    }
+    setStatus(stat.data);
+    setLastLog(logs.data.items?.[0] || null);
+  }, []);
+
+  useEffect(() => {
+    load().catch((e) => setMsg(`Error: ${e.message}`));
+    const id = setInterval(() => load().catch(() => {}), 5000);
+    return () => {
+      clearInterval(id);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    if (runProgress && !['running', 'queued'].includes(runProgress.status)) {
+      setRunning(false);
+      load().catch(() => {});
+    }
+  }, [runProgress?.status, load]);
+
+  const countries = profileMeta?.fetchCountries || [];
+  const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
+  const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
+  const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
+
+  const persistConfig = useCallback(async (configToSave, { manual = false, version: providedVersion } = {}) => {
+    if (!configToSave) return configToSave;
+    const version = providedVersion || ++saveVersionRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (manual) setSaving(true);
+    setAutosaveStatus('saving');
+    try {
+      const { data } = await api.put('/admin/super/fetch/config', configToSave);
+      if (version === saveVersionRef.current) {
+        hasLocalEditsRef.current = false;
+        setConfig(data.config);
+        setAutosaveStatus('saved');
+      }
+      return data.config;
+    } catch (e) {
+      if (version === saveVersionRef.current) {
+        setAutosaveStatus('error');
+        setMsg(`Error: ${e.message}`);
+      }
+      throw e;
+    } finally {
+      if (manual) setSaving(false);
+    }
+  }, []);
+
+  const scheduleAutosave = useCallback((nextConfig) => {
+    if (!nextConfig) return;
+    hasLocalEditsRef.current = true;
+    const version = ++saveVersionRef.current;
+    setAutosaveStatus('pending');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      persistConfig(nextConfig, { version }).catch(() => {});
+    }, 700);
+  }, [persistConfig]);
+
+  const changeConfig = useCallback((updater) => {
+    setConfig((prev) => {
+      const next = typeof updater === 'function' ? updater(prev || {}) : updater;
+      scheduleAutosave(next);
+      return next;
+    });
+  }, [scheduleAutosave]);
+
+  const update = (key, value) => changeConfig((prev) => ({ ...(prev || {}), [key]: value }));
+  const updateSchedule = (key, value) => changeConfig((prev) => ({
+    ...(prev || {}),
+    schedule: { ...((prev || {}).schedule || {}), [key]: value }
+  }));
+
+  const toggleCountry = (country) => {
+    const next = selectedCountries.includes(country)
+      ? selectedCountries.filter((item) => item !== country)
+      : [...selectedCountries, country];
+    update('countries', next);
+  };
+
+  const toggleTopic = (topic) => {
+    const next = selectedTopics.includes(topic)
+      ? selectedTopics.filter((item) => item !== topic)
+      : [...selectedTopics, topic];
+    if (next.length) update('topics', next);
+  };
+
+  const saveConfig = async () => {
+    setMsg('');
+    try {
+      const saved = await persistConfig(config, { manual: true });
+      setMsg(saved.schedule?.enabled ? 'Platform fetch settings and scheduler saved.' : 'Platform fetch settings saved.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    }
+  };
+
+  const runFetch = async () => {
+    setRunning(true);
+    setMsg('');
+    try {
+      const configForRun = hasLocalEditsRef.current ? await persistConfig(config) : config;
+      const { data } = await api.post('/admin/super/fetch/run', { config: configForRun });
+      const logId = data.logId || data.runId;
+      setConfig(data.config || config);
+      setRunProgress({
+        runId: logId,
+        logId,
+        status: 'running',
+        step: 'queued',
+        percent: 5,
+        messages: [{ at: new Date().toISOString(), step: 'queued', message: 'Platform fetch queued for selected countries and topics.' }]
+      });
+      setMsg(`Platform fetch started. Log ID: ${logId}`);
+      await load();
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (!config || !profileMeta) return <Loader />;
+
+  return (
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
+              <Globe2 size={18} />
+            </span>
+            <div className="min-w-0">
+              <div className="eyebrow mb-1 text-brand-crimson/80">Shared fetch</div>
+              <h3 className="text-xl font-black tracking-tight text-gray-900">Platform Intelligence Fetch</h3>
+              <p className="mt-1 text-sm text-gray-500">Super admin runs once; published results become visible across all admins and users.</p>
+            </div>
+          </div>
+          <span className={[
+            'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
+            isBusy ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+          ].join(' ')}>
+            <span className={`h-2 w-2 rounded-full ${isBusy ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+            {isBusy ? 'Running...' : 'Idle'}
+          </span>
+        </div>
+
+        <FetchField label="Countries">
+          <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
+            {countries.map((country) => {
+              const checked = selectedCountries.includes(country);
+              return (
+                <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0 truncate">{country}</span>
+                </label>
+              );
+            })}
+          </div>
+        </FetchField>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <FetchField label="Topics">
+            <div className="grid grid-cols-1 gap-2">
+              {TOPIC_OPTIONS.map((topic) => (
+                <label key={topic.key} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-brand-pink/20 text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
+                  <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0 truncate font-black">{topic.label}</span>
+                </label>
+              ))}
+            </div>
+          </FetchField>
+          <FetchField label="Data age">
+            <select className="select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+            </select>
+          </FetchField>
+          <FetchField label="Minimum score">
+            <input type="number" min="0" max="100" className="input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
+          </FetchField>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow mb-1">Scheduler</div>
+              <h4 className="text-base font-black tracking-tight text-gray-900">Automatic platform fetch</h4>
+            </div>
+            <Clock3 size={17} className="text-brand-crimson" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr_1fr_1.2fr] md:items-end">
+            <label className="flex h-[44px] items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 text-sm font-bold text-gray-700">
+              <input type="checkbox" checked={Boolean(config.schedule?.enabled)} onChange={(e) => updateSchedule('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+              Enable schedule
+            </label>
+            <FetchField label="Frequency">
+              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </FetchField>
+            <FetchField label="Time">
+              <input type="time" className="input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
+            </FetchField>
+            <FetchField label="Timezone">
+              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
+                {browserTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+              </select>
+            </FetchField>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="font-black text-gray-900">{selectedCountries.length} countries, {selectedTopics.length} topics selected</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">All categories and subcategories are classified during fetch</div>
+            <div className={`mt-1 text-[11px] font-black uppercase tracking-wider ${
+              autosaveStatus === 'error' ? 'text-red-500'
+                : autosaveStatus === 'saved' ? 'text-emerald-600'
+                  : 'text-amber-600'
+            }`}>
+              {autosaveStatus === 'saving' ? 'Saving changes...'
+                : autosaveStatus === 'pending' ? 'Changes will save automatically'
+                  : autosaveStatus === 'error' ? 'Autosave failed'
+                    : 'Changes saved'}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save
+            </button>
+            <button type="button" onClick={runFetch} disabled={isBusy || !selectedCountries.length || !selectedTopics.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400">
+              {isBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Run fetch
+            </button>
+          </div>
+        </div>
+
+        {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
+        {runProgress && (
+          <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Live process</div>
+                <h4 className="text-base font-black tracking-tight text-gray-900">{runProgress.status === 'success' ? 'Fetch complete' : runProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}</h4>
+              </div>
+              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{runProgress.step || runProgress.status}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+              <div className={`h-full rounded-full transition-all ${runProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`} style={{ width: `${Math.max(5, Math.min(100, Number(runProgress.percent || 35)))}%` }} />
+            </div>
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+              {(runProgress.messages || []).slice(-14).map((item, index) => (
+                <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-crimson" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>
+                    <div className="text-sm font-medium leading-relaxed text-gray-700">{item.message}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow mb-1">Last run</div>
+              <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+            </div>
+            <Activity size={17} className="text-brand-crimson" />
+          </div>
+          {!lastLog ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <Stat label="Status" value={lastLog.status} />
+              <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
+              <Stat label="Fetched" value={lastLog.totalFetched} />
+              <Stat label="Inserted" value={lastLog.totalInserted} highlight />
+              <Stat label="Duplicates" value={lastLog.totalDuplicates} />
+              <Stat label="Errors" value={lastLog.totalErrors} />
+              <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1616,7 +1953,9 @@ function UsersTab({ dbPlans }) {
     limits: {
       fetchesPerMonth: 30,
       storageItems: 1000,
-      tokenBudgetMonthly: 100000
+      tokenBudgetMonthly: 100000,
+      blogGenerationsMonthly: 10,
+      socialPostsMonthly: 20
     }
   });
 
@@ -1652,7 +1991,9 @@ function UsersTab({ dbPlans }) {
       memberLimit: dbPlan.memberLimit,
       fetchesPerMonth: dbPlan.limits?.fetchesPerMonth ?? 0,
       storageItems: dbPlan.limits?.storageItems ?? 0,
-      tokenBudgetMonthly: dbPlan.limits?.tokenBudgetMonthly ?? 0
+      tokenBudgetMonthly: dbPlan.limits?.tokenBudgetMonthly ?? 0,
+      blogGenerationsMonthly: dbPlan.limits?.blogGenerationsMonthly ?? 0,
+      socialPostsMonthly: dbPlan.limits?.socialPostsMonthly ?? 0
     } : (PLAN_DEFAULTS_UI[plan] || PLAN_DEFAULTS_UI.free);
 
     setForm((prev) => ({
@@ -1663,7 +2004,9 @@ function UsersTab({ dbPlans }) {
       limits: {
         fetchesPerMonth: defs.fetchesPerMonth,
         storageItems: defs.storageItems,
-        tokenBudgetMonthly: defs.tokenBudgetMonthly
+        tokenBudgetMonthly: defs.tokenBudgetMonthly,
+        blogGenerationsMonthly: defs.blogGenerationsMonthly,
+        socialPostsMonthly: defs.socialPostsMonthly
       }
     }));
   };
@@ -1671,11 +2014,28 @@ function UsersTab({ dbPlans }) {
   const updateTablePlan = async (u, plan) => {
     try {
       const dbPlan = dbPlans?.find(p => p.planId === plan);
+      const fallback = PLAN_DEFAULTS_UI[plan] || PLAN_DEFAULTS_UI.free;
       const defs = dbPlan ? {
         memberLimit: dbPlan.memberLimit,
         limits: dbPlan.limits,
         access: dbPlan.access
-      } : (PLAN_DEFAULTS_UI[plan] || PLAN_DEFAULTS_UI.free);
+      } : {
+        memberLimit: fallback.memberLimit,
+        limits: {
+          fetchesPerMonth: fallback.fetchesPerMonth,
+          storageItems: fallback.storageItems,
+          tokenBudgetMonthly: fallback.tokenBudgetMonthly,
+          blogGenerationsMonthly: fallback.blogGenerationsMonthly,
+          socialPostsMonthly: fallback.socialPostsMonthly
+        },
+        access: {
+          canFetch: true,
+          canCreateMembers: plan !== 'free',
+          canUseBlogStudio: ['scale', 'premium', 'enterprise'].includes(plan),
+          canUseSavedSearches: plan !== 'free',
+          canUseScheduler: plan !== 'free'
+        }
+      };
 
       await api.patch(`/admin/users/${u._id}`, {
         subscriptionPlan: plan,
@@ -1686,6 +2046,21 @@ function UsersTab({ dbPlans }) {
       load();
     } catch (e) {
       alert(e.message || 'Failed to update user plan');
+    }
+  };
+
+  const resetUserUsage = async (u) => {
+    if (!isSuperAdmin) return;
+    const ok = confirm(`Reset current month usage for ${u.name || u.email}? This gives the account a fresh monthly cycle under its current plan limits.`);
+    if (!ok) return;
+    try {
+      await api.post('/admin/usage/reset', {
+        scope: 'current_month',
+        userId: u._id
+      });
+      load();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message || 'Usage reset failed');
     }
   };
 
@@ -1715,7 +2090,9 @@ function UsersTab({ dbPlans }) {
         limits: {
           fetchesPerMonth: 30,
           storageItems: 1000,
-          tokenBudgetMonthly: 100000
+          tokenBudgetMonthly: 100000,
+          blogGenerationsMonthly: 10,
+          socialPostsMonthly: 20
         }
       });
       load();
@@ -1879,6 +2256,7 @@ function UsersTab({ dbPlans }) {
               <div>
                 <label className="label text-gray-500 font-bold tracking-wider">Subscription Plan</label>
                 <select className="input" value={form.subscriptionPlan} onChange={(e) => updatePlan(e.target.value)}>
+                  <option value="premium">Premium - $99 / mo</option>
                   <option value="free">Free — $0 / mo</option>
                   <option value="growth">Growth — $29 / mo</option>
                   <option value="scale">Scale — $99 / mo</option>
@@ -1888,6 +2266,8 @@ function UsersTab({ dbPlans }) {
               </div>
               <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
               <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
+              <input className="input" type="number" min={0} placeholder="Monthly blog limit" value={form.limits.blogGenerationsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, blogGenerationsMonthly: Number(e.target.value) })} />
+              <input className="input" type="number" min={0} placeholder="Monthly post limit" value={form.limits.socialPostsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, socialPostsMonthly: Number(e.target.value) })} />
             </>
           )}
         </div>
@@ -1994,6 +2374,7 @@ function UsersTab({ dbPlans }) {
                         onChange={(e) => updateTablePlan(u, e.target.value)}
                         className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
                       >
+                        <option value="premium">Premium ($99)</option>
                         <option value="free">Free ($0)</option>
                         <option value="growth">Growth ($29)</option>
                         <option value="scale">Scale ($99)</option>
@@ -2012,6 +2393,8 @@ function UsersTab({ dbPlans }) {
                     <LimitInput label="Fetch" value={u.limits?.fetchesPerMonth ?? 30} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), fetchesPerMonth: value } })} />
                     <LimitInput label="Tokens" value={u.limits?.tokenBudgetMonthly ?? 100000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), tokenBudgetMonthly: value } })} />
                     <LimitInput label="Storage" value={u.limits?.storageItems ?? 1000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), storageItems: value } })} />
+                    <LimitInput label="Blogs" value={u.limits?.blogGenerationsMonthly ?? 10} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), blogGenerationsMonthly: value } })} />
+                    <LimitInput label="Posts" value={u.limits?.socialPostsMonthly ?? 20} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), socialPostsMonthly: value } })} />
                   </div>
                 </td>
               )}
@@ -2072,6 +2455,11 @@ function UsersTab({ dbPlans }) {
                     <button onClick={() => toggleActive(u)} className="rounded-md px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-900">
                       {u.isActive ? 'Disable' : 'Approve'}
                     </button>
+                    {isSuperAdmin && (
+                      <button onClick={() => resetUserUsage(u)} className="rounded-md px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-50">
+                        Reset usage
+                      </button>
+                    )}
                     <button onClick={() => remove(u)} className="rounded-md p-1.5 text-red-500 hover:bg-red-50">
                       <Trash2 size={12} />
                     </button>
@@ -2137,7 +2525,10 @@ function PermissionToggle({ label, checked, onChange }) {
 
 function StatsTab() {
   const [stats, setStats] = useState(null);
-  useEffect(() => { api.get('/admin/stats').then((r) => setStats(r.data)); }, []);
+  const loadStats = useCallback(() => {
+    api.get('/admin/stats').then((r) => setStats(r.data));
+  }, []);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   if (!stats) return <Loader />;
 
@@ -2178,6 +2569,24 @@ function StatsTab() {
       tint: 'bg-emerald-50 text-emerald-700 ring-emerald-100'
     },
     {
+      label: 'Blog generation',
+      icon: FileText,
+      used: stats.totals?.monthBlogs,
+      limit: stats.limits?.blogGenerationsMonthly,
+      remaining: stats.remaining?.blogGenerationsMonthly,
+      accent: 'bg-violet-500',
+      tint: 'bg-violet-50 text-violet-700 ring-violet-100'
+    },
+    {
+      label: 'Post generation',
+      icon: Sparkles,
+      used: stats.totals?.monthSocialPosts,
+      limit: stats.limits?.socialPostsMonthly,
+      remaining: stats.remaining?.socialPostsMonthly,
+      accent: 'bg-fuchsia-500',
+      tint: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100'
+    },
+    {
       label: 'Member seats',
       icon: Users,
       used: memberCount,
@@ -2213,6 +2622,14 @@ function StatsTab() {
                 <Users size={14} />
                 {fmt(memberCount)} members
               </span>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/premium?limit=usage'; }}
+                className="inline-flex items-center gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/40 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson transition hover:bg-brand-pink"
+              >
+                <Crown size={14} />
+                Upgrade
+              </button>
             </div>
           </div>
           <div className="border-t border-gray-100 bg-gray-50/70 p-5 lg:border-l lg:border-t-0">
@@ -2242,7 +2659,7 @@ function StatsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         {usageCards.map((card) => {
           const usedPct = pct(card.used, card.limit);
           const Icon = card.icon;
@@ -2401,16 +2818,19 @@ const PLAN_ACCENT = {
   free:       { ring: 'ring-emerald-200', bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', grad: 'from-emerald-500 to-teal-600' },
   growth:     { ring: 'ring-blue-200',    bg: 'bg-blue-50',    text: 'text-blue-700',    badge: 'bg-blue-100 text-blue-800',    grad: 'from-blue-500 to-indigo-600' },
   scale:      { ring: 'ring-purple-200',  bg: 'bg-purple-50',  text: 'text-purple-700',  badge: 'bg-purple-100 text-purple-800', grad: 'from-purple-500 to-fuchsia-600' },
+  premium:    { ring: 'ring-rose-200',    bg: 'bg-rose-50',    text: 'text-rose-700',    badge: 'bg-rose-100 text-rose-800',    grad: 'from-rose-500 to-pink-600' },
   enterprise: { ring: 'ring-amber-200',   bg: 'bg-amber-50',   text: 'text-amber-700',   badge: 'bg-amber-100 text-amber-800',  grad: 'from-amber-500 to-orange-600' },
 };
 
-const PLAN_KEYS = ['free', 'growth', 'scale', 'enterprise'];
+const PLAN_KEYS = ['free', 'growth', 'scale', 'premium', 'enterprise'];
 
 const LIMIT_FIELDS = [
   { key: 'memberLimit',         label: 'Team Seats' },
   { key: 'fetchesPerMonth',     label: 'Fetch Runs / month' },
   { key: 'storageItems',        label: 'Stored Signals' },
   { key: 'tokenBudgetMonthly',  label: 'AI Tokens / month' },
+  { key: 'blogGenerationsMonthly', label: 'Blog Generations / month' },
+  { key: 'socialPostsMonthly',  label: 'Post Generations / month' },
 ];
 
 function PlanBuilderTab({ dbPlans, loadDbPlans }) {
@@ -2428,6 +2848,8 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
             fetchesPerMonth: dbPlan.limits?.fetchesPerMonth ?? 0,
             storageItems: dbPlan.limits?.storageItems ?? 0,
             tokenBudgetMonthly: dbPlan.limits?.tokenBudgetMonthly ?? 0,
+            blogGenerationsMonthly: dbPlan.limits?.blogGenerationsMonthly ?? 0,
+            socialPostsMonthly: dbPlan.limits?.socialPostsMonthly ?? 0,
           },
           access: {
             canFetch: dbPlan.access?.canFetch ?? true,
@@ -2438,20 +2860,23 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           }
         };
       } else {
+        const defaults = PLAN_DEFAULTS_UI[k] || PLAN_DEFAULTS_UI.free;
         configObj[k] = {
           label: k.charAt(0).toUpperCase() + k.slice(1),
-          price: k === 'free' ? '$0' : k === 'growth' ? '$29' : k === 'scale' ? '$99' : '$299',
+          price: k === 'free' ? '$0' : k === 'growth' ? '$29' : k === 'scale' || k === 'premium' ? '$99' : '$299',
           priceNote: k === 'free' ? 'Free forever' : 'per month',
-          memberLimit: k === 'free' ? 1 : k === 'growth' ? 3 : k === 'scale' ? 10 : 999,
+          memberLimit: defaults.memberLimit,
           limits: {
-            fetchesPerMonth: k === 'free' ? 10 : k === 'growth' ? 50 : k === 'scale' ? 300 : 1500,
-            storageItems: k === 'free' ? 100 : k === 'growth' ? 2000 : k === 'scale' ? 15000 : 999999,
-            tokenBudgetMonthly: k === 'free' ? 50000 : k === 'growth' ? 500000 : k === 'scale' ? 3500000 : 10000000,
+            fetchesPerMonth: defaults.fetchesPerMonth,
+            storageItems: defaults.storageItems,
+            tokenBudgetMonthly: defaults.tokenBudgetMonthly,
+            blogGenerationsMonthly: defaults.blogGenerationsMonthly,
+            socialPostsMonthly: defaults.socialPostsMonthly,
           },
           access: {
             canFetch: true,
             canCreateMembers: k !== 'free',
-            canUseBlogStudio: k === 'scale' || k === 'enterprise',
+            canUseBlogStudio: k === 'scale' || k === 'premium' || k === 'enterprise',
             canUseSavedSearches: k !== 'free',
             canUseScheduler: k !== 'free',
           }
@@ -2515,6 +2940,8 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
     { label: 'Fetch Runs / mo', get: (pk) => configs[pk]?.limits?.fetchesPerMonth >= 1000 ? '1,000+' : String(configs[pk]?.limits?.fetchesPerMonth ?? 0) },
     { label: 'Stored Signals',  get: (pk) => configs[pk]?.limits?.storageItems >= 999999 ? 'Unlimited' : (configs[pk]?.limits?.storageItems ?? 0).toLocaleString() },
     { label: 'AI Tokens / mo',  get: (pk) => configs[pk]?.limits?.tokenBudgetMonthly >= 10000000 ? '10M+' : configs[pk]?.limits?.tokenBudgetMonthly >= 1000000 ? `${((configs[pk]?.limits?.tokenBudgetMonthly ?? 0) / 1000000).toFixed(1)}M` : `${Math.round((configs[pk]?.limits?.tokenBudgetMonthly ?? 0) / 1000)}K` },
+    { label: 'Blogs / mo',      get: (pk) => String(configs[pk]?.limits?.blogGenerationsMonthly ?? 0) },
+    { label: 'Posts / mo',      get: (pk) => String(configs[pk]?.limits?.socialPostsMonthly ?? 0) },
     ...PLAN_FEATURES_META.map(f => ({ label: f.label, get: (pk) => (configs[pk]?.access?.[f.key] ? '✓ Included' : '—') }))
   ];
 
@@ -2534,8 +2961,8 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
         </div>
       </div>
 
-      {/* 4 Plan Cards */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
+      {/* Plan Cards */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         {PLAN_KEYS.map((pk) => {
           const cfg = configs[pk];
           if (!cfg) return null;
@@ -2567,7 +2994,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                     <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Usage Limits</div>
                     <div className="space-y-2">
                       {LIMIT_FIELDS.map(({ key, label }) => {
-                        const isUnlimited = pk === 'enterprise' && ['memberLimit', 'storageItems', 'tokenBudgetMonthly'].includes(key);
+                        const isUnlimited = pk === 'enterprise' && ['memberLimit', 'storageItems', 'tokenBudgetMonthly', 'blogGenerationsMonthly', 'socialPostsMonthly'].includes(key);
                         const isTopLevel = ['memberLimit'].includes(key);
                         const value = isTopLevel ? cfg[key] : cfg.limits?.[key];
                         return (
@@ -2588,7 +3015,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                         );
                       })}
                       <div className={`text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
-                        ≈ {Math.floor((cfg.limits?.tokenBudgetMonthly ?? 0) / 5000)} blogs &middot; {Math.floor((cfg.limits?.tokenBudgetMonthly ?? 0) / 800)} social posts
+                        Hard cap: {(cfg.limits?.blogGenerationsMonthly ?? 0).toLocaleString()} blogs &middot; {(cfg.limits?.socialPostsMonthly ?? 0).toLocaleString()} posts
                       </div>
                     </div>
                   </div>

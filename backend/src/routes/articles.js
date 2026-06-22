@@ -22,6 +22,18 @@ function tenantOwnerIds(user) {
   return [user.tenantAdminId || user._id];
 }
 
+function sharedArticleScope() {
+  return [
+    { userId: { $exists: false } },
+    { userId: null }
+  ];
+}
+
+function scopedOwnerQuery(ownerIds = []) {
+  if (!ownerIds.length) return {};
+  return { $or: [{ userId: { $in: ownerIds } }, ...sharedArticleScope()] };
+}
+
 function formatDashboardDate(date) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: DASHBOARD_TIMEZONE,
@@ -144,8 +156,20 @@ function buildQuery(req, opts = {}) {
   if (req.query.userId && req.user.role === 'super_admin') q.userId = req.query.userId;
   if (req.query.savedSearchId) q.savedSearchId = req.query.savedSearchId;
 
-  if (ownerIds.length) {
-    q.userId = { $in: ownerIds };
+  if (req.query.ownerOnly === 'true' && ownerIds.length) {
+    if (q.userId) {
+      q.$and = [...(q.$and || []), { userId: q.userId }, { userId: { $in: ownerIds } }];
+      delete q.userId;
+    } else {
+      q.userId = { $in: ownerIds };
+    }
+  } else if (ownerIds.length) {
+    if (q.userId) {
+      q.$and = [...(q.$and || []), { userId: q.userId }, scopedOwnerQuery(ownerIds)];
+      delete q.userId;
+    } else {
+      Object.assign(q, scopedOwnerQuery(ownerIds));
+    }
   } else if (req.query.personalized === 'true' && req.user.role === 'super_admin') {
     q.userId = req.user._id;
   }
@@ -191,6 +215,8 @@ async function annotateSaved(req, items = []) {
 
 function canAccessArticle(user, article) {
   const ownerIds = tenantOwnerIds(user).map((id) => String(id));
+  const isShared = !article.userId;
+  if (isShared) return isAdminUser(user) || article.isPublished;
   if (ownerIds.length && !ownerIds.includes(String(article.userId || ''))) return false;
   if (!isAdminUser(user) && !article.isPublished) return false;
   return true;
@@ -199,7 +225,7 @@ function canAccessArticle(user, article) {
 // ---------- META endpoints (filter dropdowns) ----------
 router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   const ownerIds = tenantOwnerIds(req.user);
-  const scope = ownerIds.length ? { userId: { $in: ownerIds } } : {};
+  const scope = scopedOwnerQuery(ownerIds);
   const visibleScope = !isAdminUser(req.user) ? { ...scope, isPublished: true } : scope;
   const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows] = await Promise.all([
     Article.distinct('country', { ...visibleScope, country: { $nin: ['', null] } }),

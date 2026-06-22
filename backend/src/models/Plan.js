@@ -10,7 +10,9 @@ const planSchema = new mongoose.Schema(
     limits: {
       fetchesPerMonth: { type: Number, default: 10, min: 0, max: 100000 },
       storageItems: { type: Number, default: 100, min: 0, max: 1000000 },
-      tokenBudgetMonthly: { type: Number, default: 50000, min: 0, max: 100000000 }
+      tokenBudgetMonthly: { type: Number, default: 50000, min: 0, max: 100000000 },
+      blogGenerationsMonthly: { type: Number, default: 3, min: 0, max: 100000 },
+      socialPostsMonthly: { type: Number, default: 5, min: 0, max: 100000 }
     },
     access: {
       canFetch: { type: Boolean, default: true },

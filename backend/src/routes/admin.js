@@ -11,6 +11,12 @@ const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
+const {
+  getPlatformFetchConfig,
+  savePlatformFetchConfig,
+  triggerPlatformFetch,
+  getPlatformFetchStatus
+} = require('../services/platformFetchService');
 
 const router = express.Router();
 
@@ -48,8 +54,19 @@ async function getPlanDefaults(planId) {
   if (plan) return plan.toObject();
   return {
     memberLimit: 1,
-    limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000 },
+    limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000, blogGenerationsMonthly: 3, socialPostsMonthly: 5 },
     access: { canFetch: true, canCreateMembers: false, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
+  };
+}
+
+function limitReachedPayload({ message, limitType, used, limit }) {
+  return {
+    code: 'LIMIT_REACHED',
+    message,
+    limitType,
+    used: Number(used || 0),
+    limit: Number(limit || 0),
+    upgradePath: `/premium?limit=${encodeURIComponent(limitType || 'usage')}`
   };
 }
 
@@ -71,6 +88,80 @@ function managedUsersQuery(actor) {
   };
 }
 
+async function teamUserIdsFor(actor) {
+  if (actor.role === 'super_admin') return [];
+  if (actor.role === 'admin') {
+    const users = await User.find({ $or: [{ _id: actor._id }, { tenantAdminId: actor._id }] }).select('_id').lean();
+    return users.map((user) => user._id);
+  }
+  return [actor._id];
+}
+
+async function requireFetchCapacity(req, res, next) {
+  if (req.user?.role === 'super_admin') return next();
+  if (req.user?.access?.canFetch === false) {
+    return res.status(403).json({ message: 'Fetch access is disabled for this account.' });
+  }
+
+  const userIds = await teamUserIdsFor(req.user);
+  const since = startOfMonth();
+  const limits = req.user?.limits || {};
+  const fetchLimit = Number(limits.fetchesPerMonth || 0);
+  const storageLimit = Number(limits.storageItems || 0);
+  const tokenLimit = Number(limits.tokenBudgetMonthly || 0);
+
+  if (fetchLimit > 0) {
+    const used = await FetchLog.countDocuments({
+      startedAt: { $gte: since },
+      $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }]
+    });
+    if (used >= fetchLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'fetchesPerMonth',
+        used,
+        limit: fetchLimit,
+        message: `Monthly fetch limit reached (${used}/${fetchLimit}). Upgrade to run more fetches.`
+      }));
+    }
+  }
+
+  if (storageLimit > 0) {
+    const used = await Article.countDocuments({ userId: { $in: userIds } });
+    if (used >= storageLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'storageItems',
+        used,
+        limit: storageLimit,
+        message: `Stored signals limit reached (${used}/${storageLimit}). Reset data or upgrade for more storage.`
+      }));
+    }
+  }
+
+  if (tokenLimit > 0) {
+    const [monthFetchRows, monthBlogs, monthSocial] = await Promise.all([
+      FetchLog.aggregate([
+        { $match: { startedAt: { $gte: since }, $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
+        { $group: { _id: null, inserted: { $sum: '$totalInserted' } } }
+      ]),
+      BlogPost.countDocuments({ createdBy: { $in: userIds }, createdAt: { $gte: since } }),
+      SocialPost.countDocuments({ createdBy: { $in: userIds }, createdAt: { $gte: since } })
+    ]);
+    const used = (Number(monthFetchRows[0]?.inserted || 0) * AVG_AI_TOKENS_PER_RESULT)
+      + (monthBlogs * AVG_TOKENS_PER_BLOG)
+      + (monthSocial * AVG_TOKENS_PER_SOCIAL_POST);
+    if (used >= tokenLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'tokenBudgetMonthly',
+        used,
+        limit: tokenLimit,
+        message: `Monthly token budget reached (${used}/${tokenLimit}). Upgrade before starting more AI-heavy work.`
+      }));
+    }
+  }
+
+  next();
+}
+
 function normalizeAccessPatch(access, { allowMemberManagement = false } = {}) {
   if (!access || typeof access !== 'object') return {};
   return ACCESS_KEYS.reduce((out, key) => {
@@ -90,10 +181,20 @@ router.use(protect, requireRole(...ADMIN_ROLES));
 
 // ============== ARTICLE MANAGEMENT ==============
 
+async function articleManagementQuery(user, ids = null) {
+  const q = {};
+  if (ids) q._id = { $in: ids };
+  if (user.role === 'super_admin') return q;
+  const teamIds = await teamUserIdsFor(user);
+  return { ...q, userId: { $in: teamIds } };
+}
+
 // PATCH /api/admin/articles/:id/publish
 router.patch('/articles/:id/publish', asyncHandler(async (req, res) => {
-  const item = await Article.findByIdAndUpdate(
-    req.params.id,
+  const q = await articleManagementQuery(req.user);
+  q._id = req.params.id;
+  const item = await Article.findOneAndUpdate(
+    q,
     {
       $set: {
         isPublished: true,
@@ -109,8 +210,10 @@ router.patch('/articles/:id/publish', asyncHandler(async (req, res) => {
 
 // PATCH /api/admin/articles/:id/unpublish
 router.patch('/articles/:id/unpublish', asyncHandler(async (req, res) => {
-  const item = await Article.findByIdAndUpdate(
-    req.params.id,
+  const q = await articleManagementQuery(req.user);
+  q._id = req.params.id;
+  const item = await Article.findOneAndUpdate(
+    q,
     {
       $set: {
         isPublished: false
@@ -129,8 +232,9 @@ router.post('/articles/bulk-publish', asyncHandler(async (req, res) => {
   const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
   if (!validIds.length) return res.status(400).json({ message: 'No valid ids provided' });
 
+  const q = await articleManagementQuery(req.user, validIds);
   const result = await Article.updateMany(
-    { _id: { $in: validIds } },
+    q,
     { $set: { isPublished: true, publishedBy: req.user._id, publishedAtAdmin: new Date() } }
   );
   res.json({ matched: result.matchedCount, modified: result.modifiedCount });
@@ -143,8 +247,9 @@ router.post('/articles/bulk-unpublish', asyncHandler(async (req, res) => {
   const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
   if (!validIds.length) return res.status(400).json({ message: 'No valid ids provided' });
 
+  const q = await articleManagementQuery(req.user, validIds);
   const result = await Article.updateMany(
-    { _id: { $in: validIds } },
+    q,
     { $set: { isPublished: false } }
   );
   res.json({ matched: result.matchedCount, modified: result.modifiedCount });
@@ -155,7 +260,9 @@ router.delete('/articles/:id', asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(400).json({ message: 'Invalid article ID' });
   }
-  const item = await Article.findByIdAndDelete(req.params.id);
+  const q = await articleManagementQuery(req.user);
+  q._id = req.params.id;
+  const item = await Article.findOneAndDelete(q);
   if (!item) return res.status(404).json({ message: 'Not found' });
   res.json({ message: 'Deleted', id: req.params.id });
 }));
@@ -167,7 +274,8 @@ router.post('/articles/bulk-delete', asyncHandler(async (req, res) => {
   const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
   if (!validIds.length) return res.status(400).json({ message: 'No valid ids provided' });
 
-  const result = await Article.deleteMany({ _id: { $in: validIds } });
+  const q = await articleManagementQuery(req.user, validIds);
+  const result = await Article.deleteMany(q);
   res.json({ deleted: result.deletedCount });
 }));
 
@@ -176,7 +284,9 @@ router.patch('/articles/:id', asyncHandler(async (req, res) => {
   const allowed = ['title', 'summary', 'category', 'subcategory', 'tags', 'country', 'aiSummary'];
   const update = {};
   for (const k of allowed) if (k in req.body) update[k] = req.body[k];
-  const item = await Article.findByIdAndUpdate(req.params.id, update, { new: true });
+  const q = await articleManagementQuery(req.user);
+  q._id = req.params.id;
+  const item = await Article.findOneAndUpdate(q, update, { new: true });
   if (!item) return res.status(404).json({ message: 'Not found' });
   res.json({ item });
 }));
@@ -304,7 +414,7 @@ async function runN8nWorkflow({ triggeredByUser, user, type = 'profile' }) {
 }
 
 // POST /api/admin/fetch    body: { types?: ['news','govt','competitor','evergreen'] }
-router.post('/fetch', asyncHandler(async (req, res) => {
+router.post('/fetch', requireFetchCapacity, asyncHandler(async (req, res) => {
   if (isFetching) {
     return res.status(409).json({ message: 'A fetch is already in progress' });
   }
@@ -331,7 +441,7 @@ router.get('/fetch/status', (_req, res) => {
 });
 
 // POST /api/admin/n8n/run
-router.post('/n8n/run', asyncHandler(async (req, res) => {
+router.post('/n8n/run', requireFetchCapacity, asyncHandler(async (req, res) => {
   const type = N8N_TYPES.includes(req.body?.type) ? req.body.type : 'profile';
   if (n8nRunning.has(type)) {
     return res.status(409).json({ message: 'The dynamic profile pipeline is already in progress' });
@@ -486,6 +596,8 @@ router.get('/stats', asyncHandler(async (req, res) => {
     fetchesPerMonth: Number(adminUser?.limits?.fetchesPerMonth ?? req.user.limits?.fetchesPerMonth ?? 0),
     storageItems: Number(adminUser?.limits?.storageItems ?? req.user.limits?.storageItems ?? 0),
     tokenBudgetMonthly: Number(adminUser?.limits?.tokenBudgetMonthly ?? req.user.limits?.tokenBudgetMonthly ?? 0),
+    blogGenerationsMonthly: Number(adminUser?.limits?.blogGenerationsMonthly ?? req.user.limits?.blogGenerationsMonthly ?? 0),
+    socialPostsMonthly: Number(adminUser?.limits?.socialPostsMonthly ?? req.user.limits?.socialPostsMonthly ?? 0),
     memberLimit: Number(adminUser?.memberLimit ?? req.user.memberLimit ?? 0)
   };
 
@@ -502,6 +614,8 @@ router.get('/stats', asyncHandler(async (req, res) => {
       fetchesPerMonth: Math.max(0, limits.fetchesPerMonth - totals.monthFetches),
       storageItems: Math.max(0, limits.storageItems - totals.storageItems),
       tokenBudgetMonthly: Math.max(0, limits.tokenBudgetMonthly - totals.estimatedTokens),
+      blogGenerationsMonthly: Math.max(0, limits.blogGenerationsMonthly - totals.monthBlogs),
+      socialPostsMonthly: Math.max(0, limits.socialPostsMonthly - totals.monthSocialPosts),
       memberSeats: Math.max(0, limits.memberLimit - users.filter((user) => user.role === 'user').length)
     },
     totals,
@@ -626,6 +740,37 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     },
     topUsers,
     recentRuns
+  });
+}));
+
+router.get('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const config = await getPlatformFetchConfig();
+  res.json({ config });
+}));
+
+router.put('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const config = await savePlatformFetchConfig(req.body || {});
+  res.json({ config });
+}));
+
+router.get('/super/fetch/status', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  res.json(getPlatformFetchStatus());
+}));
+
+router.post('/super/fetch/run', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const config = req.body?.config
+    ? await savePlatformFetchConfig(req.body.config)
+    : await getPlatformFetchConfig();
+  const result = await triggerPlatformFetch({
+    triggeredByUser: req.user._id,
+    config,
+    trigger: 'manual'
+  });
+  res.json({
+    ok: true,
+    message: 'Platform fetch queued',
+    logId: result.logId,
+    config: result.config
   });
 }));
 
@@ -768,9 +913,12 @@ router.post('/users', asyncHandler(async (req, res) => {
     const limit = Number(req.user.memberLimit ?? DEFAULT_MEMBER_LIMIT);
     const memberCount = await User.countDocuments({ tenantAdminId: req.user._id, role: 'user' });
     if (memberCount >= limit) {
-      return res.status(402).json({
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'memberSeats',
+        used: memberCount,
+        limit,
         message: `Member limit reached. Your current plan allows ${limit} members. Upgrade to add more.`
-      });
+      }));
     }
   }
 
@@ -927,7 +1075,9 @@ router.put('/plans', requireRole('super_admin'), asyncHandler(async (req, res) =
           limits: {
             fetchesPerMonth: Number(config.limits?.fetchesPerMonth ?? 0),
             storageItems: Number(config.limits?.storageItems ?? 0),
-            tokenBudgetMonthly: Number(config.limits?.tokenBudgetMonthly ?? 0)
+            tokenBudgetMonthly: Number(config.limits?.tokenBudgetMonthly ?? 0),
+            blogGenerationsMonthly: Number(config.limits?.blogGenerationsMonthly ?? 0),
+            socialPostsMonthly: Number(config.limits?.socialPostsMonthly ?? 0)
           },
           access: {
             canFetch: Boolean(config.access?.canFetch ?? true),
@@ -956,6 +1106,62 @@ router.put('/plans', requireRole('super_admin'), asyncHandler(async (req, res) =
   }
 
   res.json({ success: true, items: results });
+}));
+
+// POST /api/admin/usage/reset
+router.post('/usage/reset', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const scope = req.body?.scope === 'all_time' ? 'all_time' : 'current_month';
+  const targets = {
+    fetchLogs: req.body?.targets?.fetchLogs !== false,
+    articles: req.body?.targets?.articles !== false,
+    blogs: req.body?.targets?.blogs !== false,
+    socialPosts: req.body?.targets?.socialPosts !== false
+  };
+  const since = scope === 'current_month' ? startOfMonth() : null;
+
+  let userQuery;
+  if (req.user.role === 'super_admin' && req.body?.userId && mongoose.Types.ObjectId.isValid(req.body.userId)) {
+    const target = await User.findById(req.body.userId).select('_id role tenantAdminId').lean();
+    if (!target) return res.status(404).json({ message: 'Target user not found' });
+    const ownerId = target.role === 'admin' ? target._id : (target.tenantAdminId || target._id);
+    userQuery = { $or: [{ _id: ownerId }, { tenantAdminId: ownerId }] };
+  } else {
+    userQuery = req.user.role === 'super_admin'
+      ? { role: { $in: ['admin', 'user'] } }
+      : { $or: [{ _id: req.user._id }, { tenantAdminId: req.user._id }] };
+  }
+
+  const users = await User.find(userQuery).select('_id').lean();
+  const userIds = users.map((user) => user._id);
+  const dateQuery = since ? { $gte: since } : undefined;
+  const result = {};
+
+  if (targets.fetchLogs) {
+    const q = { $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] };
+    if (dateQuery) q.startedAt = dateQuery;
+    const deleted = await FetchLog.deleteMany(q);
+    result.fetchLogs = deleted.deletedCount || 0;
+  }
+  if (targets.articles) {
+    const q = { userId: { $in: userIds } };
+    if (dateQuery) q.fetchedAt = dateQuery;
+    const deleted = await Article.deleteMany(q);
+    result.articles = deleted.deletedCount || 0;
+  }
+  if (targets.blogs) {
+    const q = { createdBy: { $in: userIds } };
+    if (dateQuery) q.createdAt = dateQuery;
+    const deleted = await BlogPost.deleteMany(q);
+    result.blogs = deleted.deletedCount || 0;
+  }
+  if (targets.socialPosts) {
+    const q = { createdBy: { $in: userIds } };
+    if (dateQuery) q.createdAt = dateQuery;
+    const deleted = await SocialPost.deleteMany(q);
+    result.socialPosts = deleted.deletedCount || 0;
+  }
+
+  res.json({ success: true, scope, users: userIds.length, deleted: result });
 }));
 
 module.exports = router;

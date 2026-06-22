@@ -33,6 +33,7 @@ function isEnabled() {
 }
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
   const title = article?.title || 'Market intelligence update';
@@ -53,9 +54,17 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
       '',
       `## What companies should watch`,
       '',
-      '- Review the source update and confirm applicability to your jurisdiction or business model.',
-      '- Identify any filing, compliance, market-entry, or competitor implications.',
-      '- Convert the update into a client advisory, internal checklist, or outreach note.',
+      '| Area | Practical question |',
+      '| --- | --- |',
+      '| Market relevance | Does this change the timing or attractiveness of an expansion, investment, or client conversation? |',
+      '| Tax and compliance | Are there filing, reporting, licensing, governance, payroll, or tax points to confirm before acting? |',
+      '| Operations | Would banking, entity setup, hiring, contracts, or local vendor requirements affect execution? |',
+      '',
+      `## Practical takeaways`,
+      '',
+      `For ${audience}, the useful question is not whether the headline is positive or negative. It is whether the update changes a business decision, a compliance checklist, or the timing of market entry.`,
+      '',
+      'Treat this as a planning signal, then verify the details against official guidance and professional advice before making commitments.',
       '',
       `## Recommended next step`,
       '',
@@ -245,7 +254,7 @@ function topicFilterInstructions(topic) {
     competitor:
       'STORE tracked competitor activity, acquisitions, partnerships, new offices, service launches, hiring, senior appointments, funding, client wins, market entry, expansion, thought leadership, or other competitive intelligence with a real business signal.',
     evergreen:
-      'STORE evergreen guides, explainers, checklists, official guidance, compliance requirements, how-to resources, filing guides, market-entry guides, tax/accounting guides, or practical reference content that remains useful for clients or advisors.'
+      'STORE only true evergreen reference content: guides, explainers, checklists, official guidance, compliance requirements, how-to resources, filing guides, market-entry guides, tax/accounting guides, FAQs, handbooks, manuals, or practical resources that remain useful for clients or advisors beyond the current news cycle. REJECT ordinary blogs, blog posts, latest-news articles, press releases, opinion pieces, event/webinar pages, promotional thought-leadership, and time-sensitive announcements even if they mention a relevant category.'
   };
   return map[topic] || map.news;
 }
@@ -253,8 +262,8 @@ function topicFilterInstructions(topic) {
 function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
   const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
   return {
-    decision: score >= 40 ? 'STORE' : 'IGNORE',
-    category: score >= 40 ? (article.category || 'General') : 'IGNORE',
+    decision: score >= PROFILE_RELEVANCE_MIN_SCORE ? 'STORE' : 'IGNORE',
+    category: score >= PROFILE_RELEVANCE_MIN_SCORE ? (article.category || 'General') : 'IGNORE',
     subcategory: article.subcategory || '',
     summary: article.summary || article.aiSummary || '',
     relevance_score: score,
@@ -278,7 +287,9 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   const competitors = listPromptValues(profile.competitors || article.competitors);
   const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || article.days || 30) || 30));
   const selectedCategory = profile.category || article.category || 'General';
+  const selectedCategories = listPromptValues(profile.categories || article.categories || selectedCategory);
   const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
+  const mainCategories = Object.keys(CATEGORIES || {});
 
   try {
     const resp = await cli.chat.completions.create({
@@ -306,6 +317,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
             `Country: ${profile.country || article.country || ''}`,
             `Region/state: ${profile.region || article.region || 'All regions'}`,
             `Category selected by user: ${selectedCategory}`,
+            `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
             `Sub-category selected by user: ${selectedSubcategory}`,
             `Topic/type: ${topic}`,
             `Tracked competitors: ${competitors.join(', ') || 'None'}`,
@@ -317,27 +329,27 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
             '',
             'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
             `- Any article with no clear connection to ${marketText}.`,
-            `- Any jurisdiction outside ${marketText}, unless it explicitly affects businesses, compliance, tax, investment, employment, governance, or market entry in ${marketText}.`,
-            '- Conference recaps, webinars, podcasts, awards, rankings, CSR, charity, tourism, sports, entertainment, human-interest stories, and generic opinion pieces with no factual business/regulatory update.',
-            '- Earnings reports, stock-price-only articles, product promotions, directory pages, homepage/listing pages, static portals, login/e-service pages, job-only posts, or event recaps with no useful business signal.',
-            '- Consumer lifestyle, retail, food, real estate/property, transport, defence, geopolitics, technology, AI, cybersecurity, infrastructure, energy, mining, or insurance articles with no regulatory/compliance/business-services angle.',
+            `- Any jurisdiction outside ${marketText}, unless it mentions or clearly affects businesses, compliance, tax, investment, employment, governance, market entry, trade, economy, or professional services in ${marketText}.`,
+            `- Any article that does not fit at least one of the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
+            '- Broken pages, directory pages, homepage/listing pages, login/e-service pages, job-only posts, stock-price-only pages, pure product promotions, sports, entertainment, human-interest stories, or generic opinion pieces with no factual update.',
             `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
-            '- Competitor intelligence only counts when a tracked competitor is explicitly named and the article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, or another competitive signal in the selected market.',
+            '- Competitor intelligence should be kept when a tracked competitor is explicitly named or the source/article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, thought leadership, or another market signal in the selected market.',
             '',
             'STEP 2: TOPIC RULE',
             topicFilterInstructions(topic),
             '',
             'STEP 3: SCORING',
-            `Give 70-100 when the article has a new, concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, work-pass/employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, or direct competitor signal affecting ${marketText}.`,
-            `Give 50-69 when it has a clear ${marketText} impact and is useful for ${companyName}'s selected category, but the impact is indirect or trend-level.`,
-            'Give 40-49 when it is category-adjacent and potentially useful but not a strong direct update.',
-            'Give 0-39 when it is weak, unrelated, too old, or matches a reject rule. STORE only when score is at least 40.',
+            `Give 70-100 when the article has a concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, economy/trade update, or competitor signal affecting ${marketText}.`,
+            `Give ${PROFILE_RELEVANCE_MIN_SCORE}-69 when it is a useful ${marketText} business, economy, regulatory, tax, employment, market-entry, professional-services, or competitor update that fits any taxonomy category.`,
+            'Give 0 when it is unrelated to the country, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
+            `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}. If the article is not strong enough for ${PROFILE_RELEVANCE_MIN_SCORE}, return IGNORE with score 0.`,
             '',
             'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
-            'For STORE decisions, use the profile category unless the article clearly belongs to a better category from the taxonomy.',
-            'Use only exact category names from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
+            `For STORE decisions, the article only needs to match ONE relevant category from the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
+            'Do not reject an article only because it does not match the first/profile category. If it is about the selected country and fits any taxonomy category, STORE it.',
+            'Use the best exact category name from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
             `Valid sub-categories for the selected category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
-            'If valid sub-categories are provided, use one exact value from that list. If a specific sub-category was selected by the user, keep it unless the article should be ignored or is obviously a better fit elsewhere.',
+            'Use the best exact sub-category under the chosen category. If valid sub-categories are provided for the profile category, prefer them only when they fit; otherwise use the taxonomy list above.',
             '',
             'STEP 5: OUTPUT',
             `summary must explain in 2 short sentences what happened and why it matters to ${companyName} clients or users in ${marketText}.`,
@@ -413,15 +425,17 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
     const resp = await cli.chat.completions.create({
       model: MODEL,
       temperature: 0.35,
-      max_tokens: length === 'long' || length === 'custom' ? 3000 : length === 'short' ? 1100 : 2000,
+      max_tokens: length === 'long' || length === 'custom' ? 4200 : length === 'short' ? 1400 : 2800,
       response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
           content: [
-            'You are a senior B2B blog writer, SEO strategist, and professional-services content editor.',
+            'You are a senior B2B advisory writer, professional-services content editor, and SEO strategist.',
             '',
-            'Your job is to create a long-form, human-sounding, SEO-friendly blog for the company website using the selected intelligence topic and provided source/reference content.',
+            'Your job is to create a high-quality, human-sounding, commercially useful blog for a professional-services company website using the selected intelligence topic and provided source/reference content.',
+            '',
+            'The finished blog should read like it was written by an experienced advisor for business owners, CFOs, investors, founders, boards, and regional expansion teams. It must not read like generic AI content.',
             '',
             'IMPORTANT RULES',
             '- Return ONLY valid JSON. No markdown outside JSON.',
@@ -431,13 +445,30 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Use the selected article/source URL and provided source context as the primary reference.',
             '- If additional reference URLs are provided, use them only as supporting context.',
             '- If data/statistics are requested, include them only when supported by the source/reference material.',
-            '- Write in clear, logical, natural language.',
-            '- The blog must feel human-written, not AI-stuffed.',
+            '- Never present assumptions as facts. Qualify uncertain points with careful language such as "may", "can", "could", "companies should assess", or "subject to the facts".',
+            '- Do not make broad claims about tax, regulation, setup speed, banking, incentives, market access, or compliance unless the source material supports them.',
+            '- For legal, tax, regulatory, immigration, employment, or compliance topics, use advisory wording and avoid giving definitive advice.',
+            '- Write in clear, logical, natural language with varied sentence rhythm.',
+            '- The blog must feel human-written, specific, and editorially reviewed.',
             '- Use SEO best practices, but avoid keyword stuffing.',
-            '- Make the introduction engaging enough to hook the reader.',
-            '- Make the conclusion summarize the blog and nudge the reader toward the CTA.',
+            '- Make the introduction sharp and specific. Do not start with generic setup lines.',
+            '- Make the conclusion summarize the practical business signal and nudge the reader toward the CTA.',
             '- If FAQ is requested, include useful search-friendly FAQs.',
-            '- Use proper heading hierarchy.'
+            '- Use proper heading hierarchy.',
+            '',
+            'ANTI-GENERIC WRITING RULES',
+            '- Avoid empty promotional phrases such as "vibrant market", "remarkable achievement", "unparalleled opportunities", "robust business environment", "game changer", "dynamic landscape", "in today\'s fast-paced world", and similar filler.',
+            '- Avoid repeating the title in the first sentence unless it is needed for clarity.',
+            '- Avoid paragraphs that only restate the heading.',
+            '- Avoid generic advice like "stay informed" unless paired with a concrete action.',
+            '- Avoid obvious statements. Every section should add a useful business implication, decision point, caveat, checklist item, or example grounded in the source.',
+            '',
+            'ADVISORY DEPTH RULES',
+            '- For news or market-ranking topics, separate: what changed, why it matters, what companies should review, and what remains uncertain.',
+            '- For tax/regulatory/compliance topics, separate: rule or guidance, who may be affected, deductible/actionable points, documentation or filing implications, and limitations.',
+            '- For market-entry topics, discuss entity setup, tax position, banking, payroll/employment, licensing, governance, contracts, local substance, and timelines only where relevant and with careful wording.',
+            '- Include one practical checklist, table, or decision framework when it improves usefulness.',
+            '- Mention the source or report context naturally when relevant, but do not over-cite or over-quote.'
           ].join('\n')
         },
         {
@@ -496,16 +527,24 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Matched interests: ${Array.isArray(article.matchedInterests) ? article.matchedInterests.join(', ') : ''}`,
             '',
             'BLOG WRITING INSTRUCTIONS',
-            '1. Start with a strong, engaging introduction.',
+            '1. Start with a specific, editorial introduction that explains the real business signal behind the headline.',
             '2. Include a Table of Contents.',
-            '3. Write a structured blog body with meaningful H2/H3 headings.',
-            '4. Explain why the topic matters to the target audience.',
+            '3. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
+            '4. Explain why the topic matters to the target audience in practical business terms.',
             '5. Use examples where helpful, but do not invent unsupported examples.',
-            '6. Include internal linking suggestions naturally if focus page or internal pages are provided.',
-            '7. Include practical takeaways.',
-            '8. If FAQ is requested, add 3-5 useful FAQs.',
-            '9. End with a concise conclusion and CTA.',
-            '10. Keep the blog coherent, flowing, and professionally written.',
+            '6. Include a practical checklist, table, or decision framework when useful.',
+            '7. Include internal linking suggestions naturally if focus page or internal pages are provided.',
+            '8. Include practical takeaways that a reader can act on or discuss internally.',
+            '9. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
+            '10. End with a concise conclusion and CTA.',
+            '11. Keep the blog coherent, flowing, and professionally written.',
+            '',
+            'QUALITY BAR BEFORE RETURNING',
+            '- Rewrite any generic paragraph before final output.',
+            '- Remove filler adjectives and unsupported claims.',
+            '- Ensure each major section answers "so what?" for the target audience.',
+            '- Ensure the blog is useful even to a reader who already knows the headline.',
+            '- Ensure the CTA is connected to the topic, not a generic sales line.',
             '',
             'OUTPUT FORMAT',
             'Return ONLY valid JSON. No markdown outside JSON.',

@@ -3,6 +3,8 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const FetchLog = require('../models/FetchLog');
 const Article = require('../models/Article');
+const BlogPost = require('../models/BlogPost');
+const SocialPost = require('../models/SocialPost');
 const SavedSearch = require('../models/SavedSearch');
 const UserResult = require('../models/UserResult');
 const { protect } = require('../middleware/auth');
@@ -14,6 +16,9 @@ const { hashUrl } = require('../utils/hash');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
+const AVG_AI_TOKENS_PER_RESULT = Number(process.env.AVG_AI_TOKENS_PER_RESULT || 700);
+const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
+const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
 
 function primaryPayloadQuery(payload = {}) {
   const queries = payload.queries && typeof payload.queries === 'object' ? payload.queries : {};
@@ -36,6 +41,17 @@ function monthStart() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
+function limitReachedPayload({ message, limitType, used, limit }) {
+  return {
+    code: 'LIMIT_REACHED',
+    message,
+    limitType,
+    used: Number(used || 0),
+    limit: Number(limit || 0),
+    upgradePath: `/premium?limit=${encodeURIComponent(limitType || 'usage')}`
+  };
+}
+
 async function requireFetchAccess(req, res, next) {
   if (req.user?.role === 'super_admin') return next();
   if (req.user?.access?.canFetch === false) {
@@ -48,7 +64,49 @@ async function requireFetchAccess(req, res, next) {
       startedAt: { $gte: monthStart() }
     });
     if (used >= limit) {
-      return res.status(402).json({ message: `Monthly fetch limit reached (${used}/${limit}). Upgrade or ask super admin to increase access.` });
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'fetchesPerMonth',
+        used,
+        limit,
+        message: `Monthly fetch limit reached (${used}/${limit}). Upgrade or ask super admin to increase access.`
+      }));
+    }
+  }
+
+  const storageLimit = Number(req.user?.limits?.storageItems ?? 0);
+  if (storageLimit > 0) {
+    const used = await Article.countDocuments({ userId: req.user._id });
+    if (used >= storageLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'storageItems',
+        used,
+        limit: storageLimit,
+        message: `Stored signals limit reached (${used}/${storageLimit}). Reset data or upgrade for more storage.`
+      }));
+    }
+  }
+
+  const tokenLimit = Number(req.user?.limits?.tokenBudgetMonthly ?? 0);
+  if (tokenLimit > 0) {
+    const since = monthStart();
+    const [monthFetchRows, monthBlogs, monthSocial] = await Promise.all([
+      FetchLog.aggregate([
+        { $match: { userId: req.user._id, startedAt: { $gte: since } } },
+        { $group: { _id: null, inserted: { $sum: '$totalInserted' } } }
+      ]),
+      BlogPost.countDocuments({ createdBy: req.user._id, createdAt: { $gte: since } }),
+      SocialPost.countDocuments({ createdBy: req.user._id, createdAt: { $gte: since } })
+    ]);
+    const used = (Number(monthFetchRows[0]?.inserted || 0) * AVG_AI_TOKENS_PER_RESULT)
+      + (monthBlogs * AVG_TOKENS_PER_BLOG)
+      + (monthSocial * AVG_TOKENS_PER_SOCIAL_POST);
+    if (used >= tokenLimit) {
+      return res.status(402).json(limitReachedPayload({
+        limitType: 'tokenBudgetMonthly',
+        used,
+        limit: tokenLimit,
+        message: `Monthly token budget reached (${used}/${tokenLimit}). Upgrade before starting more AI-heavy work.`
+      }));
     }
   }
   next();
@@ -260,7 +318,7 @@ router.post('/saved-searches', protect, requireProfileAutomation, asyncHandler(a
     sources: cleanList(sources || preferredDomains),
     strictSources: Boolean(strictSources),
     days: Number(days || req.user.days || 30),
-    targetPerTopic: Number(targetPerTopic || 10),
+    targetPerTopic: Number(targetPerTopic || 150),
     minTavilyScore: minTavilyScore === undefined || minTavilyScore === null || minTavilyScore === '' ? undefined : Number(minTavilyScore),
     query: query || customQueryOverride || '',
     language: language || req.user.language || 'en',
@@ -307,7 +365,7 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
         : cleanList(user.sources),
       strictSources: Boolean(req.body.strictSources || req.body.strict_sources),
       days: Number(req.body.days || user.days || 30),
-      targetPerTopic: Number(req.body.targetPerTopic || req.body.maxPerTopic || 10),
+      targetPerTopic: Number(req.body.targetPerTopic || req.body.maxPerTopic || 150),
       minTavilyScore: req.body.minTavilyScore === undefined || req.body.minTavilyScore === null || req.body.minTavilyScore === ''
         ? undefined
         : Number(req.body.minTavilyScore),

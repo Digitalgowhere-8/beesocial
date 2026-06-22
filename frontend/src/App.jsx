@@ -8,6 +8,7 @@ import Profile from './pages/Profile';
 import Maintenance from './pages/Maintenance';
 import SocialMediaStudio from './pages/BlogStudio';
 import BlogLibrary from './pages/BlogLibrary';
+import Premium from './pages/Premium';
 import { useAuth } from './context/AuthContext';
 
 function HomeRedirect() {
@@ -76,6 +77,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <BlogLibrary />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/premium"
+        element={
+          <ProtectedRoute>
+            <Premium />
           </ProtectedRoute>
         }
       />

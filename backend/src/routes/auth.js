@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const User = require('../models/User');
+const Plan = require('../models/Plan');
 const { protect, signToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -142,6 +143,12 @@ router.post('/login', asyncHandler(async (req, res) => {
 router.get('/me', protect, (req, res) => {
   res.json({ user: req.user.toPublicJSON() });
 });
+
+// GET /api/auth/plans
+router.get('/plans', protect, asyncHandler(async (_req, res) => {
+  const items = await Plan.find({}).sort({ planId: 1 }).lean();
+  res.json({ items });
+}));
 
 // POST /api/auth/logout
 router.post('/logout', protect, asyncHandler(async (req, res) => {
