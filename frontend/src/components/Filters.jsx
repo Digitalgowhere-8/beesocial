@@ -32,13 +32,24 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
     return (meta.categories || meta.dataCategories || {})[filters.category] || [];
   }, [meta, filters.category]);
 
-  const sourceOptions = useMemo(() => {
+  const getSourceOptions = (type, country) => {
     if (!meta) return [];
     const sources = { ...EMPTY_SOURCES, ...(meta.sources || {}) };
-    if (!filters.type)
-      return [...sources.news, ...sources.govt, ...sources.competitor, ...sources.evergreen];
-    return sources[filters.type] || [];
-  }, [meta, filters.type]);
+    let list = [];
+    if (!type) {
+      list = [...sources.news, ...sources.govt, ...sources.competitor, ...sources.evergreen];
+    } else {
+      list = sources[type] || [];
+    }
+    if (country) {
+      list = list.filter((s) => s.countries && s.countries.includes(country));
+    }
+    return list;
+  };
+
+  const sourceOptions = useMemo(() => {
+    return getSourceOptions(filters.type, filters.country);
+  }, [meta, filters.type, filters.country]);
 
   const categoryOptions = useMemo(() => Object.keys(meta?.categories || meta?.dataCategories || {}), [meta]);
 
@@ -46,6 +57,13 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
     const next = { ...filters, [k]: v };
     if (k === 'category') next.subcategory = '';
     if (k === 'type')     next.source = '';
+    if (k === 'country') {
+      const validOptions = getSourceOptions(next.type, v);
+      const isValid = validOptions.some((opt) => opt.id === next.source);
+      if (!isValid) {
+        next.source = '';
+      }
+    }
     setFilters(next);
     onChange?.(next);
   };

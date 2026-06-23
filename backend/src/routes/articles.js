@@ -248,6 +248,7 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
             id: '$sourceId',
             name: '$source'
           },
+          countries: { $addToSet: '$country' },
           count: { $sum: 1 }
         }
       },
@@ -279,6 +280,7 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
     sources[type].push({
       id: optionLabel(row._id?.id),
       name: optionLabel(row._id?.name),
+      countries: (row.countries || []).map(optionLabel).filter(Boolean),
       count: row.count
     });
   }
