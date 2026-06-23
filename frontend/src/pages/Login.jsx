@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { isValidEmail, getEmailValidationError } from '../utils/emailValidator';
 
 export default function Login() {
   const { login } = useAuth();
@@ -17,6 +18,13 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setNotice('');
+    
+    const emailError = getEmailValidationError(form.email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+    
     setLoading(true);
     try {
       await login(form.email, form.password);

@@ -101,6 +101,10 @@ export default function Layout({ children, headerActions = null }) {
   const { user, isAdmin, isSuperAdmin, logout, runProgress } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const memberHasFetchOrSchedule = user?.access?.canFetch === true || user?.access?.canUseScheduler === true;
+  const showAdminOrFetch = isAdmin || memberHasFetchOrSchedule;
+  const adminOrFetchLabel = isAdmin ? "Admin" : "Fetch Settings";
   
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -333,8 +337,8 @@ export default function Layout({ children, headerActions = null }) {
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
-              {isAdmin && (
-                <button onClick={() => toggleRoute('/admin')} title="Admin"
+              {showAdminOrFetch && (
+                <button onClick={() => toggleRoute('/admin')} title={adminOrFetchLabel}
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <Shield size={16} />
                 </button>
@@ -349,8 +353,8 @@ export default function Layout({ children, headerActions = null }) {
                 <SideNavItem icon={BookOpenText} label="Social Media Studio" to="/social-media-studio" />
               )}
               <SideNavItem icon={UserIcon} label="Profile" to="/profile" />
-              {isAdmin && (
-                <SideNavItem icon={Shield} label="Admin" to="/admin" onActiveClick={() => navigate('/dashboard')} />
+              {showAdminOrFetch && (
+                <SideNavItem icon={Shield} label={adminOrFetchLabel} to="/admin" onActiveClick={() => navigate('/dashboard')} />
               )}
             </>
           )}
@@ -476,10 +480,10 @@ export default function Layout({ children, headerActions = null }) {
           <UserIcon size={16} />
           Profile
         </button>
-        {isAdmin ? (
+        {showAdminOrFetch ? (
           <button onClick={() => toggleRoute('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
             <Shield size={16} />
-            Admin
+            {adminOrFetchLabel}
           </button>
         ) : (
           <button onClick={() => navigate('/dashboard')} className="flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold text-gray-400">

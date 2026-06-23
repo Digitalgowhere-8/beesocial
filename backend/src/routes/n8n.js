@@ -7,6 +7,7 @@ const BlogPost = require('../models/BlogPost');
 const SocialPost = require('../models/SocialPost');
 const SavedSearch = require('../models/SavedSearch');
 const UserResult = require('../models/UserResult');
+const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { buildN8nPayload, cleanList } = require('../services/queryBuilder');
 const { runProfileSearch } = require('../services/profileSearchRunner');
@@ -29,11 +30,39 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-function requireProfileAutomation(req, res, next) {
-  if (!ADMIN_ROLES.includes(req.user?.role)) {
-    return res.status(403).json({ message: 'Only admins can manage intelligence profiles and run fetch automation.' });
+async function requireProfileAutomation(req, res, next) {
+  try {
+    if (req.user?.role === 'super_admin') return next();
+
+    let adminUser = req.user;
+    if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+      const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+      if (fetchedAdmin) {
+        adminUser = fetchedAdmin;
+      }
+    }
+
+    if (adminUser?.access?.canFetch === false && adminUser?.access?.canUseScheduler === false) {
+      return res.status(403).json({ message: 'Fetch and scheduler access is disabled for this account.' });
+    }
+
+    if (req.user?.role === 'admin') return next();
+
+    if (req.user?.role === 'user') {
+      const memberCanFetch = req.user.access?.canFetch === true;
+      const memberCanSchedule = req.user.access?.canUseScheduler === true;
+
+      const adminCanFetch = adminUser.access?.canFetch !== false;
+      const adminCanSchedule = adminUser.access?.canUseScheduler !== false;
+
+      if (memberCanFetch && adminCanFetch) return next();
+      if (memberCanSchedule && adminCanSchedule) return next();
+    }
+
+    return res.status(403).json({ message: 'Only authorized accounts can manage intelligence profiles.' });
+  } catch (err) {
+    next(err);
   }
-  next();
 }
 
 function monthStart() {
@@ -57,11 +86,31 @@ async function requireFetchAccess(req, res, next) {
   if (req.user?.access?.canFetch === false) {
     return res.status(403).json({ message: 'Fetch access is disabled for this account.' });
   }
-  const limit = Number(req.user?.limits?.fetchesPerMonth ?? 30);
+
+  let adminUser = req.user;
+  if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+    const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+    if (fetchedAdmin) {
+      adminUser = fetchedAdmin;
+    }
+  }
+
+  if (adminUser?.access?.canFetch === false) {
+    return res.status(403).json({ message: 'Fetch access is disabled for this admin account.' });
+  }
+
+  const tenantAdminId = adminUser._id;
+  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id').lean();
+  const userIds = teamUsers.map((u) => u._id);
+
+  const limit = Number(adminUser?.limits?.fetchesPerMonth ?? 30);
   if (limit > 0) {
     const used = await FetchLog.countDocuments({
-      userId: req.user._id,
-      startedAt: { $gte: monthStart() }
+      startedAt: { $gte: monthStart() },
+      $or: [
+        { userId: { $in: userIds } },
+        { triggeredByUser: { $in: userIds } }
+      ]
     });
     if (used >= limit) {
       return res.status(402).json(limitReachedPayload({
@@ -73,9 +122,9 @@ async function requireFetchAccess(req, res, next) {
     }
   }
 
-  const storageLimit = Number(req.user?.limits?.storageItems ?? 0);
+  const storageLimit = Number(adminUser?.limits?.storageItems ?? 0);
   if (storageLimit > 0) {
-    const used = await Article.countDocuments({ userId: req.user._id });
+    const used = await Article.countDocuments({ userId: { $in: userIds } });
     if (used >= storageLimit) {
       return res.status(402).json(limitReachedPayload({
         limitType: 'storageItems',
@@ -86,16 +135,24 @@ async function requireFetchAccess(req, res, next) {
     }
   }
 
-  const tokenLimit = Number(req.user?.limits?.tokenBudgetMonthly ?? 0);
+  const tokenLimit = Number(adminUser?.limits?.tokenBudgetMonthly ?? 0);
   if (tokenLimit > 0) {
     const since = monthStart();
     const [monthFetchRows, monthBlogs, monthSocial] = await Promise.all([
       FetchLog.aggregate([
-        { $match: { userId: req.user._id, startedAt: { $gte: since } } },
+        {
+          $match: {
+            startedAt: { $gte: since },
+            $or: [
+              { userId: { $in: userIds } },
+              { triggeredByUser: { $in: userIds } }
+            ]
+          }
+        },
         { $group: { _id: null, inserted: { $sum: '$totalInserted' } } }
       ]),
-      BlogPost.countDocuments({ createdBy: req.user._id, createdAt: { $gte: since } }),
-      SocialPost.countDocuments({ createdBy: req.user._id, createdAt: { $gte: since } })
+      BlogPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } }),
+      SocialPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } })
     ]);
     const used = (Number(monthFetchRows[0]?.inserted || 0) * AVG_AI_TOKENS_PER_RESULT)
       + (monthBlogs * AVG_TOKENS_PER_BLOG)
@@ -266,6 +323,17 @@ router.post('/log', verifySecret, async (req, res, next) => {
 });
 
 router.get('/saved-searches', protect, requireProfileAutomation, asyncHandler(async (req, res) => {
+  let adminUser = req.user;
+  if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+    const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+    if (fetchedAdmin) {
+      adminUser = fetchedAdmin;
+    }
+  }
+
+  if (adminUser?.access?.canUseSavedSearches === false) {
+    return res.status(403).json({ message: 'Saved searches are disabled for this admin account.' });
+  }
   if (req.user?.access?.canUseSavedSearches === false) {
     return res.status(403).json({ message: 'Saved searches are disabled for this account.' });
   }
@@ -274,6 +342,17 @@ router.get('/saved-searches', protect, requireProfileAutomation, asyncHandler(as
 }));
 
 router.post('/saved-searches', protect, requireProfileAutomation, asyncHandler(async (req, res) => {
+  let adminUser = req.user;
+  if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+    const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+    if (fetchedAdmin) {
+      adminUser = fetchedAdmin;
+    }
+  }
+
+  if (adminUser?.access?.canUseSavedSearches === false) {
+    return res.status(403).json({ message: 'Saved searches are disabled for this admin account.' });
+  }
   if (req.user?.access?.canUseSavedSearches === false) {
     return res.status(403).json({ message: 'Saved searches are disabled for this account.' });
   }

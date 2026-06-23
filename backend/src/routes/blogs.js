@@ -4,6 +4,7 @@ const Joi = require('joi');
 const Article = require('../models/Article');
 const BlogPost = require('../models/BlogPost');
 const SocialPost = require('../models/SocialPost');
+const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { generateBlogPost, generateLinkedInPost } = require('../services/aiService');
 
@@ -98,11 +99,20 @@ function limitReachedPayload({ message, limitType, used, limit }) {
 
 async function requireGenerationLimit(req, res, next) {
   if (req.user?.role === 'super_admin') return next();
-  const tenantId = tenantAdminId(req.user);
+
+  let adminUser = req.user;
+  if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+    const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+    if (fetchedAdmin) {
+      adminUser = fetchedAdmin;
+    }
+  }
+
+  const tenantId = adminUser._id;
   const since = monthStart();
-  const blogLimit = Number(req.user?.limits?.blogGenerationsMonthly ?? 0);
-  const socialLimit = Number(req.user?.limits?.socialPostsMonthly ?? 0);
-  const tokenLimit = Number(req.user?.limits?.tokenBudgetMonthly ?? 0);
+  const blogLimit = Number(adminUser?.limits?.blogGenerationsMonthly ?? 0);
+  const socialLimit = Number(adminUser?.limits?.socialPostsMonthly ?? 0);
+  const tokenLimit = Number(adminUser?.limits?.tokenBudgetMonthly ?? 0);
 
   if (req.path === '/generate' && blogLimit > 0) {
     const used = await BlogPost.countDocuments({ tenantAdminId: tenantId, createdAt: { $gte: since } });

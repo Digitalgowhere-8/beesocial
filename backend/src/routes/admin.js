@@ -20,6 +20,20 @@ const {
 
 const router = express.Router();
 
+// Strict email validation - rejects patterns like jitesh@gmail.com.com
+function isValidEmail(email) {
+  const str = String(email || '').trim();
+  // Basic format check
+  if (!/^[^\s@]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(str)) return false;
+  const [, domain] = str.split('@');
+  const parts = domain.split('.');
+  // Reject if more than 3 domain levels (e.g., a.b.c.d)
+  if (parts.length > 3) return false;
+  // Reject if last two parts are identical (e.g., .com.com, .net.net)
+  if (parts.length === 3 && parts[1] === parts[2]) return false;
+  return true;
+}
+
 // Escape special regex characters to prevent ReDoS attacks
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -99,13 +113,28 @@ async function teamUserIdsFor(actor) {
 
 async function requireFetchCapacity(req, res, next) {
   if (req.user?.role === 'super_admin') return next();
+
+  let adminUser = req.user;
+  if (req.user?.role === 'user' && req.user?.tenantAdminId) {
+    const fetchedAdmin = await User.findById(req.user.tenantAdminId);
+    if (fetchedAdmin) {
+      adminUser = fetchedAdmin;
+    }
+  }
+
+  if (adminUser?.access?.canFetch === false) {
+    return res.status(403).json({ message: 'Fetch access is disabled for this admin account.' });
+  }
   if (req.user?.access?.canFetch === false) {
     return res.status(403).json({ message: 'Fetch access is disabled for this account.' });
   }
 
-  const userIds = await teamUserIdsFor(req.user);
+  const tenantAdminId = adminUser._id;
+  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id').lean();
+  const userIds = teamUsers.map((u) => u._id);
+
   const since = startOfMonth();
-  const limits = req.user?.limits || {};
+  const limits = adminUser?.limits || {};
   const fetchLimit = Number(limits.fetchesPerMonth || 0);
   const storageLimit = Number(limits.storageItems || 0);
   const tokenLimit = Number(limits.tokenBudgetMonthly || 0);
@@ -143,8 +172,8 @@ async function requireFetchCapacity(req, res, next) {
         { $match: { startedAt: { $gte: since }, $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
         { $group: { _id: null, inserted: { $sum: '$totalInserted' } } }
       ]),
-      BlogPost.countDocuments({ createdBy: { $in: userIds }, createdAt: { $gte: since } }),
-      SocialPost.countDocuments({ createdBy: { $in: userIds }, createdAt: { $gte: since } })
+      BlogPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } }),
+      SocialPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } })
     ]);
     const used = (Number(monthFetchRows[0]?.inserted || 0) * AVG_AI_TOKENS_PER_RESULT)
       + (monthBlogs * AVG_TOKENS_PER_BLOG)
@@ -895,6 +924,9 @@ router.post('/users', asyncHandler(async (req, res) => {
   } = req.body || {};
   if (!name || !email || !password) {
     return res.status(400).json({ message: 'name, email and password are required' });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: 'Invalid email format. Please check for typos like multiple domain suffixes (e.g., .com.com)' });
   }
   if (password.length < 6) {
     return res.status(400).json({ message: 'Password must be at least 6 characters' });

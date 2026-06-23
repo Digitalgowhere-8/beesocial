@@ -108,9 +108,14 @@ function getBrowserTimezones() {
 }
 
 export default function AdminPanel() {
-  const { isSuperAdmin } = useAuth();
-  const tabs = isSuperAdmin ? SUPER_ADMIN_TABS : ADMIN_TABS;
-  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : 'articles'));
+  const { user, isSuperAdmin, isAdmin } = useAuth();
+  const tabs = useMemo(() => {
+    if (isSuperAdmin) return SUPER_ADMIN_TABS;
+    if (isAdmin) return ADMIN_TABS;
+    return ADMIN_TABS.filter((t) => t.key === 'fetch');
+  }, [isSuperAdmin, isAdmin]);
+
+  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : (isAdmin ? 'articles' : 'fetch')));
   const [dbPlans, setDbPlans] = useState([]);
 
   const loadDbPlans = useCallback(async () => {

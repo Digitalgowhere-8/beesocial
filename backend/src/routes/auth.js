@@ -6,6 +6,20 @@ const { protect, signToken } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Strict email validation - rejects patterns like jitesh@gmail.com.com
+function isValidEmail(email) {
+  const str = String(email || '').trim();
+  // Basic format check
+  if (!/^[^\s@]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(str)) return false;
+  const [, domain] = str.split('@');
+  const parts = domain.split('.');
+  // Reject if more than 3 domain levels (e.g., a.b.c.d)
+  if (parts.length > 3) return false;
+  // Reject if last two parts are identical (e.g., .com.com, .net.net)
+  if (parts.length === 3 && parts[1] === parts[2]) return false;
+  return true;
+}
+
 // Helper to catch async route errors and pass them to next()
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -14,7 +28,10 @@ const asyncHandler = (fn) => (req, res, next) => {
 // ---------------- Schemas ----------------
 const registerSchema = Joi.object({
   name: Joi.string().min(2).max(120).required(),
-  email: Joi.string().email().required(),
+  email: Joi.string().email().required().custom((value) => {
+    if (!isValidEmail(value)) throw new Error('Invalid email format. Please check for typos like multiple domain suffixes (e.g., .com.com)');
+    return value;
+  }),
   password: Joi.string().min(6).max(128).required(),
   company: Joi.string().allow('').max(120),
   designation: Joi.string().allow('').max(120),
@@ -42,7 +59,10 @@ const registerSchema = Joi.object({
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().email().required().custom((value) => {
+    if (!isValidEmail(value)) throw new Error('Invalid email format. Please check for typos like multiple domain suffixes (e.g., .com.com)');
+    return value;
+  }),
   password: Joi.string().required()
 });
 
@@ -76,7 +96,7 @@ const updateSchema = Joi.object({
 
 // ---------------- Routes ----------------
 
-// POST /api/auth/register   (creates a pending normal user)
+// POST /api/auth/register   (creates a pending admin account)
 router.post('/register', asyncHandler(async (req, res) => {
   const { error, value } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
@@ -87,8 +107,16 @@ router.post('/register', asyncHandler(async (req, res) => {
   const user = await User.create({
     ...value,
     email: value.email.toLowerCase(),
-    role: 'user',
+    role: 'admin',
     isActive: false,
+    memberLimit: 3,
+    access: {
+      canFetch: true,
+      canCreateMembers: true,
+      canUseBlogStudio: false,
+      canUseSavedSearches: true,
+      canUseScheduler: false
+    },
     country: value.country || 'India',
     region: value.region || '',
     sector: value.sector || '',
@@ -111,8 +139,11 @@ router.post('/register', asyncHandler(async (req, res) => {
     }
   });
 
+  user.tenantAdminId = user._id;
+  await user.save();
+
   res.status(201).json({
-    message: 'Registration submitted. An admin must approve your account before you can sign in.',
+    message: 'Registration submitted. A super admin must approve your admin account before you can sign in.',
     user: user.toPublicJSON()
   });
 }));
@@ -125,7 +156,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const user = await User.findOne({ email: value.email.toLowerCase() }).select('+password');
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
   if (!user.isActive) {
-    return res.status(403).json({ message: 'Your account is pending admin approval.' });
+    return res.status(403).json({ message: 'Your account is pending super admin approval.' });
   }
 
   const match = await user.matchPassword(value.password);

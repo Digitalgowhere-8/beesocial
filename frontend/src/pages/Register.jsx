@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, ArrowRight, Eye, EyeOff, UserPlus, KeyRound, ArrowLeft } from 'lucide-react';
+import { isValidEmail, getEmailValidationError } from '../utils/emailValidator';
 
 export default function Register() {
   const { register } = useAuth();
@@ -16,11 +17,19 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
+    const emailError = getEmailValidationError(form.email);
+    if (emailError) {
+      setError(emailError);
+      setLoading(false);
+      return;
+    }
+    
     try {
       await register(form);
       navigate('/login', {
         replace: true,
-        state: { message: 'Registration submitted. Please wait for admin approval before signing in.' }
+        state: { message: 'Registration submitted. Please wait for super admin approval before signing in as an admin.' }
       });
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -85,20 +94,20 @@ export default function Register() {
             style={{ background: 'rgba(255,255,255,0.18)', color: 'white', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.25)' }}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-green-300 inline-block" style={{ boxShadow: '0 0 4px #86efac' }} />
-            Live Opportunity Signal
+            Live Market Signal
           </div>
 
           <h1
             className="max-w-[800px] text-white font-black leading-[1.08] mb-8"
             style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"DM Sans", system-ui, sans-serif' }}
           >
-            AI-curated opportunities<br />
-            for every market<br />
-            and service category.
+           The Market Intelligence<br />
+            that Runs Your Content<br />
+            Pipeline, On Autopilot.
           </h1>
 
           <div className="max-w-[720px] text-white/70 text-[11px] font-semibold uppercase tracking-[0.14em] leading-[1.9]">
-            GOVERNMENT SCHEMES &nbsp;&middot;&nbsp; GRANTS &nbsp;&middot;&nbsp; TENDERS &nbsp;&middot;&nbsp; POLICY UPDATES &nbsp;&middot;&nbsp; MARKET BRIEFINGS
+            100+ TRUSTED SOURCES &nbsp;&middot;&nbsp; GOVERNMENT PORTALS &nbsp;&middot;&nbsp; INDUSTRY PUBLICATIONS &nbsp;&middot;&nbsp;  MARKET BRIEFINGS 
           </div>
         </div>
 
@@ -140,7 +149,7 @@ export default function Register() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-bold text-gray-800 text-sm group-hover:text-[#D11243] transition-colors">I am a new user</h3>
-                      <p className="text-xs text-gray-400 mt-1 leading-normal">Request a new dashboard account. Admin approval is required before access is granted.</p>
+                      <p className="text-xs text-gray-400 mt-1 leading-normal">Request a new admin dashboard account. Super admin approval is required before access is granted.</p>
                     </div>
                   </button>
 
@@ -172,7 +181,7 @@ export default function Register() {
                 </button>
 
                 <h2 className="text-2xl font-black text-gray-900 mb-1 tracking-tight">Request an account</h2>
-                <p className="text-gray-400 text-sm mb-6">Your account will be reviewed before dashboard access is enabled.</p>
+                <p className="text-gray-400 text-sm mb-6">Your admin account will be reviewed by the super admin before dashboard access is enabled.</p>
 
                 <form onSubmit={submit} className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
