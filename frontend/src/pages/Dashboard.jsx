@@ -96,7 +96,6 @@ function dateScoreRanked(items = []) {
 
 function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
   const Icon = column.icon;
-  const countries = [...new Set(items.map((item) => item.country).filter(Boolean))].slice(0, 3);
 
   return (
     <section className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
@@ -108,9 +107,6 @@ function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
             </span>
             <div className="min-w-0">
               <h2 className="font-black text-[14px] text-gray-900 truncate">{column.label}</h2>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold truncate">
-                {countries.length ? countries.join(' / ') : 'Ranked feed'}
-              </p>
             </div>
           </div>
           <span className="rounded-md px-2 py-1 text-[11px] font-black" style={{ color: column.color, background: column.tint }}>
