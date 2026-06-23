@@ -13,12 +13,12 @@ const OPPORTUNITY_TYPE = {
   competitor: 'competitor',
   evergreen: 'evergreen'
 };
-const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(30, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 18) || 18));
+const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(30, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 10) || 10));
 const DEFAULT_TARGET_PER_CATEGORY = 10;
-const DEFAULT_TARGET_PER_TOPIC = 150;
-const MAX_TARGET_PER_TOPIC = 150;
-const DEFAULT_TAVILY_MAX_RESULTS = 20;
-const MAX_TAVILY_MAX_RESULTS = 20;
+const DEFAULT_TARGET_PER_TOPIC = 100;
+const MAX_TARGET_PER_TOPIC = 100;
+const DEFAULT_TAVILY_MAX_RESULTS = 10;
+const MAX_TAVILY_MAX_RESULTS = 10;
 const MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
 const BROAD_DISCOVERY_MAX_RESULTS = Math.max(1, Math.min(10, Number(process.env.BROAD_DISCOVERY_MAX_RESULTS || 6) || 6));
 

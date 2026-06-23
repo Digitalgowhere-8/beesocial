@@ -792,6 +792,7 @@ function SuperAdminFetchTab() {
           </FetchField>
           <FetchField label="Data age">
             <select className="select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
+              <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={14}>Last 14 days</option>
               <option value={30}>Last 30 days</option>
@@ -1333,6 +1334,7 @@ function FetchTab() {
           </FetchField>
           <FetchField label="Data age">
             <select className="select min-h-[44px] rounded-xl" value={form.days} onChange={(e) => update('days', Number(e.target.value))}>
+              <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={14}>Last 14 days</option>
               <option value={30}>Last 30 days</option>
