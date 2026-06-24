@@ -24,6 +24,7 @@ const articleRoutes = require('./routes/articles');
 const adminRoutes = require('./routes/admin');
 const n8nRoutes = require('./routes/n8n');
 const blogRoutes = require('./routes/blogs');
+const analyticsRoutes = require('./routes/analytics');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
@@ -91,6 +92,7 @@ app.use(maintenanceGuard);
 
 // --------- Routes ---------
 app.use('/api/auth', authRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/n8n', n8nRoutes);

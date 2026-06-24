@@ -71,6 +71,7 @@ export default function ArticleCard({
 
   return (
     <article
+      data-analytics-section={`Article: ${item.type || 'signal'} - ${item.category || 'General'}`}
       className={[
         'group relative isolate flex flex-col overflow-hidden rounded-lg bg-white fade-in',
         'transition-all duration-200',
@@ -153,6 +154,7 @@ export default function ArticleCard({
           target="_blank"
           rel="noopener noreferrer"
           className="line-clamp-3 hover:underline decoration-brand-crimson/30 underline-offset-2"
+          data-analytics-click={`Article title: ${item.title || 'Untitled'}`}
         >
           {item.title}
         </a>
@@ -221,6 +223,7 @@ export default function ArticleCard({
               className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all hover:bg-brand-pink/50"
               style={{ color: typeStyle.accent }}
               title="Open source article"
+              data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
               onClick={(event) => event.stopPropagation()}
             >
               Source <ExternalLink size={12} />

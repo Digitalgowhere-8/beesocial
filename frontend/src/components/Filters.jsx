@@ -5,7 +5,7 @@ import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 const CRIMSON = '#D11243';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 
-export default function Filters({ initial = {}, onChange, showAdmin = false }) {
+export default function Filters({ initial = {}, onChange, showAdmin = false, showSavedFilter = true, showStatusFilter = showAdmin }) {
   const { region: _region, ...initialWithoutRegion } = initial || {};
   const [meta, setMeta] = useState(null);
   const [filters, setFilters] = useState({
@@ -74,7 +74,10 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
     onChange?.(blank);
   };
 
-  const activeCount = Object.values(filters).filter((v) => v !== '' && v != null).length;
+  const visibleFilterValues = Object.entries(filters)
+    .filter(([key]) => (showSavedFilter || key !== 'saved') && (showStatusFilter || key !== 'publishedOnly'))
+    .map(([, value]) => value);
+  const activeCount = visibleFilterValues.filter((v) => v !== '' && v != null).length;
 
   const inputBase = {
     background: 'white',
@@ -226,16 +229,18 @@ export default function Filters({ initial = {}, onChange, showAdmin = false }) {
               <input type="date" style={inputBase} value={filters.to}
                 onChange={(e) => update('to', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Saved</label>
-              <select style={inputBase} value={filters.saved}
-                onChange={(e) => update('saved', e.target.value)}
-                onFocus={handleFocus} onBlur={handleBlur}>
-                <option value="">All</option>
-                <option value="true">Saved only</option>
-              </select>
-            </div>
-            {showAdmin && (
+            {showSavedFilter && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Saved</label>
+                <select style={inputBase} value={filters.saved}
+                  onChange={(e) => update('saved', e.target.value)}
+                  onFocus={handleFocus} onBlur={handleBlur}>
+                  <option value="">All</option>
+                  <option value="true">Saved only</option>
+                </select>
+              </div>
+            )}
+            {showStatusFilter && (
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Status</label>
                 <select style={inputBase} value={filters.publishedOnly}

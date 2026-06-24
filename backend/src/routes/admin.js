@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Plan = require('../models/Plan');
 const BlogPost = require('../models/BlogPost');
 const SocialPost = require('../models/SocialPost');
+const AnalyticsEvent = require('../models/AnalyticsEvent');
 const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
@@ -61,6 +62,17 @@ const DEFAULT_MEMBER_ACCESS = {
   canUseSavedSearches: true,
   canUseScheduler: false
 };
+
+function startOfDay(days = 30) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - Math.max(0, Number(days || 0) - 1));
+  return date;
+}
+
+function pct(part, total) {
+  return total ? Math.round((Number(part || 0) / Number(total || 0)) * 100) : 0;
+}
 
 // Per-plan defaults loaded dynamically from database
 async function getPlanDefaults(planId) {
@@ -769,6 +781,176 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     },
     topUsers,
     recentRuns
+  });
+}));
+
+router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const days = Math.max(1, Math.min(90, Number(req.query.days || 30) || 30));
+  const since = startOfDay(days);
+  const match = { occurredAt: { $gte: since } };
+
+  const [
+    uniqueVisitors,
+    uniqueSessions,
+    pageViews,
+    clicks,
+    sectionViews,
+    engagementRows,
+    sectionRows,
+    clickRows,
+    pageRows,
+    trendRows,
+    roleRows,
+    sessionRows
+  ] = await Promise.all([
+    AnalyticsEvent.distinct('visitorId', match),
+    AnalyticsEvent.distinct('sessionId', match),
+    AnalyticsEvent.countDocuments({ ...match, type: 'page_view' }),
+    AnalyticsEvent.countDocuments({ ...match, type: 'click' }),
+    AnalyticsEvent.countDocuments({ ...match, type: 'section_view' }),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, durationMs: { $gt: 0 } } },
+      { $group: { _id: null, totalDurationMs: { $sum: '$durationMs' }, avgDurationMs: { $avg: '$durationMs' } } }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, type: 'section_view', section: { $nin: ['', null] } } },
+      {
+        $group: {
+          _id: '$section',
+          views: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' },
+          totalDurationMs: { $sum: '$durationMs' },
+          avgDurationMs: { $avg: '$durationMs' }
+        }
+      },
+      { $project: { section: '$_id', views: 1, visitors: { $size: '$visitors' }, totalDurationMs: 1, avgDurationMs: 1, _id: 0 } },
+      { $sort: { totalDurationMs: -1, views: -1 } },
+      { $limit: 12 }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, type: 'click' } },
+      {
+        $group: {
+          _id: { section: { $ifNull: ['$section', 'Unknown'] }, label: { $ifNull: ['$label', 'Unknown'] } },
+          clicks: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' }
+        }
+      },
+      { $project: { section: '$_id.section', label: '$_id.label', clicks: 1, visitors: { $size: '$visitors' }, _id: 0 } },
+      { $sort: { clicks: -1 } },
+      { $limit: 15 }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, type: 'page_view', path: { $nin: ['', null] } } },
+      {
+        $group: {
+          _id: '$path',
+          views: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' },
+          title: { $first: '$title' }
+        }
+      },
+      { $project: { path: '$_id', title: 1, views: 1, visitors: { $size: '$visitors' }, _id: 0 } },
+      { $sort: { views: -1 } },
+      { $limit: 10 }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: {
+            day: { $dateToString: { date: '$occurredAt', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
+            type: '$type'
+          },
+          count: { $sum: 1 },
+          durationMs: { $sum: '$durationMs' },
+          visitors: { $addToSet: '$visitorId' }
+        }
+      },
+      { $sort: { '_id.day': 1 } }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, role: { $nin: ['', null] } } },
+      { $group: { _id: '$role', events: { $sum: 1 }, visitors: { $addToSet: '$visitorId' } } },
+      { $project: { role: '$_id', events: 1, visitors: { $size: '$visitors' }, _id: 0 } },
+      { $sort: { events: -1 } }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$sessionId',
+          pageViews: { $sum: { $cond: [{ $eq: ['$type', 'page_view'] }, 1, 0] } },
+          clicks: { $sum: { $cond: [{ $eq: ['$type', 'click'] }, 1, 0] } },
+          durationMs: { $sum: '$durationMs' }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          bouncedSessions: { $sum: { $cond: [{ $and: [{ $lte: ['$pageViews', 1] }, { $eq: ['$clicks', 0] }, { $lt: ['$durationMs', 10000] }] }, 1, 0] } },
+          engagedSessions: { $sum: { $cond: [{ $or: [{ $gt: ['$clicks', 0] }, { $gte: ['$durationMs', 10000] }, { $gt: ['$pageViews', 1] }] }, 1, 0] } },
+          totalSessions: { $sum: 1 }
+        }
+      }
+    ])
+  ]);
+
+  const totalDurationMs = Number(engagementRows[0]?.totalDurationMs || 0);
+  const avgEventDurationMs = Math.round(Number(engagementRows[0]?.avgDurationMs || 0));
+  const sessionStats = sessionRows[0] || {};
+  const dailyMap = new Map();
+  for (let i = 0; i < days; i += 1) {
+    const date = new Date(since);
+    date.setDate(since.getDate() + i);
+    const key = date.toISOString().slice(0, 10);
+    dailyMap.set(key, { day: key, pageViews: 0, clicks: 0, sectionViews: 0, engagementMs: 0, visitors: 0 });
+  }
+  trendRows.forEach((row) => {
+    const day = row._id?.day;
+    if (!day) return;
+    const current = dailyMap.get(day) || { day, pageViews: 0, clicks: 0, sectionViews: 0, engagementMs: 0, visitors: 0 };
+    if (row._id.type === 'page_view') current.pageViews = row.count;
+    if (row._id.type === 'click') current.clicks = row.count;
+    if (row._id.type === 'section_view') current.sectionViews = row.count;
+    current.engagementMs += Number(row.durationMs || 0);
+    current.visitors = Math.max(current.visitors, Array.isArray(row.visitors) ? row.visitors.length : 0);
+    dailyMap.set(day, current);
+  });
+
+  const sectionWithRates = sectionRows.map((row) => {
+    const rowClicks = clickRows
+      .filter((click) => click.section === row.section)
+      .reduce((sum, click) => sum + Number(click.clicks || 0), 0);
+    return {
+      ...row,
+      clicks: rowClicks,
+      clickRate: pct(rowClicks, row.views),
+      avgDurationMs: Math.round(Number(row.avgDurationMs || 0))
+    };
+  });
+
+  res.json({
+    days,
+    since,
+    totals: {
+      visitors: uniqueVisitors.length,
+      sessions: uniqueSessions.length,
+      pageViews,
+      clicks,
+      sectionViews,
+      totalEngagedMs: totalDurationMs,
+      avgEngagedMsPerSession: uniqueSessions.length ? Math.round(totalDurationMs / uniqueSessions.length) : 0,
+      avgEventDurationMs,
+      clickThroughRate: pct(clicks, pageViews),
+      engagementRate: pct(sessionStats.engagedSessions || 0, sessionStats.totalSessions || uniqueSessions.length),
+      bounceRate: pct(sessionStats.bouncedSessions || 0, sessionStats.totalSessions || uniqueSessions.length)
+    },
+    sections: sectionWithRates,
+    clicks: clickRows,
+    pages: pageRows,
+    roles: roleRows,
+    trend: Array.from(dailyMap.values())
   });
 }));
 

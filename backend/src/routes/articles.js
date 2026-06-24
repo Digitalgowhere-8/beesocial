@@ -123,22 +123,10 @@ const asyncHandler = (fn) => (req, res, next) => {
  *  source      - sourceId
  *  q           - full-text search keyword (title)
  *  from / to   - ISO date strings; filters by fetchedAt
- *  publishedOnly - 'true' to return only isPublished=true
  */
 function buildQuery(req, opts = {}) {
   const q = {};
   const ownerIds = tenantOwnerIds(req.user);
-
-  // Visibility rule:
-  //   - Non-admins ALWAYS see only published.
-  //   - Admin can opt-in to published-only via ?publishedOnly=true.
-  if (opts.forUser) {
-    q.isPublished = true;
-  } else if (req.query.publishedOnly === 'true') {
-    q.isPublished = true;
-  } else if (req.query.publishedOnly === 'false') {
-    q.isPublished = false;
-  }
 
   if (req.query.type) {
     const types = req.query.type.split(',').map((s) => s.trim()).filter(Boolean);
@@ -156,7 +144,9 @@ function buildQuery(req, opts = {}) {
   if (req.query.userId && req.user.role === 'super_admin') q.userId = req.query.userId;
   if (req.query.savedSearchId) q.savedSearchId = req.query.savedSearchId;
 
-  if (req.query.ownerOnly === 'true' && ownerIds.length) {
+  if (req.query.sharedOnly === 'true') {
+    Object.assign(q, { $or: sharedArticleScope() });
+  } else if (req.query.ownerOnly === 'true' && ownerIds.length) {
     if (q.userId) {
       q.$and = [...(q.$and || []), { userId: q.userId }, { userId: { $in: ownerIds } }];
       delete q.userId;
@@ -216,9 +206,8 @@ async function annotateSaved(req, items = []) {
 function canAccessArticle(user, article) {
   const ownerIds = tenantOwnerIds(user).map((id) => String(id));
   const isShared = !article.userId;
-  if (isShared) return isAdminUser(user) || article.isPublished;
+  if (isShared) return true;
   if (ownerIds.length && !ownerIds.includes(String(article.userId || ''))) return false;
-  if (!isAdminUser(user) && !article.isPublished) return false;
   return true;
 }
 
@@ -226,7 +215,7 @@ function canAccessArticle(user, article) {
 router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   const ownerIds = tenantOwnerIds(req.user);
   const scope = scopedOwnerQuery(ownerIds);
-  const visibleScope = !isAdminUser(req.user) ? { ...scope, isPublished: true } : scope;
+  const visibleScope = scope;
   const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows] = await Promise.all([
     Article.distinct('country', { ...visibleScope, country: { $nin: ['', null] } }),
     Article.distinct('region', { ...visibleScope, region: { $nin: ['', null] } }),
@@ -312,7 +301,7 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
 router.get('/dashboard', protect, asyncHandler(async (req, res) => {
   const baseQuery = await applySavedFilter(
     req,
-    buildQuery(req, { forUser: !isAdminUser(req.user) || req.query.publishedOnly !== 'false' })
+    buildQuery(req)
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
 
@@ -340,7 +329,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
 // GET /api/articles/velocity
 // Returns real signal counts for the last 7 days using publishedAt when present, otherwise fetchedAt.
 router.get('/velocity', protect, asyncHandler(async (req, res) => {
-  const baseQuery = buildQuery(req, { forUser: !isAdminUser(req.user) });
+  const baseQuery = buildQuery(req);
   const datasetScope = req.query.scope === 'dataset';
   const now = new Date();
   const start = new Date(now);
@@ -415,9 +404,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 // ---------- LIST endpoint (paginated) ----------
 // GET /api/articles?type=news&category=...&page=1&limit=20
 router.get('/', protect, asyncHandler(async (req, res) => {
-  // Users only see published. Admins see all unless they filter.
-  const forUser = !isAdminUser(req.user);
-  const q = await applySavedFilter(req, buildQuery(req, { forUser }));
+  const q = await applySavedFilter(req, buildQuery(req));
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);

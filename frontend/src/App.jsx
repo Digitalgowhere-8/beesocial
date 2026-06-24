@@ -10,6 +10,7 @@ import SocialMediaStudio from './pages/BlogStudio';
 import BlogLibrary from './pages/BlogLibrary';
 import Premium from './pages/Premium';
 import { useAuth } from './context/AuthContext';
+import useAnalyticsTracking from './hooks/useAnalyticsTracking';
 
 function HomeRedirect() {
   const { isSuperAdmin } = useAuth();
@@ -17,6 +18,8 @@ function HomeRedirect() {
 }
 
 export default function App() {
+  useAnalyticsTracking();
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

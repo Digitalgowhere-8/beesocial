@@ -8,7 +8,7 @@ import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp, BookOpenText, MessageSquareText, Sparkles
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -98,7 +98,7 @@ function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
   const Icon = column.icon;
 
   return (
-    <section className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
+    <section data-analytics-section={`Intel feed: ${column.label}`} className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
       <div className="px-4 py-3.5 border-b border-gray-100 bg-white">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -134,6 +134,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
   const [loading, setLoading] = useState(true);
   const dashTab = initialTab;
+  const isIntelDesk = dashTab === 'feed';
+  const [intelDeskTab, setIntelDeskTab] = useState('intel');
   const [analyticsViewMode, setAnalyticsViewMode] = useState('today');
   const [filters, setFilters] = useState(() => {
     if (!user?._id) return {};
@@ -146,11 +148,24 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [draggedArticle, setDraggedArticle] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [savingArticleIds, setSavingArticleIds] = useState(new Set());
+  const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
 
   useEffect(() => {
     if (user?._id)
       localStorage.setItem(`dashboard_filters_${user._id}`, JSON.stringify(withoutRegion(filters)));
   }, [filters, user?._id]);
+
+  const effectiveFilters = useMemo(() => {
+    const next = withoutRegion(filters);
+    delete next.saved;
+    delete next.publishedOnly;
+    delete next.ownerOnly;
+    delete next.sharedOnly;
+    if (isIntelDesk && intelDeskTab === 'tailored') next.ownerOnly = 'true';
+    if (isIntelDesk && intelDeskTab === 'intel') next.sharedOnly = 'true';
+    if (isIntelDesk && intelDeskTab === 'saved') next.saved = 'true';
+    return next;
+  }, [filters, intelDeskTab, isIntelDesk]);
 
   const load = useCallback(async (f) => {
     setLoading(true);
@@ -169,10 +184,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(filters); }, [load, filters, refreshKey]);
+  useEffect(() => { load(effectiveFilters); }, [load, effectiveFilters, refreshKey]);
 
   const activeType = filters.type;
   const visibleColumns = activeType ? FEED_COLUMNS.filter(c => c.key === activeType) : FEED_COLUMNS;
+  const canDeleteTailoredArticles = isIntelDesk && intelDeskTab === 'tailored' && isAdmin;
   const rankedData = {
     news: dateScoreRanked(data.news),
     govt: dateScoreRanked(data.govt),
@@ -189,6 +205,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       if (scoreDiff) return scoreDiff;
       return getEffectiveTime(b) - getEffectiveTime(a);
     });
+  const visibleFeedItems = activeType ? (rankedData[activeType] || []) : mobileFeedItems;
   const todaySignalTotal = useMemo(() => {
     const todayKey = getTodayDateKey();
     return Object.values(analyticsData || {})
@@ -196,6 +213,10 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       .filter((item) => getEffectiveDateKey(item) === todayKey)
       .length;
   }, [analyticsData]);
+
+  useEffect(() => {
+    setSelectedArticleIds(new Set());
+  }, [canDeleteTailoredArticles, filters.type, intelDeskTab]);
 
   const startArticleDrag = (event, item) => {
     event.dataTransfer.effectAllowed = 'copy';
@@ -232,6 +253,53 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     );
     setData(updateBuckets);
     setAnalyticsData(updateBuckets);
+  };
+
+  const removeArticlesFromBuckets = (articleIds) => {
+    const ids = new Set(articleIds.map(String));
+    const updateBuckets = (prev) => Object.fromEntries(
+      Object.entries(prev || {}).map(([type, items]) => [
+        type,
+        (items || []).filter((item) => !ids.has(String(item._id)))
+      ])
+    );
+    setData(updateBuckets);
+    setAnalyticsData(updateBuckets);
+  };
+
+  const toggleSelectArticle = (articleId) => {
+    setSelectedArticleIds((prev) => {
+      const next = new Set(prev);
+      next.has(articleId) ? next.delete(articleId) : next.add(articleId);
+      return next;
+    });
+  };
+
+  const selectAllVisibleArticles = () => {
+    setSelectedArticleIds(new Set(visibleFeedItems.map((item) => item._id)));
+  };
+
+  const clearSelectedArticles = () => setSelectedArticleIds(new Set());
+
+  const deleteArticle = async (item) => {
+    if (!canDeleteTailoredArticles || !item?._id) return;
+    if (!confirm('Delete this article permanently?')) return;
+    await api.delete(`/admin/articles/${item._id}`);
+    removeArticlesFromBuckets([item._id]);
+    setSelectedArticleIds((prev) => {
+      const next = new Set(prev);
+      next.delete(item._id);
+      return next;
+    });
+  };
+
+  const deleteSelectedArticles = async () => {
+    const ids = Array.from(selectedArticleIds);
+    if (!canDeleteTailoredArticles || !ids.length) return;
+    if (!confirm(`Delete ${ids.length} articles? This is permanent.`)) return;
+    await api.post('/admin/articles/bulk-delete', { ids });
+    removeArticlesFromBuckets(ids);
+    clearSelectedArticles();
   };
 
   const toggleSaveArticle = async (item) => {
@@ -271,6 +339,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         {...options}
         onSaveToggle={toggleSaveArticle}
         saving={savingArticleIds.has(item._id)}
+        selectable={canDeleteTailoredArticles}
+        selected={selectedArticleIds.has(item._id)}
+        onSelect={toggleSelectArticle}
+        adminActions={canDeleteTailoredArticles ? (
+          <button onClick={() => deleteArticle(item)} className="btn-ghost text-[12px] text-red-600 hover:bg-red-50">
+            <Trash2 size={12} /> Delete
+          </button>
+        ) : null}
       />
     </div>
   );
@@ -284,17 +360,45 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} style={{ color: CRIMSON }} />
               <h1 className="truncate text-base font-black text-gray-900">
-                {dashTab === 'feed' ? 'My Intelligence' : 'Intelligence Briefing'}
+                {/* {isIntelDesk ? 'My Intelligence' : 'Intelligence Briefing'} */}
               </h1>
             </div>
-            {dashTab === 'feed' && (
+            {isIntelDesk && (
               <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                Personalized by market, service category and profile
+                {/* Tailored, platform, and saved intelligence for fast review */}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {isIntelDesk && (
+              <div className="inline-flex rounded-xl border border-gray-100 bg-gray-50 p-1 shadow-sm">
+                {[
+                  { key: 'intel', label: 'My Intelligence', icon: Sparkles },
+                  { key: 'tailored', label: 'Tailored Feed', icon: Newspaper },
+                  { key: 'saved', label: 'Saved Briefs', icon: Bookmark },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const active = intelDeskTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setIntelDeskTab(item.key)}
+                      className={[
+                        'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-black transition-all',
+                        active
+                          ? 'bg-brand-crimson text-white shadow-sm'
+                          : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:text-brand-crimson'
+                      ].join(' ')}
+                    >
+                      <Icon size={14} />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {dashTab === 'analytics' && (
               <>
                 <div className="inline-flex rounded-md bg-gray-50 border border-gray-100 p-1 shadow-sm">
@@ -336,7 +440,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         </div>
 
         {dashTab === 'analytics' ? (
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1" data-analytics-section="Intelligence analytics dashboard">
             <AnalyticsSection
               data={analyticsData}
               velocityData={analyticsVelocityData}
@@ -347,10 +451,39 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             />
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalized intelligence feed">
             <div className="mb-4 shrink-0">
-              <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} />
+              <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} />
             </div>
+
+            {canDeleteTailoredArticles && selectedArticleIds.size > 0 && (
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-100 bg-red-50/80 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm font-black text-gray-800">
+                  {selectedArticleIds.size} selected
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllVisibleArticles}
+                    disabled={!visibleFeedItems.length}
+                    className="rounded-xl bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100 hover:text-gray-900 disabled:opacity-40"
+                  >
+                    Select all visible
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedArticles}
+                    disabled={!selectedArticleIds.size}
+                    className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100 disabled:opacity-40"
+                  >
+                    <Trash2 size={14} /> Delete selected
+                  </button>
+                  <button onClick={clearSelectedArticles} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 ring-1 ring-gray-200 hover:bg-gray-50">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {activeType ? (
               <div className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
@@ -393,7 +526,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                   : mobileFeedItems.length
                     ? mobileFeedItems.map(item => renderDraggableArticle(item))
-                    : <EmptyState icon={Newspaper} isAdmin={isAdmin} />}
+                    : <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />}
               </div>
               <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5">
                 {visibleColumns.map(col => (
@@ -433,7 +566,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </div>
         )}
       </div>
-      {dashTab === 'feed' && (
+      {isIntelDesk && (
         <ComposerDropTray
           open={composerOpen}
           article={draggedArticle}

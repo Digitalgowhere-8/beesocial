@@ -6,9 +6,10 @@ import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
 import {
-  Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
+  Play, Eye, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
-  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles
+  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles,
+  MousePointerClick, Timer, MonitorUp, TrendingUp
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -39,7 +40,6 @@ const MEMBER_ACCESS_OPTIONS = [
 // =============== TABS ===============
 
 const ADMIN_TABS = [
-  { key: 'articles', label: 'My Articles', icon: FileText, hint: 'Fetched data' },
   { key: 'fetch',    label: 'Fetch',    icon: Play, hint: 'Run sources' },
   { key: 'logs',     label: 'Logs',     icon: Activity, hint: 'System activity' },
   { key: 'users',    label: 'Users',    icon: Users, hint: 'Team access' },
@@ -115,7 +115,7 @@ export default function AdminPanel() {
     return ADMIN_TABS.filter((t) => t.key === 'fetch');
   }, [isSuperAdmin, isAdmin]);
 
-  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : (isAdmin ? 'articles' : 'fetch')));
+  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : 'fetch'));
   const [dbPlans, setDbPlans] = useState([]);
 
   const loadDbPlans = useCallback(async () => {
@@ -196,7 +196,6 @@ export default function AdminPanel() {
         {tab === 'users'                       && <UsersTab dbPlans={dbPlans} />}
         {tab === 'plans'    && isSuperAdmin    && <PlanBuilderTab dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
         {tab === 'settings' && isSuperAdmin    && <SystemSettingsTab />}
-        {tab === 'articles' && !isSuperAdmin   && <ArticlesTab ownerOnly />}
         {tab === 'fetch'    && !isSuperAdmin   && <FetchTab />}
         {tab === 'logs'     && !isSuperAdmin   && <LogsTab />}
         {tab === 'stats'    && !isSuperAdmin   && <StatsTab />}
@@ -210,21 +209,27 @@ export default function AdminPanel() {
 
 function SuperAdminPlatform() {
   const [overview, setOverview] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/admin/super/overview');
-      setOverview(data);
+      const [overviewRes, analyticsRes] = await Promise.all([
+        api.get('/admin/super/overview'),
+        api.get('/admin/super/analytics', { params: { days: analyticsDays } })
+      ]);
+      setOverview(overviewRes.data);
+      setAnalytics(analyticsRes.data);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [analyticsDays]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading || !overview) return <Loader />;
+  if (loading || !overview || !analytics) return <Loader />;
 
   const users = overview.users || {};
   const usage = overview.usage || {};
@@ -233,10 +238,11 @@ function SuperAdminPlatform() {
   const planPremiumPct = users.total ? Math.round((Number(users.premium || 0) / users.total) * 100) : 0;
   const activePct = users.total ? Math.round((Number(users.active || 0) / users.total) * 100) : 0;
   const failedPct = Number(usage.failureRateThisMonth || 0);
+  const traffic = analytics.totals || {};
 
   return (
-    <div className="space-y-6 mesh-bg p-4 sm:p-6 rounded-2xl relative">
-      <div className="premium-gradient-card p-6 sm:p-8 rounded-2xl relative overflow-hidden">
+    <div className="space-y-6 mesh-bg p-4 sm:p-6 rounded-2xl relative" data-analytics-section="Super admin platform overview">
+      <div className="premium-gradient-card p-6 sm:p-8 rounded-2xl relative overflow-hidden" data-analytics-section="Super admin hero">
         <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none">
           <Crown size={180} />
         </div>
@@ -256,15 +262,79 @@ function SuperAdminPlatform() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 relative z-10">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 relative z-10" data-analytics-section="Platform KPI cards">
         <StatCard label="Total users" value={users.total || 0} accent="bg-brand-crimson" note={`${users.active || 0} active (${activePct}%)`} />
         <StatCard label="Premium users" value={users.premium || 0} accent="bg-amber-500" note={`${planPremiumPct}% of accounts`} />
         <StatCard label="Fetches this month" value={usage.monthRuns || 0} accent="bg-blue-500" note={`${usage.monthFailedRuns || 0} failed (${failedPct}%)`} />
         <StatCard label="Stored signals" value={usage.totalArticles || 0} accent="bg-emerald-500" note={`${usage.monthArticles || 0} added this month`} />
       </div>
 
+      <div className="premium-glass p-5 sm:p-6 relative z-10" data-analytics-section="Business analytics dashboard">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-crimson">
+              <BarChart3 size={12} /> Business Analytics
+            </div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Visitor behaviour and engagement</h3>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-gray-500">
+              See who is coming in, where people spend time, what gets clicked, and which sections deserve product or content focus.
+            </p>
+          </div>
+          <div className="inline-flex w-fit rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
+            {[7, 30, 90].map((days) => (
+              <button
+                key={days}
+                type="button"
+                onClick={() => setAnalyticsDays(days)}
+                className={`rounded-lg px-3 py-2 text-[11px] font-black uppercase tracking-wider transition-all ${analyticsDays === days ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-brand-pink/40 hover:text-brand-crimson'}`}
+              >
+                {days}D
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <AnalyticsKpi icon={Users} label="Visitors" value={traffic.visitors || 0} detail={`${traffic.sessions || 0} sessions`} color="text-blue-600" bg="bg-blue-50" />
+          <AnalyticsKpi icon={MonitorUp} label="Page views" value={traffic.pageViews || 0} detail={`${traffic.engagementRate || 0}% engaged`} color="text-emerald-600" bg="bg-emerald-50" />
+          <AnalyticsKpi icon={MousePointerClick} label="Clicks" value={traffic.clicks || 0} detail={`${traffic.clickThroughRate || 0}% CTR`} color="text-amber-600" bg="bg-amber-50" />
+          <AnalyticsKpi icon={Timer} label="Avg time" value={formatDuration(traffic.avgEngagedMsPerSession)} detail="Per session" color="text-violet-600" bg="bg-violet-50" />
+          <AnalyticsKpi icon={Eye} label="Section views" value={traffic.sectionViews || 0} detail="Tracked panels" color="text-rose-600" bg="bg-rose-50" />
+          <AnalyticsKpi icon={TrendingUp} label="Bounce rate" value={`${traffic.bounceRate || 0}%`} detail="Low is better" color="text-gray-700" bg="bg-gray-50" />
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <AnalyticsTrend data={analytics.trend || []} />
+          <AnalyticsSectionTable rows={analytics.sections || []} />
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <AnalyticsList
+            title="Top clicked actions"
+            icon={MousePointerClick}
+            rows={(analytics.clicks || []).map((row) => ({
+              label: row.label || row.section || 'Unknown click',
+              meta: row.section || 'No section',
+              value: row.clicks || 0,
+              suffix: 'clicks'
+            }))}
+          />
+          <AnalyticsList
+            title="Most visited pages"
+            icon={MonitorUp}
+            rows={(analytics.pages || []).map((row) => ({
+              label: row.path || 'Unknown page',
+              meta: `${row.visitors || 0} visitors`,
+              value: row.views || 0,
+              suffix: 'views'
+            }))}
+          />
+          <BusinessInsightPanel analytics={analytics} />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
-        <div className="premium-glass p-6 xl:col-span-2">
+        <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
@@ -324,7 +394,7 @@ function SuperAdminPlatform() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4" data-analytics-section="Platform metric side panel">
           <PlatformMetric icon={Users} label="Admins" value={users.admins || 0} detail={`${users.members || 0} members managed`} />
           <PlatformMetric icon={Database} label="Storage growth" value={usage.monthArticles || 0} detail="New stored signals this month" />
           <PlatformMetric icon={KeyRound} label="Estimated tokens" value={Number(usage.estimatedTokensThisMonth || 0).toLocaleString()} detail="Approximate AI usage from stored results" />
@@ -332,7 +402,7 @@ function SuperAdminPlatform() {
         </div>
       </div>
 
-      <div className="premium-glass p-6 relative z-10">
+      <div className="premium-glass p-6 relative z-10" data-analytics-section="Recent platform runs">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
@@ -421,6 +491,170 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   );
 }
 
+function formatDuration(ms) {
+  const seconds = Math.round(Number(ms || 0) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remaining}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function compactNumber(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${bg} ${color}`}>
+          <Icon size={16} />
+        </span>
+        <span className="truncate text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
+      </div>
+      <div className="truncate text-2xl font-black tracking-tight text-gray-900">{typeof value === 'number' ? compactNumber(value) : value}</div>
+      <div className="mt-1 truncate text-xs font-semibold text-gray-400">{detail}</div>
+    </div>
+  );
+}
+
+function AnalyticsTrend({ data }) {
+  const max = Math.max(...(data || []).map((row) => Math.max(row.pageViews || 0, row.clicks || 0)), 1);
+  const visible = (data || []).slice(-14);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-1">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Daily trend</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Views vs clicks</h4>
+        </div>
+        <Activity size={18} className="text-brand-crimson" />
+      </div>
+      <div className="flex h-48 items-end gap-2">
+        {visible.map((row) => {
+          const viewHeight = Math.max(6, ((row.pageViews || 0) / max) * 100);
+          const clickHeight = Math.max(4, ((row.clicks || 0) / max) * 100);
+          return (
+            <div key={row.day} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+              <div className="flex h-36 w-full items-end justify-center gap-1 rounded-lg bg-gray-50 px-1 py-2">
+                <span className="w-2 rounded-t bg-brand-crimson/70" style={{ height: `${viewHeight}%` }} title={`${row.pageViews || 0} page views`} />
+                <span className="w-2 rounded-t bg-amber-400" style={{ height: `${clickHeight}%` }} title={`${row.clicks || 0} clicks`} />
+              </div>
+              <span className="truncate text-[9px] font-black uppercase text-gray-400">{String(row.day || '').slice(5)}</span>
+            </div>
+          );
+        })}
+        {!visible.length && <div className="flex h-full w-full items-center justify-center text-sm font-bold text-gray-400">No analytics yet.</div>}
+      </div>
+      <div className="mt-4 flex items-center gap-4 text-[10px] font-black uppercase tracking-wider text-gray-400">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded bg-brand-crimson/70" /> Views</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded bg-amber-400" /> Clicks</span>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsSectionTable({ rows }) {
+  const maxDuration = Math.max(...(rows || []).map((row) => row.totalDurationMs || 0), 1);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-2">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Dwell time</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Sections people spend time on</h4>
+        </div>
+        <Timer size={18} className="text-brand-crimson" />
+      </div>
+      <div className="space-y-3">
+        {(rows || []).slice(0, 8).map((row) => (
+          <div key={row.section} className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-gray-900">{row.section}</div>
+                <div className="text-[11px] font-semibold text-gray-400">
+                  {compactNumber(row.views)} views · {compactNumber(row.visitors)} visitors · {row.clickRate || 0}% click rate
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-sm font-black text-brand-crimson">{formatDuration(row.totalDurationMs)}</div>
+                <div className="text-[10px] font-bold uppercase text-gray-400">total</div>
+              </div>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${Math.max(4, ((row.totalDurationMs || 0) / maxDuration) * 100)}%` }} />
+            </div>
+          </div>
+        ))}
+        {!rows?.length && <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm font-bold text-gray-400">Section data will appear after users browse the app.</div>}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsList({ title, icon: Icon, rows }) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h4 className="text-base font-black tracking-tight text-gray-900">{title}</h4>
+        <Icon size={18} className="text-brand-crimson" />
+      </div>
+      <div className="space-y-2">
+        {(rows || []).slice(0, 7).map((row, index) => (
+          <div key={`${row.label}-${index}`} className="flex items-center gap-3 rounded-lg bg-gray-50 p-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-xs font-black text-brand-crimson ring-1 ring-gray-100">{index + 1}</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-black text-gray-800">{row.label}</div>
+              <div className="truncate text-[11px] font-semibold text-gray-400">{row.meta}</div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-sm font-black text-gray-900">{compactNumber(row.value)}</div>
+              <div className="text-[9px] font-black uppercase text-gray-400">{row.suffix}</div>
+            </div>
+          </div>
+        ))}
+        {!rows?.length && <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm font-bold text-gray-400">No data yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+function BusinessInsightPanel({ analytics }) {
+  const totals = analytics?.totals || {};
+  const topSection = analytics?.sections?.[0];
+  const topClick = analytics?.clicks?.[0];
+  const topPage = analytics?.pages?.[0];
+  const insights = [
+    topSection ? `People spend the most time on "${topSection.section}", so use it for the strongest business content.` : 'Dwell-time insights will appear after tracked section views.',
+    topClick ? `"${topClick.label}" is the most clicked action; keep it visible and test stronger placement.` : 'Click insights need more user activity.',
+    topPage ? `${topPage.path} is the most visited page; prioritize improvements and conversion actions there.` : 'Page popularity will appear after visits.',
+    `${totals.engagementRate || 0}% engaged sessions and ${totals.bounceRate || 0}% bounce rate give a quick quality signal.`
+  ];
+
+  return (
+    <div className="rounded-xl border border-brand-crimson/10 bg-brand-pink/30 p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Decision notes</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">What to act on</h4>
+        </div>
+        <Sparkles size={18} className="text-brand-crimson" />
+      </div>
+      <div className="space-y-3">
+        {insights.map((item, index) => (
+          <div key={index} className="flex gap-3 rounded-lg bg-white/70 p-3 ring-1 ring-white">
+            <ChevronRight size={15} className="mt-0.5 shrink-0 text-brand-crimson" />
+            <p className="text-sm font-semibold leading-relaxed text-gray-600">{item}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // =============== ARTICLES TAB ===============
 
 function ArticlesTab({ ownerOnly = false }) {
@@ -469,12 +703,6 @@ function ArticlesTab({ ownerOnly = false }) {
     }
   };
 
-  const togglePublish = async (item) => {
-    const op = item.isPublished ? 'unpublish' : 'publish';
-    await api.patch(`/admin/articles/${item._id}/${op}`);
-    load(filters, pagination.page);
-  };
-
   const remove = async (item) => {
     if (!confirm('Delete this article permanently?')) return;
     await api.delete(`/admin/articles/${item._id}`);
@@ -484,7 +712,7 @@ function ArticlesTab({ ownerOnly = false }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
-        <Filters onChange={setFilters} showAdmin />
+        <Filters onChange={setFilters} showAdmin showStatusFilter={false} />
       </div>
 
       {selected.size > 0 && (
@@ -493,12 +721,6 @@ function ArticlesTab({ ownerOnly = false }) {
             {selected.size} selected
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => bulk('publish')} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50">
-              <Eye size={14} /> Publish
-            </button>
-            <button onClick={() => bulk('unpublish')} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50">
-              <EyeOff size={14} /> Unpublish
-            </button>
             <button onClick={() => bulk('delete')} className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100">
               <Trash2 size={14} /> Delete
             </button>
@@ -542,16 +764,9 @@ function ArticlesTab({ ownerOnly = false }) {
               onSelect={toggleSelect}
               adminActions={
                 <>
-                  <button onClick={() => togglePublish(item)} className="btn-ghost text-[12px]">
-                    {item.isPublished ? <EyeOff size={12} /> : <Eye size={12} />}
-                    {item.isPublished ? 'Unpublish' : 'Publish'}
-                  </button>
                   <button onClick={() => remove(item)} className="btn-ghost text-[12px] text-red-600 hover:bg-red-50">
                     <Trash2 size={12} /> Delete
                   </button>
-                  <span className={`ml-auto tag ${item.isPublished ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-ink-50 text-ink-500 ring-1 ring-ink-100'}`}>
-                    {item.isPublished ? 'Published' : 'Draft'}
-                  </span>
                 </>
               }
             />
@@ -753,7 +968,7 @@ function SuperAdminFetchTab() {
             <div className="min-w-0">
               <div className="eyebrow mb-1 text-brand-crimson/80">Shared fetch</div>
               <h3 className="text-xl font-black tracking-tight text-gray-900">Platform Intelligence Fetch</h3>
-              <p className="mt-1 text-sm text-gray-500">Super admin runs once; published results become visible across all admins and users.</p>
+              <p className="mt-1 text-sm text-gray-500">Super admin runs once; fetched results become visible across all admins and users.</p>
             </div>
           </div>
           <span className={[
