@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import Filters from '../components/Filters';
@@ -9,7 +10,7 @@ import {
   Play, Eye, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
   Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles,
-  MousePointerClick, Timer, MonitorUp, TrendingUp
+  MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -30,6 +31,8 @@ const PLAN_BADGE = {
   premium:    'bg-gradient-to-r from-amber-100 to-yellow-50 text-amber-800 ring-1 ring-amber-200/50 shadow-sm'
 };
 
+const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
+
 const MEMBER_ACCESS_OPTIONS = [
   { key: 'canFetch', label: 'Fetch' },
   { key: 'canUseBlogStudio', label: 'Social Media Studio' },
@@ -40,20 +43,42 @@ const MEMBER_ACCESS_OPTIONS = [
 // =============== TABS ===============
 
 const ADMIN_TABS = [
-  { key: 'fetch',    label: 'Fetch',    icon: Play, hint: 'Run sources' },
   { key: 'logs',     label: 'Logs',     icon: Activity, hint: 'System activity' },
   { key: 'users',    label: 'Users',    icon: Users, hint: 'Team access' },
   { key: 'stats',    label: 'Stats',    icon: BarChart3, hint: 'Usage insights' }
 ];
 
 const SUPER_ADMIN_TABS = [
-  { key: 'platform', label: 'Platform Overview', icon: Crown, hint: 'Global health' },
-  { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review content' },
-  { key: 'fetch',    label: 'Platform Fetch',    icon: Globe2, hint: 'Shared intelligence' },
-  { key: 'users',    label: 'Users & Access',    icon: ShieldCheck, hint: 'Companies and members' },
-  { key: 'plans',    label: 'Plan Builder',       icon: Database, hint: 'Limits and billing' },
-  { key: 'settings', label: 'System Settings',   icon: KeyRound, hint: 'Platform controls' },
+  { key: 'platform', label: 'Overview', icon: Crown, hint: 'Global health and activity' },
+  { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review and moderate content' },
+  { key: 'fetch',    label: 'Fetch',    icon: Globe2, hint: 'Shared intelligence workflows' },
+  { key: 'users',    label: 'Users',    icon: ShieldCheck, hint: 'Companies, members and access' },
+  { key: 'plans',    label: 'Plans',    icon: Database, hint: 'Limits, pricing and upgrades' },
+  { key: 'settings', label: 'Settings', icon: KeyRound, hint: 'Platform controls and AI config' },
 ];
+
+const SUPER_ADMIN_SUBTABS = {
+  platform: [
+    { key: 'overview', label: 'Overview' },
+    { key: 'analytics', label: 'Analytics' },
+    { key: 'activity', label: 'Recent Activity' }
+  ],
+  articles: [
+    { key: 'library', label: 'Article Library' }
+  ],
+  fetch: [
+    { key: 'dashboard', label: 'Fetch Dashboard' }
+  ],
+  users: [
+    { key: 'directory', label: 'User Directory' }
+  ],
+  plans: [
+    { key: 'builder', label: 'Plan Builder' }
+  ],
+  settings: [
+    { key: 'system', label: 'System Settings' }
+  ]
+};
 
 const TOPIC_OPTIONS = [
   { key: 'news', label: 'News', help: 'Market and business updates' },
@@ -109,14 +134,17 @@ function getBrowserTimezones() {
 
 export default function AdminPanel() {
   const { user, isSuperAdmin, isAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tabs = useMemo(() => {
     if (isSuperAdmin) return SUPER_ADMIN_TABS;
     if (isAdmin) return ADMIN_TABS;
-    return ADMIN_TABS.filter((t) => t.key === 'fetch');
+    return [];
   }, [isSuperAdmin, isAdmin]);
 
-  const [tab, setTab] = useState(() => (isSuperAdmin ? 'platform' : 'fetch'));
+  const [tab, setTab] = useState(() => (isSuperAdmin ? (searchParams.get('section') || 'platform') : 'logs'));
+  const [subTab, setSubTab] = useState(() => SUPER_ADMIN_SUBTABS.platform[0].key);
   const [dbPlans, setDbPlans] = useState([]);
+  const [superAdminRefreshKey, setSuperAdminRefreshKey] = useState(0);
 
   const loadDbPlans = useCallback(async () => {
     try {
@@ -132,15 +160,90 @@ export default function AdminPanel() {
   }, [loadDbPlans]);
 
   useEffect(() => {
+    if (!tabs.length) return;
     if (!tabs.some((item) => item.key === tab)) setTab(tabs[0].key);
   }, [tabs, tab]);
 
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const nextSection = searchParams.get('section') || 'platform';
+    if (nextSection !== tab && tabs.some((item) => item.key === nextSection)) {
+      setTab(nextSection);
+    }
+  }, [isSuperAdmin, searchParams, tab, tabs]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const nextSubTabs = SUPER_ADMIN_SUBTABS[tab] || [];
+    if (!nextSubTabs.length) return;
+    if (!nextSubTabs.some((item) => item.key === subTab)) {
+      setSubTab(nextSubTabs[0].key);
+    }
+  }, [isSuperAdmin, tab, subTab]);
+
+  const handleSuperAdminTabChange = useCallback((nextTab) => {
+    setTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('section', nextTab);
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const headerActions = (
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
+        {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
+          const active = isSuperAdmin ? item.key === subTab : item.key === tab;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                if (isSuperAdmin) {
+                  setSubTab(item.key);
+                  return;
+                }
+                setTab(item.key);
+              }}
+              className={[
+                'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
+                active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+              ].join(' ')}
+            >
+              {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {isSuperAdmin ? (
+        <button
+          type="button"
+          onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+          className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+        >
+          <RefreshCw size={14} />
+          Refresh
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <Layout>
+    <Layout headerActions={headerActions}>
       <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full space-y-5 pb-10">
-        <div className="hidden">
-          <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          {isSuperAdmin ? (
+            <SuperAdminWorkspace tabs={tabs} activeTab={tab} onTabChange={handleSuperAdminTabChange} subTabs={SUPER_ADMIN_SUBTABS[tab] || []} activeSubTab={subTab} onSubTabChange={setSubTab} user={user}>
+              {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
+              {tab === 'articles' && <ArticlesTab key={`articles-${superAdminRefreshKey}`} />}
+              {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} />}
+              {tab === 'users' && <UsersTab key={`users-${superAdminRefreshKey}`} dbPlans={dbPlans} activeSubTab={subTab} />}
+              {tab === 'plans' && <PlanBuilderTab key={`plans-${superAdminRefreshKey}`} dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
+              {tab === 'settings' && <SystemSettingsTab key={`settings-${superAdminRefreshKey}`} />}
+            </SuperAdminWorkspace>
+          ) : null}
+          {!isSuperAdmin && <>
+          <div className="hidden flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-pink/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
                 {isSuperAdmin ? <Crown size={13} /> : <ShieldCheck size={13} />}
@@ -160,54 +263,34 @@ export default function AdminPanel() {
               </span>
             </div>
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm animate-fade-in-up stagger-1">
-        <div className="hide-scrollbar grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-2 overflow-x-auto lg:grid-flow-row lg:grid-cols-6">
-          {tabs.map((t) => {
-            const active = t.key === tab;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={[
-                  'group flex min-h-[64px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all',
-                  active
-                    ? 'border-brand-crimson bg-brand-crimson text-white shadow-sm'
-                    : 'border-gray-100 bg-white text-gray-500 hover:border-brand-crimson/20 hover:bg-brand-pink/20 hover:text-gray-900'
-                ].join(' ')}
-              >
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-white/15 text-white' : 'bg-gray-50 text-brand-crimson group-hover:bg-white'}`}>
-                  <t.icon size={16} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-black">{t.label}</span>
-                  <span className={`mt-0.5 block truncate text-[11px] font-bold ${active ? 'text-white/75' : 'text-gray-400'}`}>{t.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        </div>
-
-        {tab === 'platform' && isSuperAdmin  && <SuperAdminPlatform />}
-        {tab === 'articles' && isSuperAdmin  && <ArticlesTab />}
-        {tab === 'fetch'    && isSuperAdmin  && <SuperAdminFetchTab />}
-        {tab === 'users'                       && <UsersTab dbPlans={dbPlans} />}
-        {tab === 'plans'    && isSuperAdmin    && <PlanBuilderTab dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
-        {tab === 'settings' && isSuperAdmin    && <SystemSettingsTab />}
-        {tab === 'fetch'    && !isSuperAdmin   && <FetchTab />}
-        {tab === 'logs'     && !isSuperAdmin   && <LogsTab />}
-        {tab === 'stats'    && !isSuperAdmin   && <StatsTab />}
+        {tab === 'users' && !isSuperAdmin && <UsersTab dbPlans={dbPlans} />}
+        {tab === 'logs' && !isSuperAdmin && <LogsTab />}
+        {tab === 'stats' && !isSuperAdmin && <StatsTab />}
+          </>}
         </div>
       </div>
     </Layout>
   );
 }
 
+function SuperAdminWorkspace({ children }) {
+  return (
+    <section className="min-w-0 space-y-5">
+      <div className="min-w-0">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 // =============== SUPER ADMIN PLATFORM ===============
 
-function SuperAdminPlatform() {
+function parsePlanPrice(value) {
+  const numeric = Number(String(value || '').replace(/[^0-9.]/g, ''));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [overview, setOverview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsDays, setAnalyticsDays] = useState(30);
@@ -238,38 +321,121 @@ function SuperAdminPlatform() {
   const planPremiumPct = users.total ? Math.round((Number(users.premium || 0) / users.total) * 100) : 0;
   const activePct = users.total ? Math.round((Number(users.active || 0) / users.total) * 100) : 0;
   const failedPct = Number(usage.failureRateThisMonth || 0);
+  const successfulRunsThisMonth = Math.max(0, Number(usage.monthRuns || 0) - Number(usage.monthFailedRuns || 0));
   const traffic = analytics.totals || {};
+  const companyCount = Number(users.admins || 0);
+  const premiumCompanies = Number(users.premium || 0);
+  const planPriceMap = dbPlans.reduce((acc, plan) => {
+    acc[plan.planId] = parsePlanPrice(plan.price);
+    return acc;
+  }, {});
+  const monthlyRevenue = Object.entries(users.planCounts || {}).reduce((sum, [planId, count]) => {
+    if (!PAID_PLAN_IDS.includes(planId)) return sum;
+    return sum + (Number(count || 0) * Number(planPriceMap[planId] || 0));
+  }, 0);
+  const apiCalls = Number(traffic.pageViews || 0) + Number(traffic.clicks || 0) + Number(traffic.visitors || 0);
+  const ownerStats = [
+    { label: 'Total Companies', value: compactNumber(companyCount), icon: Building2, accent: 'bg-brand-crimson', note: `${users.active || 0} active operators`, tint: 'bg-brand-pink/40 text-brand-crimson' },
+    { label: 'Total Users', value: compactNumber(users.total || 0), icon: Users, accent: 'bg-violet-500', note: `${activePct}% active this month`, tint: 'bg-violet-50 text-violet-700' },
+    { label: 'Premium Companies', value: compactNumber(premiumCompanies), icon: Crown, accent: 'bg-amber-500', note: `${planPremiumPct}% on paid access`, tint: 'bg-amber-50 text-amber-700' },
+    { label: 'Monthly Revenue', value: `$${compactNumber(monthlyRevenue)}`, icon: Wallet, accent: 'bg-emerald-500', note: 'Estimated MRR snapshot', tint: 'bg-emerald-50 text-emerald-700' },
+    { label: 'Fetches This Month', value: compactNumber(usage.monthRuns || 0), icon: RefreshCw, accent: 'bg-blue-500', note: `${successfulRunsThisMonth} successful runs`, tint: 'bg-blue-50 text-blue-700' },
+    { label: 'Stored Signals', value: compactNumber(usage.totalArticles || 0), icon: Database, accent: 'bg-cyan-500', note: `${usage.monthArticles || 0} added this cycle`, tint: 'bg-cyan-50 text-cyan-700' },
+    { label: 'Failed Fetches', value: compactNumber(usage.monthFailedRuns || 0), icon: AlertTriangle, accent: 'bg-rose-500', note: `${failedPct}% failure rate`, tint: 'bg-rose-50 text-rose-700' },
+    { label: 'API Calls', value: compactNumber(apiCalls), icon: Gauge, accent: 'bg-gray-900', note: 'Views, clicks and sessions combined', tint: 'bg-gray-100 text-gray-700' }
+  ];
 
   return (
-    <div className="space-y-6 mesh-bg p-4 sm:p-6 rounded-2xl relative" data-analytics-section="Super admin platform overview">
-      <div className="premium-gradient-card p-6 sm:p-8 rounded-2xl relative overflow-hidden" data-analytics-section="Super admin hero">
-        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none">
-          <Crown size={180} />
-        </div>
-        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
-              <Crown size={12} /> Super Admin
-            </div>
-            <h2 className="text-3xl font-black tracking-tight text-white mb-2">Platform Control Center</h2>
-            <p className="max-w-2xl text-sm font-medium text-white/80">
-              Manage plans, permissions, member capacity, usage, failures, storage and premium access from one place.
-            </p>
+    <div className="space-y-6" data-analytics-section="Super admin platform overview">
+      {activeSubTab === 'overview' ? (
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" data-analytics-section="Platform KPI cards">
+            {ownerStats.map((item) => (
+              <StatCard
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                icon={item.icon}
+                accent={item.accent}
+                note={item.note}
+                tint={item.tint}
+              />
+            ))}
           </div>
-          <button onClick={load} className="btn bg-white/10 text-white hover:bg-white/20 border border-white/20 backdrop-blur-sm shadow-sm transition-all">
-            <RefreshCw size={14} className="mr-1" /> Refresh Data
-          </button>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 relative z-10" data-analytics-section="Platform KPI cards">
-        <StatCard label="Total users" value={users.total || 0} accent="bg-brand-crimson" note={`${users.active || 0} active (${activePct}%)`} />
-        <StatCard label="Premium users" value={users.premium || 0} accent="bg-amber-500" note={`${planPremiumPct}% of accounts`} />
-        <StatCard label="Fetches this month" value={usage.monthRuns || 0} accent="bg-blue-500" note={`${usage.monthFailedRuns || 0} failed (${failedPct}%)`} />
-        <StatCard label="Stored signals" value={usage.totalArticles || 0} accent="bg-emerald-500" note={`${usage.monthArticles || 0} added this month`} />
-      </div>
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
+            <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
+                    <Gauge size={12} /> Usage Leaders
+                  </div>
+                  <h3 className="text-xl font-black tracking-tight text-gray-900">Top users this month</h3>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+                  <Gauge size={18} className="text-brand-crimson" />
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm border-separate border-spacing-y-2">
+                  <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
+                    <tr>
+                      <th className="py-2 px-3">User</th>
+                      <th className="py-2 px-3">Plan</th>
+                      <th className="py-2 px-3 text-right">Fetches</th>
+                      <th className="py-2 px-3 text-right">Stored</th>
+                      <th className="py-2 px-3 text-right">Errors</th>
+                      <th className="py-2 px-3 text-right">Est. tokens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topUsers.map((row, index) => (
+                      <tr key={row.user?._id || index} className="premium-table-row">
+                        <td className="py-3 px-3 rounded-l-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                              {(row.user?.name || 'U')[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
+                              <div className="text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`tag px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
+                            {(row.user?.subscriptionPlan === 'enterprise' || row.user?.subscriptionPlan === 'premium') && <Crown size={10} className="mr-1 inline" />}
+                            {row.user?.subscriptionPlan || 'free'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-black text-gray-700">{row.runs || 0}</td>
+                        <td className="py-3 px-3 text-right font-black text-gray-700">{row.inserted || 0}</td>
+                        <td className="py-3 px-3 text-right font-black text-red-500">{row.errors || 0}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs font-bold text-gray-400 rounded-r-xl">{Number(row.estimatedTokens || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {!topUsers.length && (
+                      <tr>
+                        <td colSpan={6} className="py-10 text-center text-sm font-semibold text-gray-400 bg-white/50 rounded-xl border border-dashed border-gray-200">No usage this month yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-      <div className="premium-glass p-5 sm:p-6 relative z-10" data-analytics-section="Business analytics dashboard">
+            <div className="space-y-4" data-analytics-section="Platform metric side panel">
+              <SystemHealthCard usage={usage} failedPct={failedPct} recentRuns={recentRuns} />
+              <PlatformMetric icon={Users} label="Company admins" value={users.admins || 0} detail={`${users.members || 0} members managed`} />
+              <PlatformMetric icon={KeyRound} label="Estimated tokens" value={Number(usage.estimatedTokensThisMonth || 0).toLocaleString()} detail="Approximate AI usage from stored results" />
+              <PlatformMetric icon={Database} label="Storage growth" value={usage.monthArticles || 0} detail="New stored signals this month" />
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {activeSubTab === 'analytics' ? (
+        <div className="premium-glass p-5 sm:p-6 relative z-10" data-analytics-section="Business analytics dashboard">
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-crimson">
@@ -331,78 +497,11 @@ function SuperAdminPlatform() {
           />
           <BusinessInsightPanel analytics={analytics} />
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
-        <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
-                <Gauge size={12} /> Usage Leaders
-              </div>
-              <h3 className="text-xl font-black tracking-tight text-gray-900">Top users this month</h3>
-            </div>
-            <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
-              <Gauge size={18} className="text-brand-crimson" />
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm border-separate border-spacing-y-2">
-              <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
-                <tr>
-                  <th className="py-2 px-3">User</th>
-                  <th className="py-2 px-3">Plan</th>
-                  <th className="py-2 px-3 text-right">Fetches</th>
-                  <th className="py-2 px-3 text-right">Stored</th>
-                  <th className="py-2 px-3 text-right">Errors</th>
-                  <th className="py-2 px-3 text-right">Est. tokens</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topUsers.map((row, index) => (
-                  <tr key={row.user?._id || index} className="premium-table-row">
-                    <td className="py-3 px-3 rounded-l-xl">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-                          {(row.user?.name || 'U')[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
-                          <div className="text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className={`tag px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
-                        {(row.user?.subscriptionPlan === 'enterprise' || row.user?.subscriptionPlan === 'premium') && <Crown size={10} className="mr-1 inline" />}
-                        {row.user?.subscriptionPlan || 'free'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right font-black text-gray-700">{row.runs || 0}</td>
-                    <td className="py-3 px-3 text-right font-black text-gray-700">{row.inserted || 0}</td>
-                    <td className="py-3 px-3 text-right font-black text-red-500">{row.errors || 0}</td>
-                    <td className="py-3 px-3 text-right font-mono text-xs font-bold text-gray-400 rounded-r-xl">{Number(row.estimatedTokens || 0).toLocaleString()}</td>
-                  </tr>
-                ))}
-                {!topUsers.length && (
-                  <tr>
-                    <td colSpan={6} className="py-10 text-center text-sm font-semibold text-gray-400 bg-white/50 rounded-xl border border-dashed border-gray-200">No usage this month yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
+      ) : null}
 
-        <div className="space-y-4" data-analytics-section="Platform metric side panel">
-          <PlatformMetric icon={Users} label="Admins" value={users.admins || 0} detail={`${users.members || 0} members managed`} />
-          <PlatformMetric icon={Database} label="Storage growth" value={usage.monthArticles || 0} detail="New stored signals this month" />
-          <PlatformMetric icon={KeyRound} label="Estimated tokens" value={Number(usage.estimatedTokensThisMonth || 0).toLocaleString()} detail="Approximate AI usage from stored results" />
-          <PlatformMetric icon={AlertTriangle} label="Failure rate" value={`${failedPct}%`} detail={`${usage.monthFailedRuns || 0} failed runs this month`} danger={failedPct > 20} />
-        </div>
-      </div>
-
-      <div className="premium-glass p-6 relative z-10" data-analytics-section="Recent platform runs">
+      {activeSubTab === 'activity' ? (
+        <div className="premium-glass p-6 relative z-10" data-analytics-section="Recent platform runs">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
@@ -466,7 +565,8 @@ function SuperAdminPlatform() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -491,6 +591,96 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   );
 }
 
+function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
+  const storageUsed = Number(usage.totalArticles || 0);
+  const storageLevel = Math.min(100, Math.round(storageUsed / 25));
+  const lastRun = recentRuns[0] || null;
+  const latestStatus = String(lastRun?.status || 'unknown');
+  const queueState = latestStatus === 'running' || latestStatus === 'queued'
+    ? 'In progress'
+    : Number(usage.monthRuns || 0) > 0
+      ? 'Recent activity'
+      : 'No runs yet';
+  const healthItems = [
+    { label: 'Latest run', value: latestStatus === 'unknown' ? 'No data' : latestStatus, tone: latestStatus === 'failed' ? 'amber' : latestStatus === 'success' ? 'emerald' : latestStatus === 'running' || latestStatus === 'queued' ? 'blue' : 'gray' },
+    { label: 'Failure rate', value: `${failedPct}%`, tone: failedPct > 20 ? 'amber' : 'emerald' },
+    { label: 'Queue', value: queueState, tone: latestStatus === 'running' || latestStatus === 'queued' ? 'blue' : 'gray' },
+    { label: 'Runs this month', value: compactNumber(usage.monthRuns || 0), tone: 'gray' },
+    { label: 'Storage', value: `${storageLevel}%`, tone: storageLevel > 80 ? 'amber' : 'emerald' }
+  ];
+
+  const tones = {
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    amber: 'bg-amber-50 text-amber-700 ring-amber-100',
+    blue: 'bg-blue-50 text-blue-700 ring-blue-100',
+    gray: 'bg-gray-50 text-gray-600 ring-gray-100'
+  };
+
+  return (
+    <div className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">System Health</div>
+          <h4 className="mt-1 text-lg font-black tracking-tight text-gray-950">Core services</h4>
+        </div>
+        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-pink/35 text-brand-crimson">
+          <Server size={18} />
+        </span>
+      </div>
+
+      <div className="space-y-2.5">
+        {healthItems.map((item) => (
+          <div key={item.label} className="flex items-center justify-between rounded-2xl bg-gray-50 px-3 py-3">
+            <span className="text-sm font-bold text-gray-700">{item.label}</span>
+            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ring-1 ${tones[item.tone]}`}>
+              <span className="h-2 w-2 rounded-full bg-current opacity-70" />
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Signal Storage</div>
+            <div className="mt-1 text-sm font-black text-gray-900">{storageUsed.toLocaleString()} records</div>
+          </div>
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-gray-700 ring-1 ring-gray-100">
+            <HardDrive size={18} />
+          </span>
+        </div>
+        <div className="mt-3 h-2 rounded-full bg-white ring-1 ring-gray-100">
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-crimson to-rose-500" style={{ width: `${Math.max(8, storageLevel)}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigStatusRow({ icon: Icon, label, value, tone = 'gray' }) {
+  const toneMap = {
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    amber: 'bg-amber-50 text-amber-700 ring-amber-100',
+    gray: 'bg-gray-50 text-gray-600 ring-gray-100',
+    neutral: 'bg-brand-pink/20 text-brand-crimson ring-brand-crimson/10'
+  };
+
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-gray-700 ring-1 ring-gray-100">
+          <Icon size={15} />
+        </div>
+        <div className="text-sm font-black text-gray-800">{label}</div>
+      </div>
+      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider ring-1 ${toneMap[tone] || toneMap.gray}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function formatDuration(ms) {
   const seconds = Math.round(Number(ms || 0) / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -503,6 +693,14 @@ function formatDuration(ms) {
 
 function compactNumber(value) {
   return Number(value || 0).toLocaleString();
+}
+
+// eslint-disable-next-line no-unused-vars
+function formatSessionDate(value) {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return date.toLocaleString();
 }
 
 function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
@@ -958,7 +1156,7 @@ function SuperAdminFetchTab() {
   if (!config || !profileMeta) return <Loader />;
 
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -1028,7 +1226,7 @@ function SuperAdminFetchTab() {
             </div>
             <Clock3 size={17} className="text-brand-crimson" />
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr_1fr_1.2fr] md:items-end">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_1fr_1.2fr] lg:items-end">
             <label className="flex h-[44px] items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 text-sm font-bold text-gray-700">
               <input type="checkbox" checked={Boolean(config.schedule?.enabled)} onChange={(e) => updateSchedule('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
               Enable schedule
@@ -1135,8 +1333,11 @@ function SuperAdminFetchTab() {
 
 // =============== FETCH TAB ===============
 
-function FetchTab() {
+export function FetchTab({ embedded = false }) {
   const { user, updateProfile, runProgress, setRunProgress } = useAuth();
+  const canUseFetch = user?.role === 'super_admin' || user?.access?.canFetch === true || (user?.role === 'admin' && user?.access?.canFetch !== false);
+  const canUseScheduler = user?.role === 'super_admin' || user?.access?.canUseScheduler === true || (user?.role === 'admin' && user?.access?.canUseScheduler !== false);
+  const canUseFetchSection = canUseFetch || canUseScheduler;
   const [n8nStatus, setN8nStatus] = useState({ isFetching: false, configured: {}, running: {} });
   const [lastLog, setLastLog] = useState(null);
   const [startingN8n, setStartingN8n] = useState(false);
@@ -1460,44 +1661,65 @@ function FetchTab() {
     }));
   };
 
+  if (!canUseFetchSection) return null;
+
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className={embedded ? 'grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_280px]' : 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]'}>
       {/* Trigger card */}
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
-              <RefreshCw size={18} />
-            </span>
-            <div className="min-w-0">
-            <div className="eyebrow mb-1 text-brand-crimson/80">Profile fetch</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">Run Intelligence Fetch</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Select the market details, save them, or run a fresh fetch.
-            </p>
+      <div className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
+        <div className={embedded ? 'mb-4 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(209,18,67,0.12),_transparent_42%),linear-gradient(135deg,#fff7f8_0%,#ffffff_55%,#f8fafc_100%)] p-5' : 'mb-5'}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className={`flex shrink-0 items-center justify-center text-white shadow-sm ${embedded ? 'h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-crimson to-brand-hoverred' : 'h-11 w-11 rounded-xl bg-brand-crimson'}`}>
+                <RefreshCw size={18} />
+              </span>
+              <div className="min-w-0">
+              <div className="eyebrow mb-1 text-brand-crimson/80">{embedded ? 'Fetch setup' : 'Profile fetch'}</div>
+              <h3 className={`${embedded ? 'text-2xl' : 'text-xl'} font-black tracking-tight text-gray-900`}>{embedded ? 'Intelligence Command Center' : 'Run Intelligence Fetch'}</h3>
+              <p className={`mt-1 ${embedded ? 'max-w-2xl text-[15px] leading-7 text-slate-600' : 'text-sm text-gray-500'}`}>
+                {embedded ? 'Choose the market, signal types, and schedule once. The layout is optimized for faster setup with less scrolling and clearer topic selection.' : 'Select the market details, save them, or run a fresh fetch.'}
+              </p>
+              </div>
             </div>
+            <span className={[
+              'inline-flex w-fit items-center gap-2 rounded-2xl border px-3.5 py-2 text-[11px] font-black uppercase tracking-wider',
+              pipelineRunning ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+            ].join(' ')}>
+              <span className={`h-2.5 w-2.5 rounded-full ${pipelineRunning ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+              {pipelineRunning ? 'Running...' : 'Idle'}
+            </span>
           </div>
-          <span className={[
-            'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
-            pipelineRunning ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
-          ].join(' ')}>
-            <span className={`h-2 w-2 rounded-full ${pipelineRunning ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
-            {pipelineRunning ? 'Running...' : 'Idle'}
-          </span>
+
+          {embedded ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Selected categories</div>
+                <div className="mt-1 text-lg font-black text-slate-900">{selectedCategories.length || 0}</div>
+              </div>
+              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Topics enabled</div>
+                <div className="mt-1 text-lg font-black text-slate-900">{selectedTopics.length || 0}</div>
+              </div>
+              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Schedule</div>
+                <div className="mt-1 text-lg font-black text-slate-900">{canUseScheduler ? (form.scheduleEnabled ? 'Enabled' : 'Available') : 'Locked'}</div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-3 ${embedded ? 'xl:grid-cols-12' : 'md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3'}`}>
           {user?.access?.canUseSavedSearches !== false && (
-            <FetchField label="Saved search name">
+            <FetchField label="Saved search name" className={embedded ? 'xl:col-span-4' : ''}>
               <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Rajasthan compliance watch" />
             </FetchField>
           )}
-          <FetchField label="Country">
+          <FetchField label="Country" className={embedded ? 'xl:col-span-3' : ''}>
             <select className="select min-h-[44px] rounded-xl" value={form.country} onChange={(e) => handleCountryChange(e.target.value)}>
               {countryOptions.map((country) => <option key={country} value={country}>{country}</option>)}
             </select>
           </FetchField>
-          <div className="md:col-span-2 2xl:col-span-1">
+          <div className={embedded ? 'xl:col-span-5' : 'md:col-span-2 2xl:col-span-1'}>
           <FetchField label="Category">
             <details className="group relative">
               <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-brand-crimson/30 hover:bg-brand-pink/10 [&::-webkit-details-marker]:hidden">
@@ -1539,7 +1761,7 @@ function FetchTab() {
             </details>
           </FetchField>
           </div>
-          <FetchField label="Sub-category">
+          <FetchField label="Sub-category" className={embedded ? 'xl:col-span-4' : ''}>
             <select className="select min-h-[44px] rounded-xl" value={form.subcategory} onChange={(e) => update('subcategory', e.target.value)} disabled={selectedCategories.length !== 1}>
               <option value="">
                 {selectedCategories.length > 1 ? 'All sub-categories for selected categories' : selectedCategories.length === 1 ? 'All sub-categories' : 'Select category first'}
@@ -1547,7 +1769,7 @@ function FetchTab() {
               {subcategoryOptions.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
             </select>
           </FetchField>
-          <FetchField label="Data age">
+          <FetchField label="Data age" className={embedded ? 'xl:col-span-4' : ''}>
             <select className="select min-h-[44px] rounded-xl" value={form.days} onChange={(e) => update('days', Number(e.target.value))}>
               <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
@@ -1557,21 +1779,24 @@ function FetchTab() {
               <option value={180}>Last 180 days</option>
             </select>
           </FetchField>
-          <FetchField label="Preferred sources">
-            <textarea className="input min-h-24 resize-y rounded-xl" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: rajasthan.gov.in, msme.gov.in" />
+          <FetchField label="Preferred sources" className={embedded ? 'xl:col-span-6' : ''}>
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: rajasthan.gov.in, msme.gov.in" />
           </FetchField>
-          <FetchField label="Tracked competitors">
-            <textarea className="input min-h-24 resize-y rounded-xl" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: Deloitte, TCS, Infosys" />
+          <FetchField label="Tracked competitors" className={embedded ? 'xl:col-span-6' : ''}>
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: Deloitte, TCS, Infosys" />
           </FetchField>
         </div>
 
-        <div className="mt-4">
+        <div className={`mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(180deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(209,18,67,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(209,18,67,0.05)]'}`}>
           <FetchField label="Topics">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {TOPIC_OPTIONS.map((topic) => (
-                <label key={topic.key} className={`flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-brand-pink/20 text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
-                  <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
-                  <span className="min-w-0 truncate font-black">{topic.label}</span>
+                <label key={topic.key} className={`group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/20 to-white text-gray-900 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm'}`}>
+                  <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-black text-gray-900">{topic.label}</span>
+                    <span className="mt-1 block text-xs font-medium leading-relaxed text-gray-500">{topic.help}</span>
+                  </span>
                 </label>
               ))}
             </div>
@@ -1580,18 +1805,18 @@ function FetchTab() {
 
         <div className="mt-4">
           <FetchField label="Custom query override">
-            <textarea className="input min-h-24 resize-y rounded-xl" value={form.query} onChange={(e) => update('query', e.target.value)} placeholder="Leave blank to auto-generate from country, category and sub-category." />
+            <textarea className="input min-h-[110px] resize-y rounded-2xl bg-white" value={form.query} onChange={(e) => update('query', e.target.value)} placeholder="Leave blank to auto-generate from country, category and sub-category." />
           </FetchField>
         </div>
 
-        {user?.access?.canUseScheduler === false ? (
+        {!canUseScheduler ? (
           <div className="mt-5 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
             <Clock3 size={24} className="text-gray-300 animate-pulse" />
             <div className="font-black text-gray-700">Auto Scheduler is Locked</div>
             <div className="text-xs text-gray-400 max-w-md">Automated scraping runs are not included in your current subscription plan. Contact your administrator or upgrade to a higher tier plan to unlock this feature.</div>
           </div>
         ) : (
-          <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+          <div className={`mt-5 rounded-[28px] border border-gray-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)] ${embedded ? 'bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]' : 'bg-gradient-to-br from-white to-gray-50'}`}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <div className="eyebrow mb-1">Scheduler</div>
@@ -1601,8 +1826,8 @@ function FetchTab() {
                 <Clock3 size={17} />
               </span>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr_1fr_1.2fr] md:items-end">
-              <label className="flex h-[44px] items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 text-sm font-bold text-gray-700">
+            <div className={`grid grid-cols-1 gap-3 ${embedded ? '2xl:grid-cols-[190px_1fr_1fr_1.2fr]' : 'lg:grid-cols-[180px_1fr_1fr_1.2fr]'} lg:items-end`}>
+              <label className="flex h-[48px] items-center gap-3 rounded-2xl border border-gray-100 bg-white px-3.5 text-sm font-bold text-gray-700 shadow-sm">
                 <input
                   type="checkbox"
                   checked={form.scheduleEnabled}
@@ -1654,15 +1879,17 @@ function FetchTab() {
           </div>
         )}
 
-        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
               <Play size={17} />
             </span>
             <div className="min-w-0">
-              <div className="font-black text-gray-900">Ready to fetch intelligence</div>
+              <div className="font-black text-gray-900">{canUseFetch ? 'Ready to fetch intelligence' : 'Fetch access is locked'}</div>
               <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                {hasUnsavedFetchChanges ? 'Unsaved changes will be saved before fetch' : 'Saved details are ready'}
+                {canUseFetch
+                  ? (hasUnsavedFetchChanges ? 'Unsaved changes will be saved before fetch' : 'Saved details are ready')
+                  : 'Your admin can enable manual fetching for this profile'}
               </div>
             </div>
           </div>
@@ -1679,10 +1906,10 @@ function FetchTab() {
             </button>
             <button
               type="button"
-              disabled={pipelineRunning || !selectedCategories.length}
+              disabled={!canUseFetch || pipelineRunning || !selectedCategories.length}
               onClick={runFetch}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
-              title={selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
+              title={!canUseFetch ? 'Manual fetch access is disabled for this profile' : selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
             >
               {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               {pipelineRunning ? 'Fetching' : 'Run fetch'}
@@ -1737,21 +1964,21 @@ function FetchTab() {
       </div>
 
       {/* Last log */}
-        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className={`space-y-4 ${embedded ? '' : 'xl:sticky xl:top-4 xl:self-start'}`}>
+        <div className={`rounded-[28px] border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]' : 'border-gray-100 bg-white'}`}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="eyebrow mb-1">Last run</div>
-            <h3 className="text-lg font-black tracking-tight text-gray-900">Latest callback</h3>
+            <h3 className="text-lg font-black tracking-tight text-gray-900">{embedded ? 'Latest activity' : 'Latest callback'}</h3>
           </div>
           <Activity size={17} className="text-brand-crimson" />
         </div>
         {!lastLog ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm font-semibold text-gray-400">
             No logs yet.
           </div>
         ) : (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] uppercase tracking-wider text-ink-400">Status</span>
               <span className={`tag ${
@@ -1778,7 +2005,7 @@ function FetchTab() {
           <div className="text-xs text-gray-400">Saving or loading custom query configurations is not included in your current subscription plan.</div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className={`rounded-[28px] border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]' : 'border-gray-100 bg-white'}`}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <div className="eyebrow mb-1">Saved searches</div>
@@ -1789,7 +2016,7 @@ function FetchTab() {
           {savedSearches.length ? (
             <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
               {savedSearches.map((search) => (
-                <button key={search._id} type="button" onClick={() => loadSavedSearch(search)} className="w-full rounded-xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:bg-white hover:shadow-sm">
+                <button key={search._id} type="button" onClick={() => loadSavedSearch(search)} className="w-full rounded-2xl border border-gray-100 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm">
                   <div className="truncate text-sm font-black text-gray-900">{search.name}</div>
                   <div className="mt-1 line-clamp-2 text-xs font-medium text-gray-500">
                     {search.query || `${search.category || 'Any category'} in ${[search.region, search.country].filter(Boolean).join(', ') || 'any market'}`}
@@ -1809,10 +2036,10 @@ function FetchTab() {
   );
 }
 
-function FetchField({ label, children }) {
+function FetchField({ label, children, className = '' }) {
   return (
-    <div className="min-w-0">
-      <label className="label text-gray-500 font-bold tracking-wider">{label}</label>
+    <div className={`min-w-0 ${className}`}>
+      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</label>
       {children}
     </div>
   );
@@ -1937,7 +2164,7 @@ function LogsTab() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
@@ -2273,7 +2500,7 @@ function UsersTab({ dbPlans }) {
 
   const resetUserUsage = async (u) => {
     if (!isSuperAdmin) return;
-    const ok = confirm(`Reset current month usage for ${u.name || u.email}? This gives the account a fresh monthly cycle under its current plan limits.`);
+    const ok = confirm(`Reset usage counters for ${u.name || u.email}? Articles, blogs, and social posts will stay as they are. Only the usage stats and plan counters will start fresh from zero.`);
     if (!ok) return;
     try {
       await api.post('/admin/usage/reset', {
@@ -2406,12 +2633,13 @@ function UsersTab({ dbPlans }) {
 
   return (
     <div className="space-y-5">
+      <>
       <div className="overflow-hidden rounded-2xl border border-brand-crimson/10 bg-white shadow-sm">
         <div className="border-b border-brand-crimson/10 bg-brand-pink/10 px-4 py-3 sm:px-5">
           <div className="eyebrow mb-1">Current session</div>
           <h3 className="text-lg font-black tracking-tight text-gray-900">Signed-in account</h3>
         </div>
-        <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_180px_180px_180px] xl:items-center">
+        <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_180px_180px_180px] 2xl:items-center">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-base font-black text-white shadow-sm">
               {(displayCurrent?.name || displayCurrent?.email || 'U').slice(0, 1).toUpperCase()}
@@ -2457,7 +2685,7 @@ function UsersTab({ dbPlans }) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
           <input className="input min-h-[44px] rounded-xl" required placeholder="Full name" value={form.name} onChange={(e) => updateForm('name', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" type="email" required placeholder="Email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" type="password" required minLength={6} placeholder="Password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
@@ -2699,8 +2927,9 @@ function UsersTab({ dbPlans }) {
           )}
         </tbody>
       </table>
+        </div>
       </div>
-      </div>
+      </>
     </div>
   );
 }
@@ -2828,7 +3057,7 @@ function StatsTab() {
   return (
     <div className="space-y-5">
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-0 2xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="p-5 sm:p-6">
             <div className="eyebrow mb-2 text-brand-crimson/80">Usage & limits</div>
             <h3 className="text-2xl font-black tracking-tight text-gray-900">Team Usage</h3>
@@ -3012,16 +3241,247 @@ function UsageMini({ label, value, sub, danger = false }) {
   );
 }
 
-function StatCard({ label, value, accent, note }) {
+function StatCard({ label, value, icon: Icon, accent, note, tint }) {
   return (
-    <div className="premium-stat-card p-6">
-      <div className={`absolute top-0 right-0 w-24 h-24 blur-[40px] opacity-20 rounded-full ${accent}`} />
-      <div className={`absolute left-0 top-0 h-full w-1.5 ${accent}`} />
-      <div className="pl-2 relative z-10">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{label}</div>
-        <div className="text-4xl font-black tracking-tighter text-gray-900 mb-1">{value}</div>
-        {note && <div className="mt-2 text-xs font-bold text-gray-500 bg-gray-50/80 inline-block px-2.5 py-1 rounded-md border border-gray-100/50">{note}</div>}
+    <div className="premium-stat-card overflow-hidden p-5">
+      <div className={`absolute top-0 right-0 h-24 w-24 rounded-full opacity-20 blur-[40px] ${accent}`} />
+      <div className={`absolute inset-x-0 top-0 h-1.5 ${accent}`} />
+      <div className="relative z-10">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{label}</div>
+            <div className="mt-3 text-[38px] font-black leading-none tracking-[-0.04em] text-gray-950">{value}</div>
+          </div>
+          {Icon ? (
+            <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${tint || 'bg-gray-50 text-gray-700'} ring-1 ring-black/5`}>
+              <Icon size={18} />
+            </span>
+          ) : null}
+        </div>
+        {note && <div className="mt-4 inline-flex rounded-full border border-gray-100 bg-white/80 px-3 py-1.5 text-[11px] font-bold text-gray-500 shadow-sm">{note}</div>}
       </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line no-unused-vars
+function SuperAdminSessionsPanel({
+  items,
+  loading,
+  filter,
+  onFilterChange,
+  search,
+  onSearchChange,
+  onRefresh,
+  onRevoke,
+  onRevokeAll,
+  actionId,
+  currentSessionId
+}) {
+  const q = search.trim().toLowerCase();
+  const filteredItems = items.filter((item) => {
+    if (!q) return true;
+    const haystack = [
+      item.userId?.name,
+      item.userId?.email,
+      item.userId?.company,
+      item.deviceLabel,
+      item.browser,
+      item.os,
+      item.ip
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
+
+  const activeCount = items.filter((item) => item.isActive).length;
+  const revokedCount = items.filter((item) => item.revokedAt).length;
+  const uniqueUsers = new Set(items.map((item) => String(item.userId?._id || ''))).size;
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-pink/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+              <ShieldCheck size={12} />
+              Session control
+            </div>
+            <h3 className="text-2xl font-black tracking-tight text-gray-900">Live account sessions</h3>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-gray-500">
+              Super admin can monitor active devices, spot unusual access, and revoke sessions instantly across the platform.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition hover:bg-gray-50"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <MiniSessionStat label="Active Sessions" value={activeCount} tone="emerald" note="Currently valid and signed in" />
+          <MiniSessionStat label="Tracked Users" value={uniqueUsers} tone="blue" note="Users with visible sessions" />
+          <MiniSessionStat label="Revoked Sessions" value={revokedCount} tone="rose" note="Closed by user or admin" />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,280px)_auto]">
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search by user, company, device or IP"
+                className="input min-h-[44px] rounded-xl pl-11"
+              />
+            </div>
+            <div className="inline-grid grid-cols-3 gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-1">
+              {[
+                { key: 'active', label: 'Active' },
+                { key: 'revoked', label: 'Revoked' },
+                { key: 'all', label: 'All' }
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => onFilterChange(item.key)}
+                  className={`min-h-[36px] rounded-xl px-4 text-xs font-black transition ${
+                    filter === item.key ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="text-xs font-bold text-gray-400">
+            {filteredItems.length} sessions shown
+          </div>
+        </div>
+
+        <div className="mt-5">
+          {loading ? (
+            <div className="flex min-h-[240px] items-center justify-center">
+              <Loader2 size={24} className="animate-spin text-brand-crimson" />
+            </div>
+          ) : filteredItems.length ? (
+            <div className="space-y-3">
+              {filteredItems.map((item) => {
+                const userLabel = item.userId?.name || item.userId?.email || 'Unknown user';
+                const isSelfSession = currentSessionId && item.sessionId === currentSessionId;
+                const statusTone = item.isActive ? 'emerald' : item.revokedAt ? 'rose' : 'gray';
+                return (
+                  <div key={item._id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4 transition hover:border-brand-crimson/15 hover:bg-white">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(120px,1fr))]">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="truncate text-sm font-black text-gray-900">{userLabel}</div>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] ${
+                              statusTone === 'emerald'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : statusTone === 'rose'
+                                  ? 'bg-rose-50 text-rose-600'
+                                  : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {item.isActive ? 'Active' : item.revokedAt ? 'Revoked' : 'Expired'}
+                            </span>
+                            {isSelfSession ? (
+                              <span className="rounded-full bg-brand-pink/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-brand-crimson">
+                                This admin
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 truncate text-xs font-semibold text-gray-400">
+                            {item.userId?.email} {item.userId?.company ? `• ${item.userId.company}` : ''}
+                          </div>
+                        </div>
+                        <SessionInfoBlock label="Device" value={item.deviceLabel || `${item.browser || 'Unknown'} on ${item.os || 'Unknown'}`} />
+                        <SessionInfoBlock label="IP Address" value={item.ip || 'Unknown'} />
+                        <SessionInfoBlock label="Last Active" value={formatSessionDate(item.lastActiveAt)} />
+                        <SessionInfoBlock label="Created" value={formatSessionDate(item.createdAt)} />
+                        <SessionInfoBlock label="Expires" value={formatSessionDate(item.expiresAt)} />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => onRevokeAll(item.userId?._id, userLabel)}
+                          disabled={actionId === item.userId?._id}
+                          className="inline-flex min-h-[38px] items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {actionId === item.userId?._id ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                          Revoke user sessions
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRevoke(item._id)}
+                          disabled={actionId === item._id || !item.isActive}
+                          className="inline-flex min-h-[38px] items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {actionId === item._id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          Revoke session
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-gray-400 ring-1 ring-gray-100">
+                <Clock3 size={18} />
+              </div>
+              <div className="mt-3 text-sm font-black text-gray-700">No sessions found</div>
+              <p className="mt-1 text-sm font-medium text-gray-400">Try changing the filter or search to see more results.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// eslint-disable-next-line no-unused-vars
+function MiniSessionStat({ label, value, note, tone = 'gray' }) {
+  const toneClass = tone === 'emerald'
+    ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+    : tone === 'blue'
+      ? 'bg-blue-50 text-blue-700 ring-blue-100'
+      : tone === 'rose'
+        ? 'bg-rose-50 text-rose-600 ring-rose-100'
+        : 'bg-gray-50 text-gray-700 ring-gray-100';
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">{label}</div>
+          <div className="mt-2 text-3xl font-black tracking-tight text-gray-900">{compactNumber(value)}</div>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.15em] ring-1 ${toneClass}`}>
+          Live
+        </span>
+      </div>
+      <div className="mt-3 text-sm font-medium text-gray-500">{note}</div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line no-unused-vars
+function SessionInfoBlock({ label, value }) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white px-3 py-2">
+      <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{label}</div>
+      <div className="mt-1 truncate text-xs font-bold text-gray-700">{value}</div>
     </div>
   );
 }
@@ -3169,20 +3629,6 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="premium-gradient-card p-6 rounded-2xl relative overflow-hidden">
-        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none"><Database size={160} /></div>
-        <div className="relative z-10">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
-            <Database size={12} /> Plan Configuration
-          </div>
-          <h2 className="text-2xl font-black tracking-tight text-white mb-1">Plan Builder</h2>
-          <p className="text-sm font-medium text-white/80 max-w-2xl">
-            Define what each plan includes. Edit prices, limits, and feature access inline. These defaults auto-fill when you assign a plan to a user in Users &amp; Access.
-          </p>
-        </div>
-      </div>
-
       {/* Plan Cards */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         {PLAN_KEYS.map((pk) => {
@@ -3390,13 +3836,6 @@ function SystemSettingsTab() {
     }
   };
 
-  const apiServices = [
-    { name: 'MongoDB Atlas',  status: 'connected', latency: '12ms',  icon: Database },
-    { name: 'OpenAI API',     status: 'connected', latency: '340ms', icon: Gauge },
-    { name: 'Tavily Search',  status: 'connected', latency: '220ms', icon: Search },
-    { name: 'n8n Webhook',    status: 'connected', latency: '\u2014',     icon: Activity },
-  ];
-
   const aiToggles = [
     { label: 'AI Article Summarization',   help: 'Auto-generate AI summaries for fetched articles',       val: aiSummary,  set: setAiSummary },
     { label: 'AI Category Classification', help: 'Use AI to auto-classify article categories on fetch',    val: aiCategory, set: setAiCategory },
@@ -3404,17 +3843,6 @@ function SystemSettingsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="premium-gradient-card p-6 rounded-2xl relative overflow-hidden">
-        <div className="absolute -right-10 -top-10 opacity-10 pointer-events-none"><KeyRound size={160} /></div>
-        <div className="relative z-10">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-white/70 mb-2 flex items-center gap-2">
-            <KeyRound size={12} /> System Configuration
-          </div>
-          <h2 className="text-2xl font-black tracking-tight text-white mb-1">System Settings</h2>
-          <p className="text-sm font-medium text-white/80">Global platform configuration, AI model selection, and API health monitoring.</p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {/* AI Model & Flags */}
         <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
@@ -3456,32 +3884,16 @@ function SystemSettingsTab() {
           </div>
         </div>
 
-        {/* API Health Monitor */}
+        {/* Current Configuration */}
         <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Monitoring</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">API Health Status</h3>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Platform Snapshot</div>
+          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">Current Configuration</h3>
           <div className="space-y-3">
-            {apiServices.map(({ name, status, latency, icon: Icon }) => (
-              <div key={name} className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${status === 'connected' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                    <Icon size={15} />
-                  </div>
-                  <div className="text-sm font-black text-gray-800">{name}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-gray-400">{latency}</span>
-                  <span className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    {status}
-                  </span>
-                </div>
-              </div>
-            ))}
+            <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
+            <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
+            <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
+            <ConfigStatusRow icon={AlertTriangle} label="Maintenance mode" value={maintenanceMode ? 'Enabled' : 'Disabled'} tone={maintenanceMode ? 'amber' : 'gray'} />
           </div>
-          <button className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 hover:bg-gray-50 transition-all">
-            <RefreshCw size={13} /> Refresh Health Check
-          </button>
         </div>
       </div>
 

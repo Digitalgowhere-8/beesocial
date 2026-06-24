@@ -2,11 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Menu, Newspaper, BookOpenText
+  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
 const DARK_RED = '#8F0B2F';
+const SUPER_ADMIN_SECTIONS = [
+  { key: 'platform', label: 'Overview', icon: Crown },
+  { key: 'articles', label: 'Articles', icon: FileText },
+  { key: 'fetch', label: 'Fetch', icon: Globe2 },
+  { key: 'users', label: 'Users', icon: Users },
+  { key: 'plans', label: 'Plans', icon: Database },
+  { key: 'settings', label: 'Settings', icon: KeyRound }
+];
 
 function SideNavItem({ icon: Icon, label, to, onActiveClick }) {
   return (
@@ -102,10 +110,6 @@ export default function Layout({ children, headerActions = null }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const memberHasFetchOrSchedule = user?.access?.canFetch === true || user?.access?.canUseScheduler === true;
-  const showAdminOrFetch = isAdmin || memberHasFetchOrSchedule;
-  const adminOrFetchLabel = isAdmin ? "Admin" : "Fetch Settings";
-  
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem('sidebar_collapsed') === 'true';
@@ -129,6 +133,7 @@ export default function Layout({ children, headerActions = null }) {
   const mobileNotificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
+  const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
@@ -198,35 +203,37 @@ export default function Layout({ children, headerActions = null }) {
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'U';
 
-  const toggleRoute = (path) => {
-    navigate(isSuperAdmin ? '/admin' : (location.pathname.startsWith(path) ? '/dashboard' : path));
-  };
-
   return (
-    <div className="h-screen flex flex-col md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
-      <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <img src="/logo.png" className="h-7 object-contain shrink-0" alt="OpportunityOS AI Logo" />
-          <span className="text-sm font-bold text-gray-800 truncate">{getPageTitle()}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {headerActions ? <div className="hidden max-w-[58vw] items-center md:flex">{headerActions}</div> : null}
-          <div className="relative" ref={mobileNotificationsRef}>
-          <button
-            onClick={() => {
-              setShowNotifications((v) => !v);
-              setShowProfileMenu(false);
-            }}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
-          >
-            <Bell size={15} />
-          </button>
-          {showNotifications && !isSuperAdmin && <NotificationsMenu isAdmin={isAdmin} />}
+    <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+      <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/logo.png" className="h-7 object-contain shrink-0" alt="OpportunityOS AI Logo" />
+            <span className="text-sm font-bold text-gray-800 truncate">{getPageTitle()}</span>
           </div>
-          <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
-            <LogOut size={15} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative" ref={mobileNotificationsRef}>
+            <button
+              onClick={() => {
+                setShowNotifications((v) => !v);
+                setShowProfileMenu(false);
+              }}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
+            >
+              <Bell size={15} />
+            </button>
+            {showNotifications && !isSuperAdmin && <NotificationsMenu isAdmin={isAdmin} />}
+            </div>
+            <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
+              <LogOut size={15} />
+            </button>
+          </div>
         </div>
+        {headerActions ? (
+          <div className="mt-3 min-w-0 overflow-hidden">
+            {headerActions}
+          </div>
+        ) : null}
       </header>
 
       {/* Sidebar */}
@@ -304,12 +311,41 @@ export default function Layout({ children, headerActions = null }) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
           {isSuperAdmin ? (
             collapsed ? (
-              <button onClick={() => navigate('/admin')} title="Owner Console"
-                className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
-                <Shield size={16} />
-              </button>
+              <div className="space-y-2">
+                {SUPER_ADMIN_SECTIONS.map(({ key, icon: Icon, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => navigate(`/admin?section=${key}`)}
+                    title={label}
+                    className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') && currentAdminSection === key ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}
+                  >
+                    <Icon size={16} />
+                  </button>
+                ))}
+              </div>
             ) : (
-              <SideNavItem icon={Shield} label="Owner Console" to="/admin" />
+              <div className="space-y-2">
+                {SUPER_ADMIN_SECTIONS.map(({ key, icon: Icon, label }) => {
+                  const active = location.pathname.startsWith('/admin') && currentAdminSection === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => navigate(`/admin?section=${key}`)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
+                      style={{
+                        background: active ? 'rgba(209,18,67,0.06)' : undefined,
+                        color: active ? CRIMSON : undefined,
+                        fontWeight: active ? '700' : '500',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <Icon size={15} />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             )
           ) : (
           <>
@@ -337,12 +373,6 @@ export default function Layout({ children, headerActions = null }) {
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
-              {showAdminOrFetch && (
-                <button onClick={() => toggleRoute('/admin')} title={adminOrFetchLabel}
-                  className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  <Shield size={16} />
-                </button>
-              )}
             </>
           ) : (
             <>
@@ -353,9 +383,6 @@ export default function Layout({ children, headerActions = null }) {
                 <SideNavItem icon={BookOpenText} label="Social Media Studio" to="/social-media-studio" />
               )}
               <SideNavItem icon={UserIcon} label="Profile" to="/profile" />
-              {showAdminOrFetch && (
-                <SideNavItem icon={Shield} label={adminOrFetchLabel} to="/admin" onActiveClick={() => navigate('/dashboard')} />
-              )}
             </>
           )}
           </>
@@ -382,14 +409,14 @@ export default function Layout({ children, headerActions = null }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header */}
-        <header className="hidden md:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between px-6 py-3"
+        <header className="hidden md:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 lg:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-base font-bold text-gray-800">{getPageTitle()}</span>
+          <div className="min-w-0 flex items-center gap-3">
+            <span className="truncate text-base font-bold text-gray-800">{getPageTitle()}</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {headerActions ? <div className="mr-2 hidden items-center lg:flex">{headerActions}</div> : null}
+          <div className="flex min-w-0 items-center gap-2">
+            {headerActions ? <div className="mr-2 flex min-w-0 max-w-[min(62vw,920px)] items-center overflow-hidden">{headerActions}</div> : null}
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => {
@@ -463,7 +490,7 @@ export default function Layout({ children, headerActions = null }) {
           </button>
         </nav>
       ) : (
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-5 gap-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-4 gap-1">
         <button onClick={() => navigate('/dashboard')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/dashboard') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
           <LayoutDashboard size={16} />
           Dashboard
@@ -480,17 +507,6 @@ export default function Layout({ children, headerActions = null }) {
           <UserIcon size={16} />
           Profile
         </button>
-        {showAdminOrFetch ? (
-          <button onClick={() => toggleRoute('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <Shield size={16} />
-            {adminOrFetchLabel}
-          </button>
-        ) : (
-          <button onClick={() => navigate('/dashboard')} className="flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold text-gray-400">
-            <Menu size={16} />
-            Menu
-          </button>
-        )}
       </nav>
       )}
     </div>

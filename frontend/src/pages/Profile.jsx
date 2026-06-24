@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import { FetchTab as ProfileFetchTab } from './AdminPanel';
 import Layout from '../components/Layout';
 import {
   Building2,
@@ -9,9 +11,8 @@ import {
   Loader2,
   Lock,
   Mail,
+  RefreshCw,
   Save,
-  Shield,
-  Sparkles,
   Trash2,
   User
 } from 'lucide-react';
@@ -28,9 +29,26 @@ const initialFormFromUser = (user) => ({
   designation: user?.designation || ''
 });
 
+const canAccessFetchControls = (user) => {
+  if (!user) return false;
+  if (user.role === 'super_admin') return true;
+  if (user.role === 'admin') {
+    return user?.access?.canFetch !== false || user?.access?.canUseScheduler !== false;
+  }
+  return user?.access?.canFetch === true || user?.access?.canUseScheduler === true;
+};
+
+const PROFILE_TABS = [
+  { key: 'profile', label: 'Profile & Security' },
+  { key: 'fetch', label: 'Intelligence Fetch' }
+];
+
 export default function Profile() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, setAuthState } = useAuth();
+  const navigate = useNavigate();
   const canManageIntelligence = user?.role === 'admin' || user?.role === 'super_admin';
+  const canSeeFetchSection = canAccessFetchControls(user);
+  const [activeTab, setActiveTab] = useState('profile');
   const [form, setForm] = useState(() => initialFormFromUser(user));
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [savedProfile, setSavedProfile] = useState(false);
@@ -56,6 +74,12 @@ export default function Profile() {
   useEffect(() => {
     if (user) setForm(initialFormFromUser(user));
   }, [user]);
+
+  useEffect(() => {
+    if (!canSeeFetchSection && activeTab === 'fetch') {
+      setActiveTab('profile');
+    }
+  }, [activeTab, canSeeFetchSection]);
 
   const update = (key, value) => setForm((prev) => ({
     ...prev,
@@ -113,10 +137,11 @@ export default function Profile() {
 
     setLoadingPwd(true);
     try {
-      await api.post('/auth/change-password', {
+      const { data } = await api.post('/auth/change-password', {
         currentPassword: pwd.currentPassword,
         newPassword: pwd.newPassword
       });
+      setAuthState(data);
       setPwd({ currentPassword: '', newPassword: '', confirm: '' });
       setSavedPwd(true);
       window.setTimeout(() => setSavedPwd(false), 2200);
@@ -127,33 +152,52 @@ export default function Profile() {
     }
   };
 
+  const headerActions = (
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+      <div className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5 ${
+                active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              <span className="truncate">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {canManageIntelligence ? (
+        <button
+          type="button"
+          onClick={() => navigate('/admin')}
+          className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
+        >
+          Admin Controls
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <Layout>
+    <Layout headerActions={headerActions}>
       <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full">
-          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm animate-fade-in-up stagger-1 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-brand-pink/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
-                <Sparkles size={13} />
-                Account settings
-              </div>
-              <h1 className="truncate text-2xl font-black tracking-tight text-gray-900">Profile & Security</h1>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-gray-500">{roleLabel(user?.role)}</span>
-              {canManageIntelligence ? <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-brand-crimson">Admin controls</span> : null}
-            </div>
-          </div>
-
           {err && (
             <div className="mb-6 rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
               {err}
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[300px_minmax(0,1fr)_320px] xl:items-stretch 2xl:grid-cols-[340px_minmax(0,1fr)_360px]">
-          <aside className="animate-fade-in-up stagger-2 md:order-1 xl:order-none">
-            <section className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm xl:min-h-[420px]">
+          {activeTab === 'profile' ? (
+          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-[320px_minmax(0,1fr)_340px] 2xl:items-stretch">
+          <aside className="animate-fade-in-up stagger-2 md:order-1 2xl:order-none">
+            <section className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm 2xl:min-h-[420px]">
               <div className="flex flex-1 flex-col items-center justify-center text-center">
                 <div className="relative mb-4 h-24 w-24 shrink-0">
                   {avatar ? (
@@ -177,7 +221,6 @@ export default function Profile() {
 
               <div className="mt-4 space-y-2">
                 <InfoTile icon={Building2} label="Organization" value={form.company || 'Not set'} />
-                {canManageIntelligence && <InfoTile icon={Shield} label="Fetch controls" value="Admin panel" />}
               </div>
 
               {avatar ? (
@@ -189,9 +232,9 @@ export default function Profile() {
             </section>
           </aside>
 
-          <form onSubmit={saveProfile} className="animate-fade-in-up stagger-2 md:order-3 md:col-span-2 xl:order-none xl:col-span-1">
-            <Section icon={User} eyebrow="Identity" title="Account Details" className="flex h-full min-h-0 flex-col xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+          <form onSubmit={saveProfile} className="animate-fade-in-up stagger-2 md:order-3 md:col-span-2 2xl:order-none 2xl:col-span-1">
+            <Section icon={User} eyebrow="Identity" title="Account Details" className="flex h-full min-h-0 flex-col 2xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-1">
                 <Field label="Full name">
                   <input className="input min-h-[44px] rounded-xl transition-colors hover:border-gray-300 focus:border-brand-crimson" value={form.name} onChange={(e) => update('name', e.target.value)} required />
                 </Field>
@@ -222,8 +265,8 @@ export default function Profile() {
             </Section>
           </form>
 
-          <form onSubmit={changePwd} className="animate-fade-in-up stagger-2 md:order-2 xl:order-none">
-            <Section icon={Lock} eyebrow="Security" title="Password" compact className="flex h-full min-h-0 flex-col xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
+          <form onSubmit={changePwd} className="animate-fade-in-up stagger-2 md:order-2 2xl:order-none">
+            <Section icon={Lock} eyebrow="Security" title="Password" compact className="flex h-full min-h-0 flex-col 2xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
               <div className="space-y-4">
                 <Field label="Current password">
                   <input type="password" className="input min-h-[44px] rounded-xl" value={pwd.currentPassword} onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })} required />
@@ -244,7 +287,27 @@ export default function Profile() {
               </div>
             </Section>
           </form>
-        </div>
+          </div>
+          </div>
+          ) : null}
+
+        {activeTab === 'fetch' && canSeeFetchSection ? (
+          <section className="mt-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-in-up stagger-3">
+            <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-brand-pink/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                  <RefreshCw size={12} />
+                  Fetch controls
+                </div>
+                <h2 className="text-xl font-black tracking-tight text-gray-900">Intelligence Fetch</h2>
+                <p className="mt-1 text-sm font-medium text-gray-500">
+                  Manage your fetch settings, scheduling, and latest run status from your profile.
+                </p>
+              </div>
+            </div>
+            <ProfileFetchTab embedded />
+          </section>
+        ) : null}
         </div>
       </div>
     </Layout>
