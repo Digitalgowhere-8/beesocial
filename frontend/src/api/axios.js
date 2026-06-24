@@ -16,7 +16,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    if (err.response?.data?.message) {
+    if (err.response?.status === 429) {
+      const retryAfterHeader = err.response.headers?.['retry-after'];
+      const rateLimitResetHeader = err.response.headers?.['ratelimit-reset'];
+      const waitSeconds = Number(retryAfterHeader || rateLimitResetHeader || 0);
+      const waitHint = Number.isFinite(waitSeconds) && waitSeconds > 0
+        ? ` Please wait about ${waitSeconds} second${waitSeconds === 1 ? '' : 's'} and try again.`
+        : ' Please wait a moment and try again.';
+
+      err.message = `${err.response?.data?.message || 'Too many requests.'}${waitHint}`;
+    } else if (err.response?.data?.message) {
       err.message = err.response.data.message;
     }
     if (err.response?.status === 503 && err.response?.data?.code === 'MAINTENANCE_MODE') {
@@ -38,6 +47,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !/\/auth\//.test(err.config?.url || '')) {
       localStorage.removeItem('opportunityos_token');
       localStorage.removeItem('opportunityos_user');
+      localStorage.removeItem('opportunityos_session');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

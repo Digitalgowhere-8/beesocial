@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const UserSession = require('../models/UserSession');
 
 const PRESENCE_TOUCH_INTERVAL_MS = 30 * 1000;
+const SESSION_TOUCH_INTERVAL_MS = 30 * 1000;
 
 /**
  * `protect` - verifies the JWT in `Authorization: Bearer <token>`
@@ -18,9 +20,22 @@ async function protect(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded.sid) {
+      return res.status(401).json({ message: 'Session missing. Please log in again.' });
+    }
     const user = await User.findById(decoded.id);
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'User not found or inactive' });
+    }
+
+    const session = await UserSession.findOne({
+      sessionId: decoded.sid,
+      userId: user._id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() }
+    });
+    if (!session) {
+      return res.status(401).json({ message: 'Session expired or revoked. Please log in again.' });
     }
 
     if (user.passwordChangedAt) {
@@ -40,7 +55,16 @@ async function protect(req, res, next) {
       });
     }
 
+    const sessionLastActive = session.lastActiveAt ? new Date(session.lastActiveAt).getTime() : 0;
+    if (shouldTouchPresence && (!sessionLastActive || now - sessionLastActive > SESSION_TOUCH_INTERVAL_MS)) {
+      session.lastActiveAt = new Date(now);
+      UserSession.updateOne({ _id: session._id }, { $set: { lastActiveAt: session.lastActiveAt } }).catch((err) => {
+        console.error('[auth] failed to update session activity:', err.message);
+      });
+    }
+
     req.user = user;
+    req.session = session;
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Token invalid or expired' });
@@ -60,9 +84,9 @@ function requireRole(...roles) {
   };
 }
 
-function signToken(user) {
+function signToken(user, sessionId) {
   return jwt.sign(
-    { id: user._id, role: user.role },
+    { id: user._id, role: user.role, sid: sessionId },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );

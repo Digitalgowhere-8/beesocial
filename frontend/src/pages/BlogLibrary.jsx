@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { BookOpenText, CalendarDays, CheckSquare, FileText, Loader2, MessageSquareText, Search, Square, Tag, Trash2 } from 'lucide-react';
+import { BookOpenText, CalendarDays, CheckSquare, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2 } from 'lucide-react';
 
 export default function BlogLibrary() {
   const { isAdmin } = useAuth();
@@ -74,40 +74,46 @@ export default function BlogLibrary() {
     }
   };
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+        <button type="button" onClick={() => { setMode('blogs'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${mode === 'blogs' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+          <BookOpenText size={14} />
+          Blog
+        </button>
+        <button type="button" onClick={() => { setMode('linkedin'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${mode === 'linkedin' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+          <MessageSquareText size={14} />
+          Social Media Post
+        </button>
+      </div>
+      <button type="button" onClick={load} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        Refresh
+      </button>
+    </div>
+  );
+
   return (
-    <Layout>
+    <Layout headerActions={headerActions}>
       <div className="flex h-full min-h-[calc(100vh-64px)] -m-6 flex-col gap-5 p-4 mesh-bg sm:p-6">
-        <div className="glass-panel px-6 py-5 animate-fade-in-up stagger-1">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="relative z-10">
-              <div className="mb-1.5 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm border border-brand-crimson/10">
-                <BookOpenText size={14} />
-                Social Media Posts
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-gray-900 text-gradient">{mode === 'linkedin' ? 'Saved LinkedIn Posts' : 'Published Content'}</h1>
+        <div className="glass-panel flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">
+              Library Search
             </div>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <div className="grid grid-cols-2 rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
-                <button type="button" onClick={() => { setMode('blogs'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-all ${mode === 'blogs' ? 'bg-brand-crimson text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-                  <BookOpenText size={14} />
-                  Blogs
-                </button>
-                <button type="button" onClick={() => { setMode('linkedin'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-all ${mode === 'linkedin' ? 'bg-brand-crimson text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-                  <MessageSquareText size={14} />
-                  Saved LinkedIn
-                </button>
-              </div>
-              <div className="relative min-w-0 md:w-80 group z-10">
-                <div className="absolute inset-0 bg-brand-crimson/5 blur-md rounded-xl group-focus-within:bg-brand-crimson/10 transition-colors"></div>
-                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-crimson transition-colors z-10" />
-                <input 
-                  className="w-full pl-11 pr-4 py-3 bg-white/80 backdrop-blur border border-white/60 rounded-xl text-sm font-medium text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-crimson/30 focus:bg-white transition-all relative z-10" 
-                  value={query} 
-                  onChange={(e) => setQuery(e.target.value)} 
-                  placeholder={mode === 'linkedin' ? 'Search LinkedIn posts...' : 'Search articles...'} 
-                />
-              </div>
-            </div>
+            <h2 className="mt-1 text-lg font-black tracking-tight text-gray-900">
+              {mode === 'linkedin' ? 'Find Saved Social Posts' : 'Find Published Content'}
+            </h2>
+          </div>
+          <div className="relative min-w-0 w-full max-w-xl group z-10">
+            <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10"></div>
+            <Search size={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-crimson" />
+            <input 
+              className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white pl-11 pr-4 py-3 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30" 
+              value={query} 
+              onChange={(e) => setQuery(e.target.value)} 
+              placeholder={mode === 'linkedin' ? 'Search LinkedIn posts...' : 'Search articles...'} 
+            />
           </div>
         </div>
 

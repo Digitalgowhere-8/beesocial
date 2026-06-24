@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Article = require('../models/Article');
 const FetchLog = require('../models/FetchLog');
 const User = require('../models/User');
+const UserSession = require('../models/UserSession');
 const Plan = require('../models/Plan');
 const BlogPost = require('../models/BlogPost');
 const SocialPost = require('../models/SocialPost');
@@ -18,6 +19,7 @@ const {
   triggerPlatformFetch,
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
+const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 
 const router = express.Router();
 
@@ -142,10 +144,11 @@ async function requireFetchCapacity(req, res, next) {
   }
 
   const tenantAdminId = adminUser._id;
-  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id').lean();
+  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id usageResetAt').lean();
   const userIds = teamUsers.map((u) => u._id);
+  const resetAt = latestUsageResetAt(teamUsers);
 
-  const since = startOfMonth();
+  const since = effectiveMonthlyStart(resetAt);
   const limits = adminUser?.limits || {};
   const fetchLimit = Number(limits.fetchesPerMonth || 0);
   const storageLimit = Number(limits.storageItems || 0);
@@ -167,13 +170,15 @@ async function requireFetchCapacity(req, res, next) {
   }
 
   if (storageLimit > 0) {
-    const used = await Article.countDocuments({ userId: { $in: userIds } });
+    const storageQuery = { userId: { $in: userIds } };
+    if (resetAt) storageQuery.fetchedAt = { $gte: resetAt };
+    const used = await Article.countDocuments(storageQuery);
     if (used >= storageLimit) {
       return res.status(402).json(limitReachedPayload({
         limitType: 'storageItems',
         used,
         limit: storageLimit,
-        message: `Stored signals limit reached (${used}/${storageLimit}). Reset data or upgrade for more storage.`
+        message: `Stored signals limit reached (${used}/${storageLimit}). Upgrade for more storage.`
       }));
     }
   }
@@ -210,11 +215,6 @@ function normalizeAccessPatch(access, { allowMemberManagement = false } = {}) {
     if (key in access) out[key] = Boolean(access[key]);
     return out;
   }, {});
-}
-
-function startOfMonth() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
 // Every route here requires an operational admin.
@@ -511,14 +511,15 @@ router.get('/n8n/status', (_req, res) => {
 // ============== STATS ==============
 
 router.get('/stats', asyncHandler(async (req, res) => {
-  const monthStart = startOfMonth();
   const teamQuery = req.user.role === 'super_admin'
     ? { role: { $in: ['admin', 'user'] } }
     : { $or: [{ _id: req.user._id }, { tenantAdminId: req.user._id }] };
   const teamUsers = await User.find(teamQuery)
-    .select('name email role company tenantAdminId memberLimit subscriptionPlan limits access isActive lastLoginAt lastSeenAt')
+    .select('name email role company tenantAdminId memberLimit subscriptionPlan limits access isActive lastLoginAt lastSeenAt usageResetAt')
     .lean();
   const userIds = teamUsers.map((user) => user._id);
+  const resetAt = latestUsageResetAt(teamUsers);
+  const currentCycleStart = effectiveMonthlyStart(resetAt);
   const adminUser = req.user.role === 'super_admin'
     ? teamUsers.find((user) => user.role === 'admin') || req.user
     : teamUsers.find((user) => String(user._id) === String(req.user._id)) || req.user;
@@ -535,19 +536,19 @@ router.get('/stats', asyncHandler(async (req, res) => {
     recentRuns
   ] = await Promise.all([
     FetchLog.aggregate([
-      { $match: { $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
+      { $match: { ...(resetAt ? { startedAt: { $gte: resetAt } } : {}), $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
       { $group: { _id: { $ifNull: ['$userId', '$triggeredByUser'] }, runs: { $sum: 1 }, inserted: { $sum: '$totalInserted' }, fetched: { $sum: '$totalFetched' }, errors: { $sum: '$totalErrors' }, failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } } } }
     ]),
     FetchLog.aggregate([
-      { $match: { startedAt: { $gte: monthStart }, $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
+      { $match: { startedAt: { $gte: currentCycleStart }, $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] } },
       { $group: { _id: { $ifNull: ['$userId', '$triggeredByUser'] }, runs: { $sum: 1 }, inserted: { $sum: '$totalInserted' }, fetched: { $sum: '$totalFetched' }, errors: { $sum: '$totalErrors' }, failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } } } }
     ]),
-    Article.aggregate([{ $match: { userId: { $in: userIds } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
-    Article.aggregate([{ $match: { userId: { $in: userIds }, fetchedAt: { $gte: monthStart } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
-    BlogPost.aggregate([{ $match: { createdBy: { $in: userIds } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
-    BlogPost.aggregate([{ $match: { createdBy: { $in: userIds }, createdAt: { $gte: monthStart } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
-    SocialPost.aggregate([{ $match: { createdBy: { $in: userIds } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
-    SocialPost.aggregate([{ $match: { createdBy: { $in: userIds }, createdAt: { $gte: monthStart } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
+    Article.aggregate([{ $match: { userId: { $in: userIds }, ...(resetAt ? { fetchedAt: { $gte: resetAt } } : {}) } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
+    Article.aggregate([{ $match: { userId: { $in: userIds }, fetchedAt: { $gte: currentCycleStart } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
+    BlogPost.aggregate([{ $match: { createdBy: { $in: userIds }, ...(resetAt ? { createdAt: { $gte: resetAt } } : {}) } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
+    BlogPost.aggregate([{ $match: { createdBy: { $in: userIds }, createdAt: { $gte: currentCycleStart } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
+    SocialPost.aggregate([{ $match: { createdBy: { $in: userIds }, ...(resetAt ? { createdAt: { $gte: resetAt } } : {}) } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
+    SocialPost.aggregate([{ $match: { createdBy: { $in: userIds }, createdAt: { $gte: currentCycleStart } } }, { $group: { _id: '$createdBy', count: { $sum: 1 } } }]),
     FetchLog.find({ $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] })
       .sort({ startedAt: -1 })
       .limit(8)
@@ -643,7 +644,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   };
 
   res.json({
-    monthStart,
+    monthStart: currentCycleStart,
     admin: {
       _id: adminUser?._id || req.user._id,
       name: adminUser?.name || req.user.name,
@@ -1261,6 +1262,76 @@ router.delete('/users/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'Deleted', id: req.params.id });
 }));
 
+// ============== SESSION MANAGEMENT (SUPER ADMIN) ==============
+
+router.get('/sessions', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const q = {};
+  if (req.query.userId) q.userId = req.query.userId;
+  if (req.query.status === 'active') {
+    q.revokedAt = null;
+    q.expiresAt = { $gt: new Date() };
+  } else if (req.query.status === 'revoked') {
+    q.revokedAt = { $ne: null };
+  }
+
+  const items = await UserSession.find(q)
+    .sort({ lastActiveAt: -1, createdAt: -1 })
+    .limit(Math.min(Number(req.query.limit || 200), 500))
+    .populate('userId', 'name email company role subscriptionPlan isActive')
+    .populate('revokedBy', 'name email role')
+    .lean();
+
+  res.json({
+    items: items.map((item) => ({
+      ...item,
+      isActive: !item.revokedAt && new Date(item.expiresAt).getTime() > Date.now()
+    }))
+  });
+}));
+
+router.post('/sessions/:id/revoke', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const session = await UserSession.findById(req.params.id);
+  if (!session) return res.status(404).json({ message: 'Session not found' });
+
+  session.revokedAt = new Date();
+  session.revokedBy = req.user._id;
+  session.revokeReason = req.body?.reason || 'revoked_by_super_admin';
+  await session.save();
+
+  const latestActive = await UserSession.findOne({
+    userId: session.userId,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() }
+  }).sort({ lastActiveAt: -1 }).select('lastActiveAt').lean();
+
+  await User.updateOne(
+    { _id: session.userId },
+    { $set: { lastSeenAt: latestActive?.lastActiveAt || null } }
+  );
+
+  res.json({ message: 'Session revoked' });
+}));
+
+router.post('/users/:id/sessions/revoke-all', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  await UserSession.updateMany(
+    {
+      userId: req.params.id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() }
+    },
+    {
+      $set: {
+        revokedAt: new Date(),
+        revokedBy: req.user._id,
+        revokeReason: req.body?.reason || 'revoke_all_by_super_admin'
+      }
+    }
+  );
+
+  await User.updateOne({ _id: req.params.id }, { $set: { lastSeenAt: null } });
+  res.json({ message: 'All user sessions revoked' });
+}));
+
 // ============== DYNAMIC PLAN CONFIGURATIONS ==============
 
 // GET /api/admin/plans
@@ -1325,13 +1396,7 @@ router.put('/plans', requireRole('super_admin'), asyncHandler(async (req, res) =
 // POST /api/admin/usage/reset
 router.post('/usage/reset', requireRole('super_admin'), asyncHandler(async (req, res) => {
   const scope = req.body?.scope === 'all_time' ? 'all_time' : 'current_month';
-  const targets = {
-    fetchLogs: req.body?.targets?.fetchLogs !== false,
-    articles: req.body?.targets?.articles !== false,
-    blogs: req.body?.targets?.blogs !== false,
-    socialPosts: req.body?.targets?.socialPosts !== false
-  };
-  const since = scope === 'current_month' ? startOfMonth() : null;
+  const resetAt = new Date();
 
   let userQuery;
   if (req.user.role === 'super_admin' && req.body?.userId && mongoose.Types.ObjectId.isValid(req.body.userId)) {
@@ -1347,35 +1412,15 @@ router.post('/usage/reset', requireRole('super_admin'), asyncHandler(async (req,
 
   const users = await User.find(userQuery).select('_id').lean();
   const userIds = users.map((user) => user._id);
-  const dateQuery = since ? { $gte: since } : undefined;
-  const result = {};
+  await User.updateMany({ _id: { $in: userIds } }, { $set: { usageResetAt: resetAt } });
 
-  if (targets.fetchLogs) {
-    const q = { $or: [{ userId: { $in: userIds } }, { triggeredByUser: { $in: userIds } }] };
-    if (dateQuery) q.startedAt = dateQuery;
-    const deleted = await FetchLog.deleteMany(q);
-    result.fetchLogs = deleted.deletedCount || 0;
-  }
-  if (targets.articles) {
-    const q = { userId: { $in: userIds } };
-    if (dateQuery) q.fetchedAt = dateQuery;
-    const deleted = await Article.deleteMany(q);
-    result.articles = deleted.deletedCount || 0;
-  }
-  if (targets.blogs) {
-    const q = { createdBy: { $in: userIds } };
-    if (dateQuery) q.createdAt = dateQuery;
-    const deleted = await BlogPost.deleteMany(q);
-    result.blogs = deleted.deletedCount || 0;
-  }
-  if (targets.socialPosts) {
-    const q = { createdBy: { $in: userIds } };
-    if (dateQuery) q.createdAt = dateQuery;
-    const deleted = await SocialPost.deleteMany(q);
-    result.socialPosts = deleted.deletedCount || 0;
-  }
-
-  res.json({ success: true, scope, users: userIds.length, deleted: result });
+  res.json({
+    success: true,
+    scope,
+    users: userIds.length,
+    resetAt,
+    message: 'Usage counters reset successfully. Existing articles, blogs, and social posts were kept.'
+  });
 }));
 
 module.exports = router;

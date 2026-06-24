@@ -377,11 +377,11 @@ export default function BlogStudio() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
-      <div className="grid grid-cols-2 rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
+      <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
         <button
           type="button"
           onClick={() => setContentType('blog')}
-          className={`flex min-h-[36px] items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black transition-all ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <BookOpenText size={14} />
           Blog
@@ -389,14 +389,14 @@ export default function BlogStudio() {
         <button
           type="button"
           onClick={() => setContentType('social')}
-          className={`flex min-h-[36px] items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black transition-all ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <MessageSquareText size={14} />
           Social Media Post
         </button>
       </div>
-      <button type="button" onClick={() => { loadArticles(); loadBlogs(); loadSocialPosts(); }} className="btn-secondary min-h-[40px] rounded-xl bg-white px-3 shadow-sm hover:bg-white hover:border-brand-crimson/30">
-        <RefreshCw size={15} />
+      <button type="button" onClick={() => { loadArticles(); loadBlogs(); loadSocialPosts(); }} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+        <RefreshCw size={14} />
         Refresh
       </button>
     </div>

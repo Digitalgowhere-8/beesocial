@@ -4,6 +4,7 @@ import api from '../api/axios';
 const AuthContext = createContext(null);
 const TOKEN_KEY = 'opportunityos_token';
 const USER_KEY = 'opportunityos_user';
+const SESSION_KEY = 'opportunityos_session';
 
 function readStoredUser() {
   try {
@@ -18,6 +19,21 @@ function readToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+function readStoredSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthStorage() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(SESSION_KEY);
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
@@ -27,6 +43,13 @@ export function AuthProvider({ children }) {
     }
   });
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(() => {
+    try {
+      return readStoredSession();
+    } catch {
+      return null;
+    }
+  });
 
   const [runProgress, setRunProgress] = useState(() => {
     try {
@@ -95,12 +118,18 @@ export function AuthProvider({ children }) {
     api.get('/auth/me')
       .then((r) => {
         setUser(r.data.user);
+        setSession(r.data.session || null);
         localStorage.setItem(USER_KEY, JSON.stringify(r.data.user));
+        if (r.data.session) {
+          localStorage.setItem(SESSION_KEY, JSON.stringify(r.data.session));
+        } else {
+          localStorage.removeItem(SESSION_KEY);
+        }
       })
       .catch(() => {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+        clearAuthStorage();
         setUser(null);
+        setSession(null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -112,7 +141,13 @@ export function AuthProvider({ children }) {
       api.get('/auth/me')
         .then((r) => {
           setUser(r.data.user);
+          setSession(r.data.session || null);
           localStorage.setItem(USER_KEY, JSON.stringify(r.data.user));
+          if (r.data.session) {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(r.data.session));
+          } else {
+            localStorage.removeItem(SESSION_KEY);
+          }
         })
         .catch(() => {});
     };
@@ -121,32 +156,43 @@ export function AuthProvider({ children }) {
     return () => window.clearInterval(id);
   }, [user]);
 
-  const persist = (token, user) => {
+  const persist = useCallback((token, user, activeSession = null) => {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (activeSession) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(activeSession));
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
     setUser(user);
-  };
+    setSession(activeSession);
+  }, []);
+
+  const setAuthState = useCallback((payload = {}) => {
+    if (!payload?.token || !payload?.user) return;
+    persist(payload.token, payload.user, payload.session || null);
+  }, [persist]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
-    persist(data.token, data.user);
+    persist(data.token, data.user, data.session || null);
     return data.user;
-  }, []);
+  }, [persist]);
 
   const register = useCallback(async (payload) => {
     const { data } = await api.post('/auth/register', payload);
     if (data.token && data.user) {
-      persist(data.token, data.user);
+      persist(data.token, data.user, data.session || null);
     }
     return data.user;
-  }, []);
+  }, [persist]);
 
   const logout = useCallback(() => {
     const token = readToken();
     api.post('/auth/logout', null, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined).catch(() => {});
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    clearAuthStorage();
     setUser(null);
+    setSession(null);
   }, []);
 
   const updateProfile = useCallback(async (patch) => {
@@ -156,14 +202,34 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  const listSessions = useCallback(async () => {
+    const { data } = await api.get('/auth/sessions');
+    return data.items || [];
+  }, []);
+
+  const revokeSession = useCallback(async (sessionId, reason = 'revoked_by_user') => {
+    const { data } = await api.post(`/auth/sessions/${sessionId}/revoke`, { reason });
+    return data;
+  }, []);
+
+  const logoutAllSessions = useCallback(async () => {
+    const { data } = await api.post('/auth/logout-all');
+    clearAuthStorage();
+    setUser(null);
+    setSession(null);
+    return data;
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
         user,
+        session,
         loading,
         isAdmin: user?.role === 'admin' || user?.role === 'super_admin',
         isSuperAdmin: user?.role === 'super_admin',
-        login, register, logout, updateProfile,
+        login, register, logout, updateProfile, setAuthState,
+        listSessions, revokeSession, logoutAllSessions,
         runProgress, setRunProgress
       }}
     >

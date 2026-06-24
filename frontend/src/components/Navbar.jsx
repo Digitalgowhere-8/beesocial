@@ -69,7 +69,6 @@ export default function Navbar() {
               <NavItem to="/intel-desk" icon={Newspaper}>Intel Desk</NavItem>
               <NavItem to="/blogs" icon={BookOpenText}>Blog</NavItem>
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText}>Social Media Studio</NavItem>}
-              {isAdmin && <NavItem to="/admin" icon={Shield}>Admin</NavItem>}
               <NavItem to="/profile" icon={UserIcon}>Profile</NavItem>
             </>
           )}
@@ -115,7 +114,6 @@ export default function Navbar() {
               <NavItem to="/intel-desk" icon={Newspaper} onClick={() => setMobileOpen(false)}>Intel Desk</NavItem>
               <NavItem to="/blogs" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Blog</NavItem>
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Social Media Studio</NavItem>}
-              {isAdmin && <NavItem to="/admin" icon={Shield} onClick={() => setMobileOpen(false)}>Admin</NavItem>}
               <NavItem to="/profile" icon={UserIcon} onClick={() => setMobileOpen(false)}>Profile</NavItem>
             </>
           )}

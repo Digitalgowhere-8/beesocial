@@ -1,10 +1,74 @@
 const express = require('express');
 const Joi = require('joi');
+const crypto = require('crypto');
 const User = require('../models/User');
 const Plan = require('../models/Plan');
+const UserSession = require('../models/UserSession');
 const { protect, signToken } = require('../middleware/auth');
 
 const router = express.Router();
+const JWT_SESSION_DAYS = Math.max(1, Number(process.env.JWT_SESSION_DAYS || 7));
+
+function sessionExpiryDate() {
+  return new Date(Date.now() + JWT_SESSION_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || '';
+}
+
+function parseDeviceInfo(userAgent = '') {
+  const ua = String(userAgent || '');
+  const browser =
+    /Edg\//i.test(ua) ? 'Edge'
+      : /Chrome\//i.test(ua) ? 'Chrome'
+      : /Firefox\//i.test(ua) ? 'Firefox'
+      : /Safari\//i.test(ua) && !/Chrome\//i.test(ua) ? 'Safari'
+      : /OPR\//i.test(ua) ? 'Opera'
+      : 'Unknown';
+  const os =
+    /Windows/i.test(ua) ? 'Windows'
+      : /Mac OS X/i.test(ua) ? 'macOS'
+      : /Android/i.test(ua) ? 'Android'
+      : /iPhone|iPad|iOS/i.test(ua) ? 'iOS'
+      : /Linux/i.test(ua) ? 'Linux'
+      : 'Unknown';
+  return {
+    browser,
+    os,
+    deviceLabel: `${browser} on ${os}`
+  };
+}
+
+async function revokeSessionsForUser(userId, { exceptSessionId = '', revokedBy = null, reason = '' } = {}) {
+  const query = {
+    userId,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() }
+  };
+  if (exceptSessionId) query.sessionId = { $ne: exceptSessionId };
+  await UserSession.updateMany(query, {
+    $set: {
+      revokedAt: new Date(),
+      revokedBy,
+      revokeReason: reason || 'revoked'
+    }
+  });
+}
+
+async function syncUserPresenceFromSessions(userId) {
+  const latestSession = await UserSession.findOne({
+    userId,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() }
+  }).sort({ lastActiveAt: -1 }).select('lastActiveAt').lean();
+
+  await User.updateOne(
+    { _id: userId },
+    { $set: { lastSeenAt: latestSession?.lastActiveAt || null } }
+  );
+}
 
 // Strict email validation - rejects patterns like jitesh@gmail.com.com
 function isValidEmail(email) {
@@ -166,13 +230,26 @@ router.post('/login', asyncHandler(async (req, res) => {
   user.lastSeenAt = user.lastLoginAt;
   await user.save();
 
-  const token = signToken(user);
-  res.json({ token, user: user.toPublicJSON() });
+  const sessionMeta = parseDeviceInfo(req.headers['user-agent']);
+  const session = await UserSession.create({
+    userId: user._id,
+    sessionId: crypto.randomBytes(24).toString('hex'),
+    deviceLabel: sessionMeta.deviceLabel,
+    browser: sessionMeta.browser,
+    os: sessionMeta.os,
+    ip: clientIp(req),
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 512),
+    lastActiveAt: user.lastLoginAt,
+    expiresAt: sessionExpiryDate()
+  });
+
+  const token = signToken(user, session.sessionId);
+  res.json({ token, user: user.toPublicJSON(), session: session.toObject() });
 }));
 
 // GET /api/auth/me
 router.get('/me', protect, (req, res) => {
-  res.json({ user: req.user.toPublicJSON() });
+  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null });
 });
 
 // GET /api/auth/plans
@@ -183,9 +260,53 @@ router.get('/plans', protect, asyncHandler(async (_req, res) => {
 
 // POST /api/auth/logout
 router.post('/logout', protect, asyncHandler(async (req, res) => {
-  req.user.lastSeenAt = null;
-  await req.user.save();
+  if (req.session) {
+    req.session.revokedAt = new Date();
+    req.session.revokedBy = req.user._id;
+    req.session.revokeReason = 'logout';
+    await req.session.save();
+  }
+  await syncUserPresenceFromSessions(req.user._id);
   res.json({ message: 'Logged out' });
+}));
+
+// GET /api/auth/sessions
+router.get('/sessions', protect, asyncHandler(async (req, res) => {
+  const items = await UserSession.find({ userId: req.user._id })
+    .sort({ lastActiveAt: -1, createdAt: -1 })
+    .lean();
+
+  res.json({
+    items: items.map((item) => ({
+      ...item,
+      isCurrent: req.session ? item.sessionId === req.session.sessionId : false,
+      isActive: !item.revokedAt && new Date(item.expiresAt).getTime() > Date.now()
+    }))
+  });
+}));
+
+// POST /api/auth/sessions/:id/revoke
+router.post('/sessions/:id/revoke', protect, asyncHandler(async (req, res) => {
+  const session = await UserSession.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!session) return res.status(404).json({ message: 'Session not found' });
+
+  session.revokedAt = new Date();
+  session.revokedBy = req.user._id;
+  session.revokeReason = req.body?.reason || 'revoked_by_user';
+  await session.save();
+  await syncUserPresenceFromSessions(req.user._id);
+
+  res.json({ message: 'Session revoked', sessionId: session.sessionId });
+}));
+
+// POST /api/auth/logout-all
+router.post('/logout-all', protect, asyncHandler(async (req, res) => {
+  await revokeSessionsForUser(req.user._id, {
+    revokedBy: req.user._id,
+    reason: 'logout_all'
+  });
+  await syncUserPresenceFromSessions(req.user._id);
+  res.json({ message: 'All sessions revoked' });
 }));
 
 // PATCH /api/auth/me
@@ -228,8 +349,30 @@ router.post('/change-password', protect, asyncHandler(async (req, res) => {
   if (!ok) return res.status(401).json({ message: 'Current password is incorrect' });
 
   user.password = newPassword;
+  user.lastLoginAt = new Date();
+  user.lastSeenAt = user.lastLoginAt;
   await user.save();
-  res.json({ message: 'Password updated' });
+
+  await revokeSessionsForUser(user._id, {
+    revokedBy: user._id,
+    reason: 'password_changed'
+  });
+
+  const sessionMeta = parseDeviceInfo(req.headers['user-agent']);
+  const session = await UserSession.create({
+    userId: user._id,
+    sessionId: crypto.randomBytes(24).toString('hex'),
+    deviceLabel: sessionMeta.deviceLabel,
+    browser: sessionMeta.browser,
+    os: sessionMeta.os,
+    ip: clientIp(req),
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 512),
+    lastActiveAt: user.lastLoginAt,
+    expiresAt: sessionExpiryDate()
+  });
+  const token = signToken(user, session.sessionId);
+
+  res.json({ message: 'Password updated', token, user: user.toPublicJSON(), session: session.toObject() });
 }));
 
 module.exports = router;

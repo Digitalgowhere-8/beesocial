@@ -7,6 +7,7 @@ const SocialPost = require('../models/SocialPost');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { generateBlogPost, generateLinkedInPost } = require('../services/aiService');
+const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -81,11 +82,6 @@ function blogSourceContext(article = {}) {
     .slice(0, 7000);
 }
 
-function monthStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
 function limitReachedPayload({ message, limitType, used, limit }) {
   return {
     code: 'LIMIT_REACHED',
@@ -109,7 +105,9 @@ async function requireGenerationLimit(req, res, next) {
   }
 
   const tenantId = adminUser._id;
-  const since = monthStart();
+  const teamUsers = await User.find({ $or: [{ _id: tenantId }, { tenantAdminId: tenantId }] }).select('_id usageResetAt').lean();
+  const resetAt = latestUsageResetAt(teamUsers);
+  const since = effectiveMonthlyStart(resetAt);
   const blogLimit = Number(adminUser?.limits?.blogGenerationsMonthly ?? 0);
   const socialLimit = Number(adminUser?.limits?.socialPostsMonthly ?? 0);
   const tokenLimit = Number(adminUser?.limits?.tokenBudgetMonthly ?? 0);

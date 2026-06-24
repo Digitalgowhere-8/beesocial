@@ -14,6 +14,7 @@ const { runProfileSearch } = require('../services/profileSearchRunner');
 const { persistProfileResults } = require('../services/profileResultsService');
 const progress = require('../services/profileRunProgress');
 const { hashUrl } = require('../utils/hash');
+const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -65,11 +66,6 @@ async function requireProfileAutomation(req, res, next) {
   }
 }
 
-function monthStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
 function limitReachedPayload({ message, limitType, used, limit }) {
   return {
     code: 'LIMIT_REACHED',
@@ -100,13 +96,15 @@ async function requireFetchAccess(req, res, next) {
   }
 
   const tenantAdminId = adminUser._id;
-  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id').lean();
+  const teamUsers = await User.find({ $or: [{ _id: tenantAdminId }, { tenantAdminId }] }).select('_id usageResetAt').lean();
   const userIds = teamUsers.map((u) => u._id);
+  const resetAt = latestUsageResetAt(teamUsers);
+  const currentCycleStart = effectiveMonthlyStart(resetAt);
 
   const limit = Number(adminUser?.limits?.fetchesPerMonth ?? 30);
   if (limit > 0) {
     const used = await FetchLog.countDocuments({
-      startedAt: { $gte: monthStart() },
+      startedAt: { $gte: currentCycleStart },
       $or: [
         { userId: { $in: userIds } },
         { triggeredByUser: { $in: userIds } }
@@ -124,25 +122,26 @@ async function requireFetchAccess(req, res, next) {
 
   const storageLimit = Number(adminUser?.limits?.storageItems ?? 0);
   if (storageLimit > 0) {
-    const used = await Article.countDocuments({ userId: { $in: userIds } });
+    const storageQuery = { userId: { $in: userIds } };
+    if (resetAt) storageQuery.fetchedAt = { $gte: resetAt };
+    const used = await Article.countDocuments(storageQuery);
     if (used >= storageLimit) {
       return res.status(402).json(limitReachedPayload({
         limitType: 'storageItems',
         used,
         limit: storageLimit,
-        message: `Stored signals limit reached (${used}/${storageLimit}). Reset data or upgrade for more storage.`
+        message: `Stored signals limit reached (${used}/${storageLimit}). Upgrade for more storage.`
       }));
     }
   }
 
   const tokenLimit = Number(adminUser?.limits?.tokenBudgetMonthly ?? 0);
   if (tokenLimit > 0) {
-    const since = monthStart();
     const [monthFetchRows, monthBlogs, monthSocial] = await Promise.all([
       FetchLog.aggregate([
         {
           $match: {
-            startedAt: { $gte: since },
+            startedAt: { $gte: currentCycleStart },
             $or: [
               { userId: { $in: userIds } },
               { triggeredByUser: { $in: userIds } }
@@ -151,8 +150,8 @@ async function requireFetchAccess(req, res, next) {
         },
         { $group: { _id: null, inserted: { $sum: '$totalInserted' } } }
       ]),
-      BlogPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } }),
-      SocialPost.countDocuments({ tenantAdminId, createdAt: { $gte: since } })
+      BlogPost.countDocuments({ tenantAdminId, createdAt: { $gte: currentCycleStart } }),
+      SocialPost.countDocuments({ tenantAdminId, createdAt: { $gte: currentCycleStart } })
     ]);
     const used = (Number(monthFetchRows[0]?.inserted || 0) * AVG_AI_TOKENS_PER_RESULT)
       + (monthBlogs * AVG_TOKENS_PER_BLOG)

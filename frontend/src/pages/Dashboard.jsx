@@ -8,11 +8,10 @@ import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, TrendingUp, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
-const CRIMSON = '#D11243';
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 
 const FEED_COLUMNS = [
@@ -67,17 +66,6 @@ function getEffectiveDateKey(item) {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(new Date(time));
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function getTodayDateKey() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: DASHBOARD_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
@@ -206,14 +194,6 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       return getEffectiveTime(b) - getEffectiveTime(a);
     });
   const visibleFeedItems = activeType ? (rankedData[activeType] || []) : mobileFeedItems;
-  const todaySignalTotal = useMemo(() => {
-    const todayKey = getTodayDateKey();
-    return Object.values(analyticsData || {})
-      .flat()
-      .filter((item) => getEffectiveDateKey(item) === todayKey)
-      .length;
-  }, [analyticsData]);
-
   useEffect(() => {
     setSelectedArticleIds(new Set());
   }, [canDeleteTailoredArticles, filters.type, intelDeskTab]);
@@ -351,94 +331,75 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     </div>
   );
 
-  return (
-    <Layout>
-      <div className="flex h-full min-h-0 flex-col">
-        {/* Dashboard header with refresh button */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 shrink-0 rounded-lg border border-gray-100 bg-white px-4 py-3 shadow-card">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <TrendingUp size={16} style={{ color: CRIMSON }} />
-              <h1 className="truncate text-base font-black text-gray-900">
-                {/* {isIntelDesk ? 'My Intelligence' : 'Intelligence Briefing'} */}
-              </h1>
-            </div>
-            {isIntelDesk && (
-              <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                {/* Tailored, platform, and saved intelligence for fast review */}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {isIntelDesk && (
-              <div className="inline-flex rounded-xl border border-gray-100 bg-gray-50 p-1 shadow-sm">
-                {[
-                  { key: 'intel', label: 'My Intelligence', icon: Sparkles },
-                  { key: 'tailored', label: 'Tailored Feed', icon: Newspaper },
-                  { key: 'saved', label: 'Saved Briefs', icon: Bookmark },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  const active = intelDeskTab === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setIntelDeskTab(item.key)}
-                      className={[
-                        'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-black transition-all',
-                        active
-                          ? 'bg-brand-crimson text-white shadow-sm'
-                          : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:text-brand-crimson'
-                      ].join(' ')}
-                    >
-                      <Icon size={14} />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {dashTab === 'analytics' && (
-              <>
-                <div className="inline-flex rounded-md bg-gray-50 border border-gray-100 p-1 shadow-sm">
-                  {[
-                    { key: 'today', label: 'Today' },
-                    ...(isAdmin ? [{ key: 'all', label: 'All Data' }] : []),
-                  ].map((mode) => (
-                    <button
-                      key={mode.key}
-                      type="button"
-                      onClick={() => setAnalyticsViewMode(mode.key)}
-                      className="px-3 py-1.5 rounded-md text-[11px] font-black uppercase tracking-wider transition-all"
-                      style={{
-                        background: analyticsViewMode === mode.key ? CRIMSON : 'transparent',
-                        color: analyticsViewMode === mode.key ? 'white' : '#9ca3af',
-                      }}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
-                  style={{ background: 'rgba(209,18,67,0.08)', color: CRIMSON }}>
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-400" />
-                  </span>
-                  {todaySignalTotal > 0 ? 'Live Signals' : 'No Signals'}
-                </div>
-              </>
-            )}
-            <button onClick={() => setRefreshKey(k => k + 1)}
-              className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg transition-all hover:shadow-sm sm:w-auto w-full"
-              style={{ color: CRIMSON, background: 'rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.12)' }}>
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-          </div>
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {isIntelDesk && (
+        <div className="grid grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          {[
+            { key: 'intel', label: 'My Intelligence', icon: Sparkles },
+            { key: 'tailored', label: 'Tailored Feed', icon: Newspaper },
+            { key: 'saved', label: 'Saved Briefs', icon: Bookmark },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = intelDeskTab === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setIntelDeskTab(item.key)}
+                className={[
+                  'flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all',
+                  active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                ].join(' ')}
+              >
+                <Icon size={14} />
+                {item.label}
+              </button>
+            );
+          })}
         </div>
+      )}
+      {dashTab === 'analytics' && (
+        <>
+          <div className="inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
+            {[
+              { key: 'today', label: 'Today' },
+              ...(isAdmin ? [{ key: 'all', label: 'All Data' }] : []),
+            ].map((mode) => (
+              <button
+                key={mode.key}
+                type="button"
+                onClick={() => setAnalyticsViewMode(mode.key)}
+                className={`min-h-[40px] rounded-xl px-5 text-[13px] font-black uppercase tracking-wider transition-all ${
+                  analyticsViewMode === mode.key
+                    ? 'bg-brand-crimson text-white shadow-[0_6px_14px_rgba(209,18,67,0.18)]'
+                    : 'text-[#98a0b3] hover:bg-white'
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72]" />
+            {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Signals' : 'No Signals'}
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => setRefreshKey((k) => k + 1)}
+        className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white"
+      >
+        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        Refresh
+      </button>
+    </div>
+  );
 
+  return (
+    <Layout headerActions={headerActions}>
+      <div className="flex h-full min-h-0 flex-col">
         {dashTab === 'analytics' ? (
           <div className="min-h-0 flex-1" data-analytics-section="Intelligence analytics dashboard">
             <AnalyticsSection
