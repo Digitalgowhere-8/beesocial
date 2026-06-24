@@ -13,6 +13,7 @@ async function protect(req, res, next) {
   let token;
   const header = req.headers.authorization || '';
   if (header.startsWith('Bearer ')) token = header.slice(7);
+  if (!token && req.query?.token) token = String(req.query.token);
 
   if (!token) {
     return res.status(401).json({ message: 'Not authorized, no token' });

@@ -3,6 +3,7 @@ import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { BookOpenText, CalendarDays, CheckSquare, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2 } from 'lucide-react';
+import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 
 export default function BlogLibrary() {
   const { isAdmin } = useAuth();
@@ -43,6 +44,28 @@ export default function BlogLibrary() {
   }, [mode, query]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const handleContentChange = () => {
+      load();
+    };
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChange);
+    return () => window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChange);
+  }, [load]);
+
+  useEffect(() => {
+    const refreshVisibleData = () => {
+      if (document.visibilityState === 'hidden') return;
+      load();
+    };
+
+    window.addEventListener('focus', refreshVisibleData);
+    document.addEventListener('visibilitychange', refreshVisibleData);
+    return () => {
+      window.removeEventListener('focus', refreshVisibleData);
+      document.removeEventListener('visibilitychange', refreshVisibleData);
+    };
+  }, [load]);
 
   const toggleSelection = (id) => {
     setSelectedIds((prev) => (

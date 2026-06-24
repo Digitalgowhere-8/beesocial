@@ -25,6 +25,7 @@ const adminRoutes = require('./routes/admin');
 const n8nRoutes = require('./routes/n8n');
 const blogRoutes = require('./routes/blogs');
 const analyticsRoutes = require('./routes/analytics');
+const realtimeRoutes = require('./routes/realtime');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
@@ -97,6 +98,7 @@ app.use('/api/articles', articleRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/n8n', n8nRoutes);
 app.use('/api/blogs', blogRoutes);
+app.use('/api/realtime', realtimeRoutes);
 
 // --------- 404 + Error ---------
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.method} ${req.path}` }));

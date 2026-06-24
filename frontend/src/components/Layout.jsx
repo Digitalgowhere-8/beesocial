@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import {
   LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound
 } from 'lucide-react';
@@ -50,32 +52,168 @@ const roleLabel = (role) => {
   return 'Member';
 };
 
-function NotificationsMenu({ isAdmin }) {
+const NOTIFICATION_LIMIT = 20;
+
+const notificationStorageKey = (userId) => `app_notifications_${userId || 'guest'}`;
+
+const readNotificationState = (userId) => {
+  try {
+    const raw = localStorage.getItem(notificationStorageKey(userId));
+    if (!raw) {
+      return { items: [], unreadKeys: [], knownKeys: [], dismissedKeys: [], initialized: false };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      items: Array.isArray(parsed?.items) ? parsed.items : [],
+      unreadKeys: Array.isArray(parsed?.unreadKeys) ? parsed.unreadKeys : [],
+      knownKeys: Array.isArray(parsed?.knownKeys) ? parsed.knownKeys : [],
+      dismissedKeys: Array.isArray(parsed?.dismissedKeys) ? parsed.dismissedKeys : [],
+      initialized: parsed?.initialized === true
+    };
+  } catch {
+    return { items: [], unreadKeys: [], knownKeys: [], dismissedKeys: [], initialized: false };
+  }
+};
+
+const writeNotificationState = (userId, state) => {
+  try {
+    localStorage.setItem(notificationStorageKey(userId), JSON.stringify(state));
+  } catch {
+    // Ignore storage failures and keep in-memory state working.
+  }
+};
+
+const uniqueByKey = (items) => {
+  const seen = new Set();
+  return items.filter((item) => {
+    if (!item?.key || seen.has(item.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
+};
+
+const itemTime = (value) => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
+const relativeTime = (value) => {
+  if (!value) return 'Just now';
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return 'Just now';
+
+  const diffMs = Date.now() - time;
+  const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return new Date(value).toLocaleDateString();
+};
+
+const articleTypeLabel = (type) => {
+  if (type === 'govt') return 'Government update';
+  if (type === 'competitor') return 'Competitor update';
+  if (type === 'evergreen') return 'Market insight';
+  return 'News update';
+};
+
+const normalizeNotificationFeed = ({ articles = [], blogs = [], socialPosts = [] }) => {
+  const articleItems = articles.map((article) => ({
+    key: `article:${article._id}`,
+    title: article.title || 'New article added',
+    description: articleTypeLabel(article.sourceType),
+    createdAt: article.publishedAt || article.createdAt || article.updatedAt,
+    href: '/intel-desk'
+  }));
+
+  const blogItems = blogs.map((blog) => ({
+    key: `blog:${blog._id}`,
+    title: blog.title || 'New blog created',
+    description: 'Blog content is ready',
+    createdAt: blog.publishedAt || blog.createdAt || blog.updatedAt,
+    href: '/blogs'
+  }));
+
+  const socialItems = socialPosts.map((post) => ({
+    key: `linkedin:${post._id}`,
+    title: post.title || post.blogTitle || 'New LinkedIn post created',
+    description: 'LinkedIn post is ready',
+    createdAt: post.createdAt || post.updatedAt || post.publishedAt,
+    href: '/social-media-studio'
+  }));
+
+  return uniqueByKey([...socialItems, ...blogItems, ...articleItems])
+    .sort((a, b) => itemTime(b.createdAt) - itemTime(a.createdAt))
+    .slice(0, NOTIFICATION_LIMIT);
+};
+
+function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(320px,calc(100vw-24px))] rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <div className="text-sm font-bold text-gray-800">Notifications</div>
-        <div className="text-[11px] text-gray-400">Latest activity and alerts</div>
-      </div>
-      <div className="p-2">
-        <div className="px-3 py-2.5 rounded-lg hover:bg-brand-pink/20 transition-all">
-          <div className="flex items-start gap-2">
-            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-crimson shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[12px] font-bold text-gray-700">Latest signals are ready</div>
-              <div className="text-[11px] text-gray-400 leading-snug">Open Intel Desk to review the newest ranked updates.</div>
-            </div>
+    <div className="absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-white border border-gray-100 shadow-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-brand-pink/20 to-white">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-gray-800">Notifications</div>
+            <div className="text-[11px] text-gray-400">Latest activity and alerts</div>
+          </div>
+          {items.length > 0 ? (
+            <button
+              type="button"
+              onClick={onClearAll}
+              className="text-[11px] font-bold text-gray-500 hover:text-brand-crimson transition-colors"
+            >
+              Clear all
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="text-[12px] font-bold text-gray-600">Recent updates</div>
+          <div className="rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-crimson">
+            {unreadCount > 0 ? `${unreadCount} new` : 'Up to date'}
           </div>
         </div>
-        {isAdmin && (
-          <div className="px-3 py-2.5 rounded-lg hover:bg-brand-pink/20 transition-all">
-            <div className="flex items-start gap-2">
-              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[12px] font-bold text-gray-700">Admin actions available</div>
-                <div className="text-[11px] text-gray-400 leading-snug">Approve pending users or run a fresh content fetch.</div>
+        <div className="mt-2 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            className="text-[11px] font-bold text-brand-crimson hover:opacity-80 transition-opacity"
+          >
+            {unreadCount > 0 ? `Mark all read (${unreadCount})` : 'All caught up'}
+          </button>
+        </div>
+      </div>
+      <div className="max-h-[420px] overflow-y-auto p-2">
+        {items.length ? items.map((item) => {
+          const unread = item.unread === true;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => onItemClick?.(item)}
+              className={`w-full px-3 py-3 rounded-xl transition-all text-left border ${unread ? 'border-brand-crimson/10 bg-brand-pink/10 hover:bg-brand-pink/20' : 'border-transparent hover:bg-gray-50'}`}
+            >
+              <div className="flex items-start gap-2">
+                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${unread ? 'bg-brand-crimson' : 'bg-gray-300'}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-[12px] font-bold text-gray-700 truncate pr-2">{item.title}</div>
+                    <div className="text-[10px] text-gray-400 shrink-0">{relativeTime(item.createdAt)}</div>
+                  </div>
+                  <div className="mt-1 text-[11px] text-gray-400 leading-snug">{item.description}</div>
+                </div>
               </div>
-            </div>
+            </button>
+          );
+        }) : (
+          <div className="px-3 py-5 text-center">
+            <div className="text-[12px] font-bold text-gray-600">No new notifications</div>
+            <div className="text-[11px] text-gray-400 mt-1">New articles, blogs, and posts will appear here.</div>
           </div>
         )}
       </div>
@@ -129,15 +267,121 @@ export default function Layout({ children, headerActions = null }) {
   });
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
+  const unreadCount = notifications.unreadKeys.length;
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
   }, [collapsed]);
+
+  const saveNotifications = useCallback((nextStateOrUpdater) => {
+    setNotifications((current) => {
+      const nextState = typeof nextStateOrUpdater === 'function' ? nextStateOrUpdater(current) : nextStateOrUpdater;
+      writeNotificationState(user?._id, nextState);
+      return nextState;
+    });
+  }, [user?._id]);
+
+  const markAllNotificationsRead = useCallback(() => {
+    saveNotifications((current) => ({
+      ...current,
+      unreadKeys: [],
+      items: current.items.map((item) => ({ ...item, unread: false }))
+    }));
+  }, [saveNotifications]);
+
+  const clearAllNotifications = useCallback(() => {
+    saveNotifications((current) => ({
+      ...current,
+      items: [],
+      unreadKeys: [],
+      knownKeys: Array.isArray(current.items) ? current.items.map((item) => item.key) : current.knownKeys,
+      dismissedKeys: [
+        ...new Set([
+          ...(Array.isArray(current.dismissedKeys) ? current.dismissedKeys : []),
+          ...(Array.isArray(current.items) ? current.items.map((item) => item.key) : [])
+        ])
+      ]
+    }));
+  }, [saveNotifications]);
+
+  const openNotificationItem = useCallback((item) => {
+    setShowNotifications(false);
+    markAllNotificationsRead();
+    if (item?.href) {
+      navigate(item.href);
+    }
+  }, [markAllNotificationsRead, navigate]);
+
+  const pollNotifications = useCallback(async () => {
+    if (!user?._id || isSuperAdmin) return;
+
+    try {
+      const requests = [
+        api.get('/articles/dashboard', { params: { limit: 8, personalized: true } }),
+        api.get('/blogs', { params: { status: 'published', limit: 8 } })
+      ];
+
+      if (canUseBlogStudio) {
+        requests.push(api.get('/blogs/social-posts', { params: { platform: 'linkedin', limit: 8 } }));
+      }
+
+      const [articlesResponse, blogsResponse, socialResponse] = await Promise.all(requests);
+      const articleBuckets = articlesResponse?.data || {};
+      const articles = [
+        ...(Array.isArray(articleBuckets.news) ? articleBuckets.news : []),
+        ...(Array.isArray(articleBuckets.govt) ? articleBuckets.govt : []),
+        ...(Array.isArray(articleBuckets.competitor) ? articleBuckets.competitor : []),
+        ...(Array.isArray(articleBuckets.evergreen) ? articleBuckets.evergreen : [])
+      ];
+      const socialPosts = Array.isArray(socialResponse?.data?.posts)
+        ? socialResponse.data.posts
+        : Array.isArray(socialResponse?.data?.items)
+          ? socialResponse.data.items
+          : [];
+      const rawBlogs = Array.isArray(blogsResponse?.data?.blogs)
+        ? blogsResponse.data.blogs
+        : Array.isArray(blogsResponse?.data?.items)
+          ? blogsResponse.data.items
+          : [];
+      const feed = normalizeNotificationFeed({ articles, blogs: rawBlogs, socialPosts });
+
+      saveNotifications((current) => {
+        const initialized = current?.initialized === true;
+        const knownKeys = new Set(Array.isArray(current?.knownKeys) ? current.knownKeys : []);
+        const currentUnread = new Set(Array.isArray(current?.unreadKeys) ? current.unreadKeys : []);
+        const dismissedKeys = new Set(Array.isArray(current?.dismissedKeys) ? current.dismissedKeys : []);
+        const newUnreadKeys = initialized
+          ? feed.filter((item) => !knownKeys.has(item.key) && !dismissedKeys.has(item.key)).map((item) => item.key)
+          : [];
+        const mergedUnreadKeys = [...new Set([...newUnreadKeys, ...currentUnread])];
+        const nextKnownKeys = feed.map((item) => item.key);
+        const visibleFeed = feed.filter((item) => !dismissedKeys.has(item.key));
+
+        return {
+          initialized: true,
+          knownKeys: nextKnownKeys,
+          dismissedKeys: Array.from(dismissedKeys).filter((key) => nextKnownKeys.includes(key)),
+          unreadKeys: mergedUnreadKeys,
+          items: visibleFeed.map((item) => ({
+            ...item,
+            unread: mergedUnreadKeys.includes(item.key)
+          }))
+        };
+      });
+    } catch {
+      // Skip notification updates on transient API failures.
+    }
+  }, [canUseBlogStudio, isSuperAdmin, saveNotifications, user?._id]);
+
+  useEffect(() => {
+    setNotifications(readNotificationState(user?._id));
+  }, [user?._id]);
 
   useEffect(() => {
     const handleAvatarUpdate = (e) => {
@@ -169,6 +413,37 @@ export default function Layout({ children, headerActions = null }) {
     setShowNotifications(false);
     setShowProfileMenu(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!user?._id || isSuperAdmin) return undefined;
+
+    pollNotifications();
+
+    const handleContentChanged = () => {
+      pollNotifications();
+    };
+    const handleAuthChanged = () => {
+      pollNotifications();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') pollNotifications();
+    };
+    const handleFocus = () => {
+      pollNotifications();
+    };
+
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    window.addEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+      window.removeEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isSuperAdmin, pollNotifications, user?._id]);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -215,14 +490,31 @@ export default function Layout({ children, headerActions = null }) {
             <div className="relative" ref={mobileNotificationsRef}>
             <button
               onClick={() => {
-                setShowNotifications((v) => !v);
+                setShowNotifications((v) => {
+                  const next = !v;
+                  if (next) markAllNotificationsRead();
+                  return next;
+                });
                 setShowProfileMenu(false);
               }}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
+              className="relative w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
             >
               <Bell size={15} />
+              {!isSuperAdmin && unreadCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-crimson text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              ) : null}
             </button>
-            {showNotifications && !isSuperAdmin && <NotificationsMenu isAdmin={isAdmin} />}
+            {showNotifications && !isSuperAdmin && (
+              <NotificationsMenu
+                items={notifications.items}
+                unreadCount={unreadCount}
+                onItemClick={openNotificationItem}
+                onMarkAllRead={markAllNotificationsRead}
+                onClearAll={clearAllNotifications}
+              />
+            )}
             </div>
             <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
               <LogOut size={15} />
@@ -420,15 +712,33 @@ export default function Layout({ children, headerActions = null }) {
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => {
-                  setShowNotifications((v) => !v);
+                  setShowNotifications((v) => {
+                    const next = !v;
+                    if (next) markAllNotificationsRead();
+                    return next;
+                  });
                   setShowProfileMenu(false);
                 }}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all"
+                className="relative p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all"
               >
                 <Bell size={15} />
+                {!isSuperAdmin && unreadCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-crimson text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+                ) : (
+                  !isSuperAdmin && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand-crimson animate-ping" />
+                )}
               </button>
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand-crimson animate-ping" />
-              {showNotifications && !isSuperAdmin && <NotificationsMenu isAdmin={isAdmin} />}
+              {showNotifications && !isSuperAdmin && (
+                <NotificationsMenu
+                items={notifications.items}
+                unreadCount={unreadCount}
+                onItemClick={openNotificationItem}
+                onMarkAllRead={markAllNotificationsRead}
+                onClearAll={clearAllNotifications}
+              />
+            )}
             </div>
 
             <div className="relative" ref={profileMenuRef}>

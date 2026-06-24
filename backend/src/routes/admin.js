@@ -20,6 +20,7 @@ const {
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
+const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
 
 const router = express.Router();
 
@@ -246,6 +247,7 @@ router.patch('/articles/:id/publish', asyncHandler(async (req, res) => {
     { new: true }
   );
   if (!item) return res.status(404).json({ message: 'Not found' });
+  publishGlobalEvent('content', { scope: 'articles', action: 'published', id: String(item._id) });
   res.json({ item });
 }));
 
@@ -263,6 +265,7 @@ router.patch('/articles/:id/unpublish', asyncHandler(async (req, res) => {
     { new: true }
   );
   if (!item) return res.status(404).json({ message: 'Not found' });
+  publishGlobalEvent('content', { scope: 'articles', action: 'unpublished', id: String(item._id) });
   res.json({ item });
 }));
 
@@ -278,6 +281,7 @@ router.post('/articles/bulk-publish', asyncHandler(async (req, res) => {
     q,
     { $set: { isPublished: true, publishedBy: req.user._id, publishedAtAdmin: new Date() } }
   );
+  publishGlobalEvent('content', { scope: 'articles', action: 'bulk-published', ids: validIds.map(String) });
   res.json({ matched: result.matchedCount, modified: result.modifiedCount });
 }));
 
@@ -293,6 +297,7 @@ router.post('/articles/bulk-unpublish', asyncHandler(async (req, res) => {
     q,
     { $set: { isPublished: false } }
   );
+  publishGlobalEvent('content', { scope: 'articles', action: 'bulk-unpublished', ids: validIds.map(String) });
   res.json({ matched: result.matchedCount, modified: result.modifiedCount });
 }));
 
@@ -305,6 +310,7 @@ router.delete('/articles/:id', asyncHandler(async (req, res) => {
   q._id = req.params.id;
   const item = await Article.findOneAndDelete(q);
   if (!item) return res.status(404).json({ message: 'Not found' });
+  publishGlobalEvent('content', { scope: 'articles', action: 'deleted', id: String(item._id) });
   res.json({ message: 'Deleted', id: req.params.id });
 }));
 
@@ -317,6 +323,7 @@ router.post('/articles/bulk-delete', asyncHandler(async (req, res) => {
 
   const q = await articleManagementQuery(req.user, validIds);
   const result = await Article.deleteMany(q);
+  publishGlobalEvent('content', { scope: 'articles', action: 'bulk-deleted', ids: validIds.map(String) });
   res.json({ deleted: result.deletedCount });
 }));
 
@@ -329,6 +336,7 @@ router.patch('/articles/:id', asyncHandler(async (req, res) => {
   q._id = req.params.id;
   const item = await Article.findOneAndUpdate(q, update, { new: true });
   if (!item) return res.status(404).json({ message: 'Not found' });
+  publishGlobalEvent('content', { scope: 'articles', action: 'updated', id: String(item._id) });
   res.json({ item });
 }));
 
@@ -1246,6 +1254,11 @@ router.patch('/users/:id', asyncHandler(async (req, res) => {
   if (target.role === 'admin' && !target.tenantAdminId) target.tenantAdminId = target._id;
   const u = await target.save();
   if (!u) return res.status(404).json({ message: 'Not found' });
+  publishTenantEvent(tenantKeyFor(u), 'auth', {
+    scope: 'access',
+    action: 'user-updated',
+    userId: String(u._id)
+  });
   res.json({ user: u.toPublicJSON() });
 }));
 

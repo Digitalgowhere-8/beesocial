@@ -15,6 +15,7 @@ const { persistProfileResults } = require('../services/profileResultsService');
 const progress = require('../services/profileRunProgress');
 const { hashUrl } = require('../utils/hash');
 const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
+const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -759,6 +760,22 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
 
   if (!log) {
     return res.status(404).json({ message: 'Fetch log not found' });
+  }
+
+  if (items.length > 0) {
+    if (userObjectId) {
+      publishTenantEvent(String(userObjectId), 'content', {
+        scope: 'articles',
+        action: 'fetched',
+        count: items.length
+      });
+    } else {
+      publishGlobalEvent('content', {
+        scope: 'articles',
+        action: 'fetched',
+        count: items.length
+      });
+    }
   }
 
   res.json({ ok: true, processed: items.length, logId: log._id });

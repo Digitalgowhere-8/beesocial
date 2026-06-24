@@ -14,6 +14,7 @@ const Article = require('../models/Article');
 const FetchLog = require('../models/FetchLog');
 const aiService = require('./aiService');
 const { pLimit } = require('../utils/pLimit');
+const { publishGlobalEvent } = require('../utils/realtime');
 
 const { scrapeAllNews } = require('../scrapers/newsScraper');
 const { scrapeAllGovt } = require('../scrapers/govScraper');
@@ -152,6 +153,14 @@ async function runAll({ triggeredBy = 'manual', triggeredByUser = null, types = 
   log.totalDuplicates = totalDuplicates;
   log.totalErrors    = perSourceStats.reduce((a, x) => a + (x.errors || 0), 0);
   await log.save();
+
+  if (totalInserted > 0) {
+    publishGlobalEvent('content', {
+      scope: 'articles',
+      action: 'fetched',
+      count: totalInserted
+    });
+  }
 
   return {
     logId: log._id,

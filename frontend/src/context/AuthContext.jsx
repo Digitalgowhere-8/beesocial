@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import api from '../api/axios';
+import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 
 const AuthContext = createContext(null);
 const TOKEN_KEY = 'opportunityos_token';
@@ -134,28 +135,6 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!user) return undefined;
-
-    const heartbeat = () => {
-      api.get('/auth/me')
-        .then((r) => {
-          setUser(r.data.user);
-          setSession(r.data.session || null);
-          localStorage.setItem(USER_KEY, JSON.stringify(r.data.user));
-          if (r.data.session) {
-            localStorage.setItem(SESSION_KEY, JSON.stringify(r.data.session));
-          } else {
-            localStorage.removeItem(SESSION_KEY);
-          }
-        })
-        .catch(() => {});
-    };
-
-    const id = window.setInterval(heartbeat, 45 * 1000);
-    return () => window.clearInterval(id);
-  }, [user]);
-
   const persist = useCallback((token, user, activeSession = null) => {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -166,6 +145,7 @@ export function AuthProvider({ children }) {
     }
     setUser(user);
     setSession(activeSession);
+    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user, session: activeSession });
   }, []);
 
   const setAuthState = useCallback((payload = {}) => {
@@ -193,14 +173,90 @@ export function AuthProvider({ children }) {
     clearAuthStorage();
     setUser(null);
     setSession(null);
+    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: null, session: null });
   }, []);
 
   const updateProfile = useCallback(async (patch) => {
     const { data } = await api.patch('/auth/me', patch);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     setUser(data.user);
+    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: data.user, session });
+    return data.user;
+  }, [session]);
+
+  const refreshMe = useCallback(async () => {
+    const { data } = await api.get('/auth/me');
+    setUser(data.user);
+    setSession(data.session || null);
+    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    if (data.session) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(data.session));
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
+    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: data.user, session: data.session || null });
     return data.user;
   }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const heartbeat = () => {
+      refreshMe().catch(() => {});
+    };
+
+    const handleFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      refreshMe().catch(() => {});
+    };
+
+    const handleStorage = (event) => {
+      if (![TOKEN_KEY, USER_KEY, SESSION_KEY].includes(event.key)) return;
+      refreshMe().catch(() => {});
+    };
+
+    const id = window.setInterval(heartbeat, 10 * 1000);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorage);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [user, refreshMe]);
+
+  useEffect(() => {
+    const token = readToken();
+    if (!token || !user?._id) return undefined;
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+    const streamUrl = `${baseUrl}/realtime/stream?token=${encodeURIComponent(token)}`;
+    const stream = new EventSource(streamUrl);
+
+    const handleContent = (event) => {
+      try {
+        const detail = JSON.parse(event.data || '{}');
+        emitAppEvent(APP_EVENT_CONTENT_CHANGED, detail);
+      } catch {
+        emitAppEvent(APP_EVENT_CONTENT_CHANGED);
+      }
+    };
+
+    const handleAuth = () => {
+      refreshMe().catch(() => {});
+    };
+
+    stream.addEventListener('content', handleContent);
+    stream.addEventListener('auth', handleAuth);
+
+    return () => {
+      stream.removeEventListener('content', handleContent);
+      stream.removeEventListener('auth', handleAuth);
+      stream.close();
+    };
+  }, [refreshMe, user?._id]);
 
   const listSessions = useCallback(async () => {
     const { data } = await api.get('/auth/sessions');
@@ -228,7 +284,7 @@ export function AuthProvider({ children }) {
         loading,
         isAdmin: user?.role === 'admin' || user?.role === 'super_admin',
         isSuperAdmin: user?.role === 'super_admin',
-        login, register, logout, updateProfile, setAuthState,
+        login, register, logout, updateProfile, setAuthState, refreshMe,
         listSessions, revokeSession, logoutAllSessions,
         runProgress, setRunProgress
       }}

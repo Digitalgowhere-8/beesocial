@@ -6,6 +6,7 @@ const { getSystemSettings, saveSystemSettings } = require('./systemSettings');
 const { runProfileSearch } = require('./profileSearchRunner');
 const { persistProfileResults } = require('./profileResultsService');
 const progress = require('./profileRunProgress');
+const { publishGlobalEvent } = require('../utils/realtime');
 
 const TOPICS = ['news', 'govt', 'competitor', 'evergreen'];
 const DEFAULT_CONFIG = {
@@ -279,6 +280,14 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
     await savePlatformFetchConfig({
       ...latest,
       schedule: { ...(latest.schedule || {}), lastRunAt: startedAt.toISOString() }
+    });
+  }
+
+  if (totals.inserted > 0) {
+    publishGlobalEvent('content', {
+      scope: 'articles',
+      action: 'platform-fetched',
+      count: totals.inserted
     });
   }
 }

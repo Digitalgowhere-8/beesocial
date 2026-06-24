@@ -7,6 +7,7 @@ import ArticleCard from '../components/ArticleCard';
 import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
+import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import {
   Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X
 } from 'lucide-react';
@@ -173,6 +174,25 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   }, []);
 
   useEffect(() => { load(effectiveFilters); }, [load, effectiveFilters, refreshKey]);
+
+  useEffect(() => {
+    const handleContentChanged = () => {
+      load(effectiveFilters);
+    };
+    const refreshVisibleData = () => {
+      if (document.visibilityState === 'hidden') return;
+      load(effectiveFilters);
+    };
+
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    window.addEventListener('focus', refreshVisibleData);
+    document.addEventListener('visibilitychange', refreshVisibleData);
+    return () => {
+      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+      window.removeEventListener('focus', refreshVisibleData);
+      document.removeEventListener('visibilitychange', refreshVisibleData);
+    };
+  }, [load, effectiveFilters]);
 
   const activeType = filters.type;
   const visibleColumns = activeType ? FEED_COLUMNS.filter(c => c.key === activeType) : FEED_COLUMNS;

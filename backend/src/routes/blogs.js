@@ -8,6 +8,7 @@ const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { generateBlogPost, generateLinkedInPost } = require('../services/aiService');
 const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
+const { publishTenantEvent } = require('../utils/realtime');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -334,6 +335,12 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
     publishedAt: value.status === 'published' ? new Date() : undefined
   });
 
+  publishTenantEvent(String(tenantId), 'content', {
+    scope: 'blogs',
+    action: 'generated',
+    id: String(item._id)
+  });
+
   res.status(201).json({ item });
 }));
 
@@ -382,6 +389,12 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
     options: value.options
   });
 
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'generated',
+    id: String(saved._id)
+  });
+
   res.status(201).json({
     item: {
       ...generated,
@@ -417,6 +430,11 @@ router.post('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req,
     sourceArticleId: mongoose.Types.ObjectId.isValid(value.sourceArticleId) ? value.sourceArticleId : undefined,
     publishedAt: value.status === 'published' ? new Date() : undefined
   });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'created',
+    id: String(item._id)
+  });
   res.status(201).json({ item });
 }));
 
@@ -443,6 +461,11 @@ router.patch('/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) =>
     { new: true }
   ).lean();
   if (!item) return res.status(404).json({ message: 'Blog not found' });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'updated',
+    id: String(item._id)
+  });
   res.json({ item });
 }));
 
@@ -454,12 +477,22 @@ router.delete('/bulk', protect, requireBlogAdmin, asyncHandler(async (req, res) 
   if (!ids.length) return res.status(400).json({ message: 'No valid blog ids provided' });
 
   const result = await BlogPost.deleteMany({ _id: { $in: ids }, ...tenantQuery(req.user) });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'deleted',
+    ids: ids.map(String)
+  });
   res.json({ message: 'Deleted', deletedCount: result.deletedCount || 0, ids });
 }));
 
 router.delete('/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
   const item = await BlogPost.findOneAndDelete({ _id: req.params.id, ...tenantQuery(req.user) });
   if (!item) return res.status(404).json({ message: 'Blog not found' });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'deleted',
+    id: String(item._id)
+  });
   res.json({ message: 'Deleted', id: req.params.id });
 }));
 

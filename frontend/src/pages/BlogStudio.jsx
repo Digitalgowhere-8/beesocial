@@ -4,6 +4,7 @@ import api from '../api/axios';
 import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
+import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 import { BookOpenText, Check, ChevronDown, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Trash2, Square, CheckSquare } from 'lucide-react';
 
 const TYPE_OPTIONS = [
@@ -89,11 +90,12 @@ const DEFAULT_STYLE = {
 };
 
 export default function BlogStudio() {
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const location = useLocation();
   const inboundState = location.state || {};
+  const canUseBlogStudio = user?.access?.canUseBlogStudio !== false;
 
-  if (user?.access?.canUseBlogStudio === false) {
+  if (!canUseBlogStudio) {
     return (
       <Layout>
         <div className="flex h-full min-h-0 items-center justify-center -m-6 p-4">
@@ -242,6 +244,28 @@ export default function BlogStudio() {
   useEffect(() => { loadBlogs(); }, [loadBlogs]);
   useEffect(() => { loadSocialPosts(); }, [loadSocialPosts]);
   useEffect(() => {
+    const handleContentChanged = () => {
+      loadArticles();
+      loadBlogs();
+      loadSocialPosts();
+    };
+    const refreshVisibleData = () => {
+      if (document.visibilityState === 'hidden') return;
+      loadArticles();
+      loadBlogs();
+      loadSocialPosts();
+    };
+
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    window.addEventListener('focus', refreshVisibleData);
+    document.addEventListener('visibilitychange', refreshVisibleData);
+    return () => {
+      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+      window.removeEventListener('focus', refreshVisibleData);
+      document.removeEventListener('visibilitychange', refreshVisibleData);
+    };
+  }, [loadArticles, loadBlogs, loadSocialPosts]);
+  useEffect(() => {
     api.get('/articles/meta/filters')
       .then(({ data }) => setTopicMeta({ ...EMPTY_META, ...data }))
       .catch(() => setTopicMeta(EMPTY_META));
@@ -283,6 +307,7 @@ export default function BlogStudio() {
       });
       setSelectedBlog(data.item);
       await loadBlogs();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
     } finally {
@@ -297,6 +322,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
       setSelectedBlog(data.item);
       await loadBlogs();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'status', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Status update failed');
     } finally {
@@ -312,6 +338,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
       setSelectedBlog(data.item);
       await loadBlogs();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Draft save failed');
     } finally {
@@ -347,6 +374,7 @@ export default function BlogStudio() {
         setDraftEditorOpen(false);
       }
       await loadBlogs();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Delete failed');
     } finally {
@@ -355,6 +383,17 @@ export default function BlogStudio() {
   };
 
   const generateLinkedinPost = async () => {
+    try {
+      const latestUser = await refreshMe();
+      if (latestUser?.access?.canUseBlogStudio === false) {
+        setError('Social Media Studio access has been turned off by the super admin.');
+        return;
+      }
+    } catch (err) {
+      setError(err.message || 'Could not verify Social Media Studio access');
+      return;
+    }
+
     if (!selectedArticle?._id) {
       setError('Select an intelligence topic first.');
       return;
@@ -368,6 +407,7 @@ export default function BlogStudio() {
       });
       setLinkedinOutput(data.item);
       await loadSocialPosts();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
     } finally {
@@ -431,6 +471,7 @@ export default function BlogStudio() {
                 setLinkedinForm={setLinkedinForm}
                 generatingLinkedin={generatingLinkedin}
                 generateLinkedinPost={generateLinkedinPost}
+                canUseBlogStudio={canUseBlogStudio}
                 linkedinOutput={linkedinOutput}
                 setLinkedinOutput={setLinkedinOutput}
                 socialPosts={socialPosts}
@@ -1153,6 +1194,7 @@ function LinkedInStudio({
   setLinkedinForm,
   generatingLinkedin,
   generateLinkedinPost,
+  canUseBlogStudio,
   linkedinOutput,
   setLinkedinOutput,
   socialPosts,
@@ -1383,7 +1425,12 @@ function LinkedInStudio({
         </div>
 
         <div className="border-t border-gray-200/50 bg-white/50 p-5 backdrop-blur">
-          <button type="button" disabled={generatingLinkedin} onClick={generateLinkedinPost} className="btn-primary w-full py-3.5 text-base rounded-xl font-black tracking-wide">
+          <button
+            type="button"
+            disabled={generatingLinkedin || !canUseBlogStudio}
+            onClick={generateLinkedinPost}
+            className="btn-primary w-full rounded-xl py-3.5 text-base font-black tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
+          >
             {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
             {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
           </button>

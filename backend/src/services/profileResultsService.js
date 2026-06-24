@@ -3,6 +3,7 @@ const FetchLog = require('../models/FetchLog');
 const Article = require('../models/Article');
 const UserResult = require('../models/UserResult');
 const { hashUrl } = require('../utils/hash');
+const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
 
 function cleanLogId(value) {
   const id = String(value || '').trim().replace(/^=+/, '');
@@ -228,6 +229,22 @@ async function persistProfileResults(body = {}, options = {}) {
     const err = new Error('Fetch log not found');
     err.status = 404;
     throw err;
+  }
+
+  if (inserted > 0) {
+    if (userObjectId) {
+      publishTenantEvent(String(userObjectId), 'content', {
+        scope: 'articles',
+        action: 'fetched',
+        count: inserted
+      });
+    } else {
+      publishGlobalEvent('content', {
+        scope: 'articles',
+        action: 'fetched',
+        count: inserted
+      });
+    }
   }
 
   return { ok: true, processed: items.length, inserted, duplicates, logId: log._id };
