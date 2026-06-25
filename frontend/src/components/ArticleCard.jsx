@@ -28,6 +28,19 @@ function sourceHost(url) {
   }
 }
 
+function articleDescription(item = {}) {
+  const safeItem = item && typeof item === 'object' ? item : {};
+  const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
+  const value = (
+    rawData.blogContext ||
+    rawData.tavilyAnswer ||
+    safeItem.summary ||
+    safeItem.aiSummary ||
+    ''
+  );
+  return typeof value === 'string' ? value : String(value || '');
+}
+
 function MetaPill({ icon: Icon, children, title, relaxed = false }) {
   if (!children) return null;
   return (
@@ -45,7 +58,7 @@ function MetaPill({ icon: Icon, children, title, relaxed = false }) {
 }
 
 export default function ArticleCard({
-  item,
+  item = {},
   compact = false,
   selectable = false,
   selected = false,
@@ -62,7 +75,7 @@ export default function ArticleCard({
     : '';
   const updatedAt = item.fetchedAt ? formatDateTime(item.fetchedAt) : '';
   const updatedLabel = when ? `Updated ${when}` : updatedAt ? `Updated ${updatedAt}` : '';
-  const summary = item.summary || item.aiSummary;
+  const summary = articleDescription(item);
   const source = item.source || sourceHost(item.url) || 'Unknown source';
   const country = item.country || item.market || 'Not specified';
   const region = item.region || '';

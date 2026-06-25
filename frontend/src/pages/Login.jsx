@@ -47,7 +47,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex overflow-x-hidden" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+    <div className="min-h-screen flex overflow-x-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-12 pt-12 pb-0"
         style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
@@ -68,7 +68,7 @@ export default function Login() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/logo-white.png" style={{ height: '52px', width: 'auto' }} alt="OpportunityOS AI Logo" />
+          <img src="/logo-white.png" style={{ height: '75px', width: 'auto' }} alt="Logo-white" />
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col justify-start fade-in pt-40 xl:pt-44 ml-6 xl:ml-10" style={{ animationDelay: '0.1s' }}>
@@ -80,7 +80,7 @@ export default function Login() {
 
           <h1
             className="max-w-[800px] text-white font-black leading-[1.08] mb-8"
-            style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"DM Sans", system-ui, sans-serif' }}
+            style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"Roboto", system-ui, sans-serif' }}
           >
             The Market Intelligence<br />
             that Runs Your Content<br />
@@ -93,13 +93,13 @@ export default function Login() {
         </div>
 
         <div className="absolute z-10 left-0 right-0 bottom-0 w-full overflow-hidden flex items-end justify-center pointer-events-none" style={{ animationDelay: '0.2s' }}>
-          <img src="/skyline.png" className="w-full h-auto opacity-45 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="Opportunity skyline" />
+          <img src="/skyline.png" className="w-full h-auto opacity-100 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="Opportunity skyline" />
         </div>
       </div>
 
       <div className="flex-1 min-h-screen flex items-center justify-center px-4 py-24 sm:p-10 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
         <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
-          <img src="/logo.png" style={{ height: '42px', width: 'auto' }} alt="OpportunityOS AI Logo" />
+          <img src="/logo.png" style={{ height: '75px', width: 'auto' }} alt="OpportunityOS AI Logo" />
         </div>
 
         <div className="relative z-10 w-full max-w-md fade-in" style={{ animationDelay: '0.05s' }}>
@@ -110,9 +110,9 @@ export default function Login() {
               border: '1px solid rgba(209,18,67,0.05)'
             }}
           >
-            <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+            <h1 className="text-3xl font-black text-gray-900 mb-2 tracking-tight" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
               Secure sign-in
-            </h2>
+            </h1>
             <p className="text-gray-400 text-sm mb-6">to your content intelligence dashboard.</p>
 
             <form onSubmit={submit} className="space-y-4">

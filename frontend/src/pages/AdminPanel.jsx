@@ -1050,6 +1050,38 @@ function SuperAdminFetchTab() {
   const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
   const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
   const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
+  const scheduleEnabled = Boolean(config?.schedule?.enabled);
+  const scheduleTimezone = config?.schedule?.timezone || config?.timezone || 'Asia/Kolkata';
+  const scheduleTime = config?.schedule?.time || '07:00';
+  const lastScheduledRunAt = config?.schedule?.lastRunAt;
+  const activeRunMessage = Array.isArray(runProgress?.messages)
+    ? runProgress.messages.find((item) => String(item?.message || '').toLowerCase().includes('scheduler'))
+    : null;
+  const scheduledRunActive = Boolean(status.running) && Boolean(activeRunMessage);
+  const nextCheckLabel = scheduleEnabled
+    ? `${config?.schedule?.frequency === 'weekly' ? 'Weekly' : 'Daily'} at ${scheduleTime} (${scheduleTimezone})`
+    : 'Scheduler is disabled';
+  const lastRunLabel = lastScheduledRunAt
+    ? formatDistanceToNow(new Date(lastScheduledRunAt), { addSuffix: true })
+    : 'No scheduled run yet';
+  const effectiveRunProgress = runProgress || (
+    status.running && status.logId
+      ? {
+          runId: status.logId,
+          logId: status.logId,
+          status: 'running',
+          step: 'queued',
+          percent: 5,
+          messages: [
+            {
+              at: new Date().toISOString(),
+              step: 'queued',
+              message: 'Platform fetch queued from scheduler.'
+            }
+          ]
+        }
+      : null
+  );
 
   const persistConfig = useCallback(async (configToSave, { manual = false, version: providedVersion } = {}) => {
     if (!configToSave) return configToSave;
@@ -1246,6 +1278,37 @@ function SuperAdminFetchTab() {
               </select>
             </FetchField>
           </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className={`rounded-xl border px-3 py-3 ${scheduleEnabled ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-200 bg-white'}`}>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Status</div>
+              <div className={`mt-1 text-sm font-black ${scheduleEnabled ? 'text-emerald-700' : 'text-gray-600'}`}>
+                {scheduleEnabled ? 'Enabled and watching time' : 'Disabled'}
+              </div>
+              <div className="mt-1 text-xs font-medium text-gray-500">
+                {scheduleEnabled ? nextCheckLabel : 'Turn on schedule to auto-run platform fetch.'}
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Last scheduled run</div>
+              <div className="mt-1 text-sm font-black text-gray-800">{lastRunLabel}</div>
+              <div className="mt-1 text-xs font-medium text-gray-500">
+                {lastScheduledRunAt ? new Date(lastScheduledRunAt).toLocaleString() : 'This will update after the first auto-trigger.'}
+              </div>
+            </div>
+            <div className={`rounded-xl border px-3 py-3 ${scheduledRunActive ? 'border-orange-200 bg-orange-50/80' : 'border-gray-200 bg-white'}`}>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Live trigger</div>
+              <div className={`mt-1 text-sm font-black ${scheduledRunActive ? 'text-orange-700' : 'text-gray-800'}`}>
+                {scheduledRunActive ? 'Scheduler triggered a fetch' : 'Waiting for next trigger'}
+              </div>
+              <div className="mt-1 text-xs font-medium text-gray-500">
+                {scheduledRunActive
+                  ? 'A scheduled run is active right now and should appear below in live process.'
+                  : scheduleEnabled
+                    ? `The system will auto-check this rule every minute and trigger at ${scheduleTime}.`
+                    : 'No automatic trigger will run until scheduling is enabled.'}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1276,20 +1339,20 @@ function SuperAdminFetchTab() {
         </div>
 
         {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
-        {runProgress && (
+        {effectiveRunProgress && (
           <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="eyebrow mb-1">Live process</div>
-                <h4 className="text-base font-black tracking-tight text-gray-900">{runProgress.status === 'success' ? 'Fetch complete' : runProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}</h4>
+                <h4 className="text-base font-black tracking-tight text-gray-900">{effectiveRunProgress.status === 'success' ? 'Fetch complete' : effectiveRunProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}</h4>
               </div>
-              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{runProgress.step || runProgress.status}</span>
+              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{effectiveRunProgress.step || effectiveRunProgress.status}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-              <div className={`h-full rounded-full transition-all ${runProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`} style={{ width: `${Math.max(5, Math.min(100, Number(runProgress.percent || 35)))}%` }} />
+              <div className={`h-full rounded-full transition-all ${effectiveRunProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`} style={{ width: `${Math.max(5, Math.min(100, Number(effectiveRunProgress.percent || 35)))}%` }} />
             </div>
             <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-              {(runProgress.messages || []).slice(-14).map((item, index) => (
+              {(effectiveRunProgress.messages || []).slice(-14).map((item, index) => (
                 <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-crimson" />
                   <div className="min-w-0">
@@ -1334,7 +1397,7 @@ function SuperAdminFetchTab() {
 // =============== FETCH TAB ===============
 
 export function FetchTab({ embedded = false }) {
-  const { user, updateProfile, runProgress, setRunProgress } = useAuth();
+  const { user, updateProfile, runProgress, setRunProgress, refreshMe } = useAuth();
   const canUseFetch = user?.role === 'super_admin' || user?.access?.canFetch === true || (user?.role === 'admin' && user?.access?.canFetch !== false);
   const canUseScheduler = user?.role === 'super_admin' || user?.access?.canUseScheduler === true || (user?.role === 'admin' && user?.access?.canUseScheduler !== false);
   const canUseFetchSection = canUseFetch || canUseScheduler;
@@ -1403,8 +1466,31 @@ export function FetchTab({ embedded = false }) {
     if (runProgress && !['running', 'queued'].includes(runProgress.status)) {
        setStartingN8n(false);
        refresh();
+       refreshMe().catch(() => {});
     }
-  }, [runProgress?.status, refresh]);
+  }, [runProgress?.status, refresh, refreshMe]);
+
+  useEffect(() => {
+    const hasRunningProgress = runProgress && ['running', 'queued'].includes(runProgress.status);
+    const isScheduledLog = String(lastLog?.notes || '').toLowerCase().includes('scheduled');
+    const scheduledLogRunning = lastLog?.status === 'running' && isScheduledLog;
+    if (hasRunningProgress || !lastLog?._id || !scheduledLogRunning) return;
+
+    setRunProgress({
+      runId: lastLog._id,
+      logId: lastLog._id,
+      status: 'running',
+      step: 'queued',
+      percent: 5,
+      messages: [
+        {
+          at: new Date().toISOString(),
+          step: 'queued',
+          message: 'Fetch queued from scheduler.'
+        }
+      ]
+    });
+  }, [lastLog?._id, lastLog?.notes, lastLog?.status, runProgress, setRunProgress]);
 
   useEffect(() => {
     if (!user) return;
@@ -1593,7 +1679,41 @@ export function FetchTab({ embedded = false }) {
   const selectedTopics = Array.isArray(form.topics) ? form.topics : [];
   const pipelineConfigured = true;
   const progressRunning = runProgress && ['running', 'queued'].includes(runProgress.status);
-  const pipelineRunning = Boolean(n8nStatus.running?.profile) || startingN8n || progressRunning;
+  const isScheduledLog = String(lastLog?.notes || '').toLowerCase().includes('scheduled');
+  const scheduledLogRunning = lastLog?.status === 'running' && isScheduledLog;
+  const pipelineRunning = Boolean(n8nStatus.running?.profile) || startingN8n || progressRunning || scheduledLogRunning;
+  const scheduleEnabled = Boolean(form.scheduleEnabled);
+  const scheduleTime = form.scheduleTime || '07:00';
+  const scheduleTimezone = form.scheduleTimezone || form.timezone || 'Asia/Kolkata';
+  const lastScheduledRunAt = user?.fetchSchedule?.lastRunAt;
+  const activeRunMessage = Array.isArray(runProgress?.messages)
+    ? runProgress.messages.find((item) => String(item?.message || '').toLowerCase().includes('schedule'))
+    : null;
+  const scheduledRunActive = scheduledLogRunning || Boolean(activeRunMessage);
+  const nextCheckLabel = scheduleEnabled
+    ? `${form.scheduleFrequency === 'weekly' ? 'Weekly' : 'Daily'} at ${scheduleTime} (${scheduleTimezone})`
+    : 'Scheduler is disabled';
+  const lastRunLabel = lastScheduledRunAt
+    ? formatDistanceToNow(new Date(lastScheduledRunAt), { addSuffix: true })
+    : 'No scheduled run yet';
+  const effectiveRunProgress = runProgress || (
+    scheduledLogRunning
+      ? {
+          runId: lastLog?._id,
+          logId: lastLog?._id,
+          status: 'running',
+          step: 'queued',
+          percent: 5,
+          messages: [
+            {
+              at: new Date().toISOString(),
+              step: 'queued',
+              message: 'Fetch queued from scheduler.'
+            }
+          ]
+        }
+      : null
+  );
   const browserTimezones = useMemo(() => getBrowserTimezones(), []);
   const recommendedTimezones = useMemo(() => {
     const matchKey = Object.keys(COUNTRY_TIMEZONES).find((key) => key.toLowerCase() === String(form.country || '').toLowerCase());
@@ -1809,6 +1929,44 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
+        <div className={`mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
+              <Play size={17} />
+            </span>
+            <div className="min-w-0">
+              <div className="font-black text-gray-900">{canUseFetch ? 'Ready to fetch intelligence' : 'Fetch access is locked'}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                {canUseFetch
+                  ? (hasUnsavedFetchChanges ? 'Unsaved changes will be saved before fetch' : 'Saved details are ready')
+                  : 'Your admin can enable manual fetching for this profile'}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              disabled={savingDetails || !selectedCategories.length}
+              onClick={saveSearchDetails}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+              title={selectedCategories.length ? 'Save as default fetch details' : 'Select a category first'}
+            >
+              {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {savingDetails ? 'Saving' : 'Save details'}
+            </button>
+            <button
+              type="button"
+              disabled={!canUseFetch || pipelineRunning || !selectedCategories.length}
+              onClick={runFetch}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              title={!canUseFetch ? 'Manual fetch access is disabled for this profile' : selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
+            >
+              {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {pipelineRunning ? 'Fetching' : 'Run fetch'}
+            </button>
+          </div>
+        </div>
+
         {!canUseScheduler ? (
           <div className="mt-5 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">
             <Clock3 size={24} className="text-gray-300 animate-pulse" />
@@ -1861,6 +2019,37 @@ export function FetchTab({ embedded = false }) {
                 </select>
               </FetchField>
             </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className={`rounded-xl border px-3 py-3 ${scheduleEnabled ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-200 bg-white'}`}>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Status</div>
+                <div className={`mt-1 text-sm font-black ${scheduleEnabled ? 'text-emerald-700' : 'text-gray-600'}`}>
+                  {scheduleEnabled ? 'Enabled and watching time' : 'Disabled'}
+                </div>
+                <div className="mt-1 text-xs font-medium text-gray-500">
+                  {scheduleEnabled ? nextCheckLabel : 'Turn on schedule to auto-run fetch.'}
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Last scheduled run</div>
+                <div className="mt-1 text-sm font-black text-gray-800">{lastRunLabel}</div>
+                <div className="mt-1 text-xs font-medium text-gray-500">
+                  {lastScheduledRunAt ? new Date(lastScheduledRunAt).toLocaleString() : 'This will update after the first auto-trigger.'}
+                </div>
+              </div>
+              <div className={`rounded-xl border px-3 py-3 ${scheduledRunActive ? 'border-orange-200 bg-orange-50/80' : 'border-gray-200 bg-white'}`}>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Live trigger</div>
+                <div className={`mt-1 text-sm font-black ${scheduledRunActive ? 'text-orange-700' : 'text-gray-800'}`}>
+                  {scheduledRunActive ? 'Scheduler triggered a fetch' : 'Waiting for next trigger'}
+                </div>
+                <div className="mt-1 text-xs font-medium text-gray-500">
+                  {scheduledRunActive
+                    ? 'A scheduled run is active right now and should appear below in live process.'
+                    : scheduleEnabled
+                      ? `The system will auto-check this rule every minute and trigger at ${scheduleTime}.`
+                      : 'No automatic trigger will run until scheduling is enabled.'}
+                </div>
+              </div>
+            </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs font-medium leading-relaxed text-gray-500">
                 Scheduled runs use the saved market details and run at the selected local time in {form.scheduleTimezone || form.timezone || 'your timezone'}.
@@ -1879,78 +2068,40 @@ export function FetchTab({ embedded = false }) {
           </div>
         )}
 
-        <div className={`mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
-              <Play size={17} />
-            </span>
-            <div className="min-w-0">
-              <div className="font-black text-gray-900">{canUseFetch ? 'Ready to fetch intelligence' : 'Fetch access is locked'}</div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                {canUseFetch
-                  ? (hasUnsavedFetchChanges ? 'Unsaved changes will be saved before fetch' : 'Saved details are ready')
-                  : 'Your admin can enable manual fetching for this profile'}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              disabled={savingDetails || !selectedCategories.length}
-              onClick={saveSearchDetails}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
-              title={selectedCategories.length ? 'Save as default fetch details' : 'Select a category first'}
-            >
-              {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {savingDetails ? 'Saving' : 'Save details'}
-            </button>
-            <button
-              type="button"
-              disabled={!canUseFetch || pipelineRunning || !selectedCategories.length}
-              onClick={runFetch}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
-              title={!canUseFetch ? 'Manual fetch access is disabled for this profile' : selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
-            >
-              {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {pipelineRunning ? 'Fetching' : 'Run fetch'}
-            </button>
-          </div>
-        </div>
-
         {msg && (
           <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">
             {msg}
           </div>
         )}
 
-        {runProgress && (
+        {effectiveRunProgress && (
           <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="eyebrow mb-1">Live process</div>
                 <h4 className="text-base font-black tracking-tight text-gray-900">
-                  {runProgress.status === 'success' ? 'Fetch complete' : runProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}
+                  {effectiveRunProgress.status === 'success' ? 'Fetch complete' : effectiveRunProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}
                 </h4>
               </div>
               <span className={`rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
-                runProgress.status === 'success' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                : runProgress.status === 'failed' ? 'bg-red-50 text-red-700 ring-1 ring-red-100'
+                effectiveRunProgress.status === 'success' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                : effectiveRunProgress.status === 'failed' ? 'bg-red-50 text-red-700 ring-1 ring-red-100'
                 : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
               }`}>
-                {runProgress.step || runProgress.status}
+                {effectiveRunProgress.step || effectiveRunProgress.status}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-gray-100">
               <div
-                className={`h-full rounded-full transition-all ${runProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`}
-                style={{ width: `${Math.max(5, Math.min(100, Number(runProgress.percent || 35)))}%` }}
+                className={`h-full rounded-full transition-all ${effectiveRunProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`}
+                style={{ width: `${Math.max(5, Math.min(100, Number(effectiveRunProgress.percent || 35)))}%` }}
               />
             </div>
             <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-              {(runProgress.messages || []).slice(-14).map((item, index) => (
+              {(effectiveRunProgress.messages || []).slice(-14).map((item, index) => (
                 <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
                   <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                    runProgress.status === 'failed' && index === (runProgress.messages || []).slice(-14).length - 1 ? 'bg-red-500' : 'bg-brand-crimson'
+                    effectiveRunProgress.status === 'failed' && index === (effectiveRunProgress.messages || []).slice(-14).length - 1 ? 'bg-red-500' : 'bg-brand-crimson'
                   }`} />
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>

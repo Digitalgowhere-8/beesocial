@@ -80,20 +80,14 @@ export function AuthProvider({ children }) {
     const poll = async () => {
       try {
         const { data } = await api.get(`/n8n/runs/${logId}/progress`);
-        setRunProgress(data);
         if (data.status !== 'running' && data.status !== 'queued') {
+          setRunProgress(null);
           localStorage.removeItem('ascentium_run_progress');
+          return;
         }
+        setRunProgress(data);
       } catch (e) {
-        setRunProgress((prev) => ({
-          ...(prev || {}),
-          status: 'failed',
-          step: 'progress',
-          messages: [
-            ...((prev?.messages || []).slice(-20)),
-            { at: new Date().toISOString(), step: 'progress', message: `Progress check failed: ${e.message}` }
-          ]
-        }));
+        setRunProgress(null);
         localStorage.removeItem('ascentium_run_progress');
       }
     };
@@ -111,6 +105,39 @@ export function AuthProvider({ children }) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [runProgress?.runId, runProgress?.logId, runProgress?.status]);
+
+  useEffect(() => {
+    if (user?.role !== 'super_admin') return undefined;
+
+    const syncPlatformFetchStatus = async () => {
+      try {
+        const { data } = await api.get('/admin/super/fetch/status');
+        if (!data?.running || !data?.logId) return;
+        setRunProgress((current) => {
+          const currentLogId = current?.runId || current?.logId;
+          if (currentLogId === data.logId && ['running', 'queued'].includes(current?.status)) {
+            return current;
+          }
+          return {
+            runId: data.logId,
+            logId: data.logId,
+            status: 'running',
+            step: 'queued',
+            percent: 5,
+            messages: [
+              { at: new Date().toISOString(), step: 'queued', message: 'Platform fetch queued from scheduler.' }
+            ]
+          };
+        });
+      } catch {
+        // Ignore transient sync failures; fetch page and progress polling handle retries.
+      }
+    };
+
+    const id = window.setInterval(syncPlatformFetchStatus, 5000);
+    syncPlatformFetchStatus();
+    return () => window.clearInterval(id);
+  }, [user?.role]);
 
   // On mount, verify token is still valid
   useEffect(() => {

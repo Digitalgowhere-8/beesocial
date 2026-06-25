@@ -89,7 +89,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
     width: '100%',
     outline: 'none',
     transition: 'border-color 0.2s',
-    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontFamily: '"Roboto", system-ui, sans-serif',
   };
 
   const handleFocus = e => e.target.style.borderColor = CRIMSON;

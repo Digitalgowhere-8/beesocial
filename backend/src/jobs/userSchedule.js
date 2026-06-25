@@ -4,6 +4,7 @@ const User = require('../models/User');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { runProfileSearch } = require('../services/profileSearchRunner');
 const { persistProfileResults } = require('../services/profileResultsService');
+const progress = require('../services/profileRunProgress');
 
 const runningUsers = new Set();
 
@@ -55,9 +56,7 @@ function shouldRunNow(user, now = new Date()) {
   const targetMinutes = hour * 60 + minute;
   const currentMinutes = minutesInZone(now, timezone);
 
-  if (currentMinutes < targetMinutes || currentMinutes > targetMinutes + 9) {
-    return false;
-  }
+  if (currentMinutes < targetMinutes) return false;
 
   if (!schedule.lastRunAt) return true;
 
@@ -101,11 +100,31 @@ async function triggerUser(user) {
   });
 
   payload.logId = String(log._id);
+  progress.startRun(payload.logId, 'Fetch queued from scheduler');
 
   try {
     if (!useN8nWebhook) {
-      const resultPayload = await runProfileSearch(payload);
+      progress.updateRun(payload.logId, {
+        step: 'start',
+        percent: 8,
+        message: 'Scheduled fetch started'
+      });
+      const resultPayload = await runProfileSearch(payload, {
+        onProgress: ({ step, message }) => progress.updateRun(payload.logId, { step, message })
+      });
+      progress.updateRun(payload.logId, {
+        step: 'save',
+        percent: 88,
+        message: 'Saving scheduled results to database'
+      });
       await persistProfileResults(resultPayload);
+      progress.finishRun(payload.logId, {
+        status: 'success',
+        step: 'complete',
+        processed: resultPayload.resultCount,
+        resultCount: resultPayload.resultCount,
+        message: `Scheduled fetch complete: ${resultPayload.resultCount} result${resultPayload.resultCount === 1 ? '' : 's'} saved`
+      });
       user.fetchSchedule.lastRunAt = startedAt;
       await user.save();
       return;
@@ -127,6 +146,12 @@ async function triggerUser(user) {
       durationMs: Date.now() - startedAt.getTime(),
       totalErrors: 1,
       notes: `Scheduled n8n trigger failed: ${error.message}`
+    });
+    progress.finishRun(payload.logId, {
+      status: 'failed',
+      step: 'failed',
+      error: error.message,
+      message: `Scheduled fetch failed: ${error.message}`
     });
     throw error;
   }

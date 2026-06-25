@@ -483,7 +483,7 @@ export default function Layout({ children, headerActions = null }) {
     : 'U';
 
   return (
-    <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+    <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
       <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">

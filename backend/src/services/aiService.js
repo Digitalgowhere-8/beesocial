@@ -352,7 +352,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
             'Use the best exact sub-category under the chosen category. If valid sub-categories are provided for the profile category, prefer them only when they fit; otherwise use the taxonomy list above.',
             '',
             'STEP 5: OUTPUT',
-            `summary must explain in 2 short sentences what happened and why it matters to ${companyName} clients or users in ${marketText}.`,
+            `summary must explain in 2 short sentences what happened and why it matters for businesses, investors, operators, or compliance teams in ${marketText}.`,
             'relevance_reason must mention the specific law/regulation/policy/announcement/source signal when available, the affected market, and the sub-category fit.',
             '',
             'If not relevant return category IGNORE, subcategory IGNORE, score 0, and a short reason.',

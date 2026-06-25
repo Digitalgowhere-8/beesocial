@@ -17,6 +17,19 @@ const TYPE_NAMES = {
   evergreen: 'Evergreen Guides',
 };
 
+function articleDescription(item = {}) {
+  const safeItem = item && typeof item === 'object' ? item : {};
+  const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
+  const value = (
+    rawData.blogContext ||
+    rawData.tavilyAnswer ||
+    safeItem.summary ||
+    safeItem.aiSummary ||
+    ''
+  );
+  return typeof value === 'string' ? value : String(value || '');
+}
+
 function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
   return (
     <div
@@ -41,7 +54,7 @@ function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
 
       <div>
         <div className="text-3xl font-black text-gray-900 tracking-tight leading-none"
-          style={{ fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+          style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
           {value}
         </div>
         {sub && <div className="text-[11px] text-gray-400 mt-1 font-medium">{sub}</div>}
@@ -106,11 +119,11 @@ function DonutChart({ data, className = '' }) {
             ))}
             {/* Center text */}
             <text x={center} y={center - 5} textAnchor="middle" dominantBaseline="middle"
-              fill="#111" fontWeight="900" fontSize="22" fontFamily='"DM Sans", system-ui, sans-serif'>
+              fill="#111" fontWeight="900" fontSize="22" fontFamily='"Roboto", system-ui, sans-serif'>
               {total}
             </text>
             <text x={center} y={center + 14} textAnchor="middle" dominantBaseline="middle"
-              fill="#9ca3af" fontWeight="600" fontSize="9" fontFamily='"DM Sans", system-ui, sans-serif' letterSpacing="0.1em">
+              fill="#9ca3af" fontWeight="600" fontSize="9" fontFamily='"Roboto", system-ui, sans-serif' letterSpacing="0.1em">
               TOTAL
             </text>
           </svg>
@@ -373,7 +386,7 @@ function InsightItem({ item, color }) {
       </div>
 
       <p className="mb-4 text-[12px] leading-relaxed text-gray-500 line-clamp-3">
-        {item.aiSummary || item.summary || 'No summary available.'}
+        {articleDescription(item) || 'No summary available.'}
       </p>
 
       <div className="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 text-[10px] font-bold uppercase tracking-wider text-gray-500">
@@ -492,7 +505,7 @@ function UpdateRow({ item }) {
   const market = item.country || item.market || 'Market n/a';
   const category = item.category || 'General';
   const subcategory = item.subcategory || 'Unclassified';
-  const description = item.aiSummary || item.summary || 'No description available.';
+  const description = articleDescription(item) || 'No description available.';
 
   return (
     <a

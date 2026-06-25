@@ -24,6 +24,28 @@ const FEED_COLUMNS = [
 
 const TYPE_LABELS = Object.fromEntries(FEED_COLUMNS.map((col) => [col.key, col]));
 
+function normalizeBuckets(payload = {}) {
+  return {
+    news: Array.isArray(payload?.news) ? payload.news : [],
+    govt: Array.isArray(payload?.govt) ? payload.govt : [],
+    competitor: Array.isArray(payload?.competitor) ? payload.competitor : [],
+    evergreen: Array.isArray(payload?.evergreen) ? payload.evergreen : [],
+  };
+}
+
+function articleDescription(item = {}) {
+  const safeItem = item && typeof item === 'object' ? item : {};
+  const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
+  const value = (
+    rawData.blogContext ||
+    rawData.tavilyAnswer ||
+    safeItem.summary ||
+    safeItem.aiSummary ||
+    ''
+  );
+  return typeof value === 'string' ? value : String(value || '');
+}
+
 function withoutRegion(value = {}) {
   const { region: _region, ...rest } = value || {};
   return rest;
@@ -166,8 +188,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         api.get('/articles/dashboard'),
         api.get('/articles/velocity', { params: { scope: 'dataset' } })
       ]);
-      setData(dashboardRes.data);
-      setAnalyticsData(analyticsRes.data);
+      setData(normalizeBuckets(dashboardRes.data));
+      setAnalyticsData(normalizeBuckets(analyticsRes.data));
       setAnalyticsVelocityData(analyticsVelocityRes.data.days || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -606,7 +628,7 @@ function ComposerDropTray({ open, article, onDropMode }) {
                   {article?.title || 'Drag a topic into a composer'}
                 </h3>
                 <p className="mt-3 line-clamp-3 text-xs font-semibold leading-relaxed text-gray-500">
-                  {article?.summary || article?.aiSummary || 'Choose where this source should become content.'}
+                  {articleDescription(article) || 'Choose where this source should become content.'}
                 </p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">

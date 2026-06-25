@@ -14,7 +14,10 @@ const { runDuePlatformFetch } = require('../services/platformFetchService');
 let task = null;
 
 function startUserScheduleScan() {
-  const userSchedule = process.env.USER_SCHEDULE_CRON || '*/10 * * * *';
+  // Always scan every minute so the time saved from the UI is the source of truth.
+  // This scan only checks whether a saved schedule is due; the actual time still
+  // comes from each user's saved schedule and the platform fetch config.
+  const userSchedule = '* * * * *';
   if (process.env.ENABLE_USER_SCHEDULES === 'false') {
     console.log('[schedule] disabled by ENABLE_USER_SCHEDULES=false');
     return;

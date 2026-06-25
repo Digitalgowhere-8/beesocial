@@ -252,6 +252,15 @@ router.get('/me', protect, (req, res) => {
   res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null });
 });
 
+function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata') {
+  return [
+    Boolean(schedule?.enabled),
+    schedule?.frequency === 'weekly' ? 'weekly' : 'daily',
+    /^\d{2}:\d{2}$/.test(String(schedule?.time || '')) ? schedule.time : '07:00',
+    String(schedule?.timezone || fallbackTimezone || 'Asia/Kolkata')
+  ].join('|');
+}
+
 // GET /api/auth/plans
 router.get('/plans', protect, asyncHandler(async (_req, res) => {
   const items = await Plan.find({}).sort({ planId: 1 }).lean();
@@ -331,6 +340,18 @@ router.patch('/me', protect, asyncHandler(async (req, res) => {
     delete update.language;
     delete update.timezone;
     delete update.fetchSchedule;
+  }
+
+  if (update.fetchSchedule) {
+    const previousSignature = fetchScheduleSignature(req.user.fetchSchedule, req.user.timezone);
+    const nextSignature = fetchScheduleSignature(update.fetchSchedule, update.timezone || req.user.timezone);
+    if (previousSignature !== nextSignature) {
+      update.fetchSchedule = {
+        ...req.user.fetchSchedule?.toObject?.(),
+        ...update.fetchSchedule,
+        lastRunAt: null
+      };
+    }
   }
 
   Object.assign(req.user, update);

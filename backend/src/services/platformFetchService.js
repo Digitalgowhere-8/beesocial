@@ -69,9 +69,25 @@ async function getPlatformFetchConfig() {
   return normalizeConfig(settings.platformFetch || {});
 }
 
+function scheduleSignature(schedule = {}) {
+  return [
+    Boolean(schedule.enabled),
+    schedule.frequency === 'weekly' ? 'weekly' : 'daily',
+    /^\d{2}:\d{2}$/.test(String(schedule.time || '')) ? schedule.time : DEFAULT_CONFIG.schedule.time,
+    String(schedule.timezone || DEFAULT_CONFIG.schedule.timezone)
+  ].join('|');
+}
+
 async function savePlatformFetchConfig(patch = {}) {
   const current = await getSystemSettings({ useCache: false });
+  const previous = normalizeConfig(current.platformFetch || {});
   const next = normalizeConfig({ ...(current.platformFetch || {}), ...patch });
+  const scheduleChanged = scheduleSignature(previous.schedule) !== scheduleSignature(next.schedule);
+
+  if (scheduleChanged) {
+    next.schedule.lastRunAt = null;
+  }
+
   await saveSystemSettings({ platformFetch: next });
   return next;
 }
@@ -115,7 +131,7 @@ function shouldRunNow(config, now = new Date()) {
   const [hour, minute] = String(schedule.time || '07:00').split(':').map(Number);
   const targetMinutes = hour * 60 + minute;
   const currentMinutes = minutesInZone(now, timezone);
-  if (currentMinutes < targetMinutes || currentMinutes > targetMinutes + 9) return false;
+  if (currentMinutes < targetMinutes) return false;
   if (!schedule.lastRunAt) return true;
   if (dateKeyInZone(new Date(schedule.lastRunAt), timezone) === dateKeyInZone(now, timezone)) return false;
   if (schedule.frequency === 'weekly') {
@@ -171,7 +187,10 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
 
     try {
       const payload = buildN8nPayload({
-        userId: String(triggeredByUser || ''),
+        // Scheduled platform fetch is global, so it may not have a real user id.
+        // Use a stable synthetic id for the search pipeline and clear ownership
+        // again before persisting the final shared results.
+        userId: String(triggeredByUser || 'platform-scheduler'),
         trigger,
         country,
         categories,

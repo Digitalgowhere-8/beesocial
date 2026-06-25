@@ -49,9 +49,9 @@ export default {
         canvas: '#FAF9F6'   // page background
       },
       fontFamily: {
-        display: ['"DM Sans"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
-        sans: ['"DM Sans"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
-        mono: ['"DM Sans"', '"Helvetica Neue"', 'Arial', 'sans-serif']
+        display: ['"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        sans: ['"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        mono: ['"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif']
       },
       boxShadow: {
         card: '0 1px 0 rgba(0,0,0,0.04), 0 1px 2px rgba(15,23,42,0.04)',
