@@ -319,7 +319,8 @@ export default function Layout({ children, headerActions = null }) {
 
     try {
       const requests = [
-        api.get('/articles/dashboard', { params: { limit: 8, personalized: true } }),
+        api.get('/articles/dashboard', { params: { limit: 8, sharedOnly: true } }),
+        api.get('/articles/dashboard', { params: { limit: 8, personalOnly: true } }),
         api.get('/blogs', { params: { status: 'published', limit: 8 } })
       ];
 
@@ -327,25 +328,32 @@ export default function Layout({ children, headerActions = null }) {
         requests.push(api.get('/blogs/social-posts', { params: { platform: 'linkedin', limit: 8 } }));
       }
 
-      const [articlesResponse, blogsResponse, socialResponse] = await Promise.all(requests);
-      const articleBuckets = articlesResponse?.data || {};
+      const [sharedArticlesResponse, personalArticlesResponse, blogsResponse, socialResponse] = await Promise.all(requests);
+      const sharedArticleBuckets = sharedArticlesResponse?.data || {};
+      const personalArticleBuckets = personalArticlesResponse?.data || {};
       const articles = [
-        ...(Array.isArray(articleBuckets.news) ? articleBuckets.news : []),
-        ...(Array.isArray(articleBuckets.govt) ? articleBuckets.govt : []),
-        ...(Array.isArray(articleBuckets.competitor) ? articleBuckets.competitor : []),
-        ...(Array.isArray(articleBuckets.evergreen) ? articleBuckets.evergreen : [])
+        ...(Array.isArray(sharedArticleBuckets.news) ? sharedArticleBuckets.news : []),
+        ...(Array.isArray(sharedArticleBuckets.govt) ? sharedArticleBuckets.govt : []),
+        ...(Array.isArray(sharedArticleBuckets.competitor) ? sharedArticleBuckets.competitor : []),
+        ...(Array.isArray(sharedArticleBuckets.evergreen) ? sharedArticleBuckets.evergreen : []),
+        ...(Array.isArray(personalArticleBuckets.news) ? personalArticleBuckets.news : []),
+        ...(Array.isArray(personalArticleBuckets.govt) ? personalArticleBuckets.govt : []),
+        ...(Array.isArray(personalArticleBuckets.competitor) ? personalArticleBuckets.competitor : []),
+        ...(Array.isArray(personalArticleBuckets.evergreen) ? personalArticleBuckets.evergreen : [])
       ];
-      const socialPosts = Array.isArray(socialResponse?.data?.posts)
+      const rawSocialPosts = Array.isArray(socialResponse?.data?.posts)
         ? socialResponse.data.posts
         : Array.isArray(socialResponse?.data?.items)
           ? socialResponse.data.items
           : [];
+      const socialPosts = rawSocialPosts.filter((post) => String(post?.createdBy || '') === String(user._id));
       const rawBlogs = Array.isArray(blogsResponse?.data?.blogs)
         ? blogsResponse.data.blogs
         : Array.isArray(blogsResponse?.data?.items)
           ? blogsResponse.data.items
           : [];
-      const feed = normalizeNotificationFeed({ articles, blogs: rawBlogs, socialPosts });
+      const personalBlogs = rawBlogs.filter((blog) => String(blog?.createdBy || '') === String(user._id));
+      const feed = normalizeNotificationFeed({ articles, blogs: personalBlogs, socialPosts });
 
       saveNotifications((current) => {
         const initialized = current?.initialized === true;

@@ -146,6 +146,8 @@ function buildQuery(req, opts = {}) {
 
   if (req.query.sharedOnly === 'true') {
     Object.assign(q, { $or: sharedArticleScope() });
+  } else if (req.query.personalOnly === 'true') {
+    q.userId = req.user._id;
   } else if (req.query.ownerOnly === 'true' && ownerIds.length) {
     if (q.userId) {
       q.$and = [...(q.$and || []), { userId: q.userId }, { userId: { $in: ownerIds } }];

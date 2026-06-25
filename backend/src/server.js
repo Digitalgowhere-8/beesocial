@@ -28,6 +28,10 @@ const analyticsRoutes = require('./routes/analytics');
 const realtimeRoutes = require('./routes/realtime');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
+const AUTH_RATE_LIMIT_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000;
+const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 200;
+const EXPENSIVE_RATE_LIMIT_WINDOW_MS = parseInt(process.env.EXPENSIVE_RATE_LIMIT_WINDOW_MS, 10) || 60 * 1000;
+const EXPENSIVE_RATE_LIMIT_MAX = parseInt(process.env.EXPENSIVE_RATE_LIMIT_MAX, 10) || 30;
 
 const app = express();
 
@@ -54,12 +58,22 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
+function rateLimitKey(req) {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (authHeader.startsWith('Bearer ')) {
+    return `token:${authHeader.slice(7)}`;
+  }
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || 'anonymous';
+}
+
 // Rate-limit auth routes to discourage brute force
 app.use(
   '/api/auth',
   rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 50,
+    windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+    max: AUTH_RATE_LIMIT_MAX,
+    keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false
   })
@@ -67,8 +81,9 @@ app.use(
 
 // Rate-limit expensive AI / scraping endpoints
 const expensiveLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 minute window
-  max: 10,             // max 10 calls per minute per IP
+  windowMs: EXPENSIVE_RATE_LIMIT_WINDOW_MS,
+  max: EXPENSIVE_RATE_LIMIT_MAX,
+  keyGenerator: rateLimitKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many requests on this endpoint. Please wait a moment and try again.' }
