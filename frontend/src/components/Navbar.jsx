@@ -47,6 +47,7 @@ export default function Navbar() {
   const { user, isAdmin, isSuperAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const canUseContentRepository = isSuperAdmin || user?.access?.canUseContentRepository !== false;
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
 
   const handleLogout = () => {
@@ -67,7 +68,7 @@ export default function Navbar() {
             <>
               <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
               <NavItem to="/intel-desk" icon={Newspaper}>Intel Desk</NavItem>
-              <NavItem to="/blogs" icon={BookOpenText}>Blog</NavItem>
+              {canUseContentRepository && <NavItem to="/blogs" icon={BookOpenText}>Content Repository</NavItem>}
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText}>Social Media Studio</NavItem>}
               <NavItem to="/profile" icon={UserIcon}>Profile</NavItem>
             </>
@@ -112,7 +113,7 @@ export default function Navbar() {
             <>
               <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>Dashboard</NavItem>
               <NavItem to="/intel-desk" icon={Newspaper} onClick={() => setMobileOpen(false)}>Intel Desk</NavItem>
-              <NavItem to="/blogs" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Blog</NavItem>
+              {canUseContentRepository && <NavItem to="/blogs" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Content Repository</NavItem>}
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Social Media Studio</NavItem>}
               <NavItem to="/profile" icon={UserIcon} onClick={() => setMobileOpen(false)}>Profile</NavItem>
             </>

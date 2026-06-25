@@ -22,6 +22,7 @@ const userSchema = new mongoose.Schema(
     access: {
       canFetch: { type: Boolean, default: true },
       canCreateMembers: { type: Boolean, default: false },
+      canUseContentRepository: { type: Boolean, default: true },
       canUseBlogStudio: { type: Boolean, default: false },
       canUseSavedSearches: { type: Boolean, default: true },
       canUseScheduler: { type: Boolean, default: false }

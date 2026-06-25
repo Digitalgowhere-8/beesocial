@@ -11,7 +11,9 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
   if (!user) return <Navigate to="/login" state={{ from: loc }} replace />;
   const memberHasFetchOrSchedule = user?.access?.canFetch === true || user?.access?.canUseScheduler === true;
   if (requireAdmin && !isAdmin && !memberHasFetchOrSchedule) return <Navigate to="/dashboard" replace />;
-  if (requireAccess && !isSuperAdmin && user?.access?.[requireAccess] !== true && !(isAdmin && user?.access?.[requireAccess] !== false)) {
+  const accessValue = user?.access?.[requireAccess];
+  const allowByDefault = requireAccess === 'canUseContentRepository' && accessValue !== false;
+  if (requireAccess && !isSuperAdmin && !allowByDefault && accessValue !== true && !(isAdmin && accessValue !== false)) {
     return <Navigate to="/dashboard" replace />;
   }
   if (isSuperAdmin && !ownerOnlyPaths.some((path) => loc.pathname.startsWith(path))) {

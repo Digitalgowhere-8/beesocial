@@ -78,7 +78,7 @@ export default function App() {
       <Route
         path="/blogs"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requireAccess="canUseContentRepository">
             <BlogLibrary />
           </ProtectedRoute>
         }

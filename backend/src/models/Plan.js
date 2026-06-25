@@ -17,6 +17,7 @@ const planSchema = new mongoose.Schema(
     access: {
       canFetch: { type: Boolean, default: true },
       canCreateMembers: { type: Boolean, default: false },
+      canUseContentRepository: { type: Boolean, default: true },
       canUseBlogStudio: { type: Boolean, default: false },
       canUseSavedSearches: { type: Boolean, default: false },
       canUseScheduler: { type: Boolean, default: false }

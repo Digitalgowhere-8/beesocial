@@ -441,7 +441,9 @@ function buildN8nPayload(profile = {}, extra = {}) {
     Object.entries(queryVariants).map(([topic, items]) => [topic, items[0] || ''])
   );
   const customQueryOverride = cleanText(profile.customQueryOverride || profile.custom_query_override || profile.query);
-  const strictSources = Boolean(profile.strictSources || profile.strict_sources);
+  // Fetching stays limited to the selected country's default domains plus any
+  // explicitly added sources so admin and super-admin follow the same rules.
+  const strictSources = true;
 
   const payload = {
     userId: profile.userId || profile._id?.toString?.() || '',

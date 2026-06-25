@@ -14,7 +14,7 @@ const TYPE_NAMES = {
   news: 'News Articles',
   govt: 'Government Updates',
   competitor: 'Competitor Intel',
-  evergreen: 'Evergreen Guides',
+  evergreen: 'Evergreen Topics',
 };
 
 function articleDescription(item = {}) {
@@ -87,7 +87,8 @@ function DonutChart({ data, className = '' }) {
     <div className={`flex flex-col overflow-hidden bg-white rounded-xl p-3 fade-in min-w-0 sm:p-4 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
       <div className="mb-2 flex items-center gap-2 2xl:mb-4">
         <BarChart2 size={16} style={{ color: CRIMSON }} />
-        <span className="text-sm font-bold text-gray-700">Signals by Type</span>
+        <span className="text-sm font-bold text-gray-700"> Buzz by Type
+</span>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-3 md:grid-cols-[minmax(128px,0.36fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(150px,0.36fr)_minmax(0,1fr)] 2xl:gap-5">
@@ -588,7 +589,7 @@ function TrendingUpdatesCard({ items, className = '' }) {
             <Flame size={16} />
           </span>
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-black text-gray-900">Today's Key Insights</h3>
+            <h3 className="truncate text-sm font-black text-gray-900">Today's Buzz</h3>
           </div>
         </div>
         <span className="rounded-md bg-brand-pink/70 px-2.5 py-1 text-[10px] font-black text-brand-crimson ring-1 ring-brand-crimson/10">

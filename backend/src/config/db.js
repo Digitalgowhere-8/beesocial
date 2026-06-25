@@ -9,7 +9,7 @@ const DEFAULT_PLANS = [
     priceNote: 'Free forever',
     memberLimit: 1,
     limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000, blogGenerationsMonthly: 3, socialPostsMonthly: 5 },
-    access: { canFetch: true, canCreateMembers: false, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
+    access: { canFetch: true, canCreateMembers: false, canUseContentRepository: true, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
   },
   {
     planId: 'growth',
@@ -18,7 +18,7 @@ const DEFAULT_PLANS = [
     priceNote: 'per month',
     memberLimit: 3,
     limits: { fetchesPerMonth: 50, storageItems: 2000, tokenBudgetMonthly: 500000, blogGenerationsMonthly: 25, socialPostsMonthly: 50 },
-    access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: false, canUseSavedSearches: true, canUseScheduler: true }
+    access: { canFetch: true, canCreateMembers: true, canUseContentRepository: true, canUseBlogStudio: false, canUseSavedSearches: true, canUseScheduler: true }
   },
   {
     planId: 'scale',
@@ -27,7 +27,7 @@ const DEFAULT_PLANS = [
     priceNote: 'per month',
     memberLimit: 10,
     limits: { fetchesPerMonth: 300, storageItems: 15000, tokenBudgetMonthly: 3500000, blogGenerationsMonthly: 150, socialPostsMonthly: 300 },
-    access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
+    access: { canFetch: true, canCreateMembers: true, canUseContentRepository: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
   },
   {
     planId: 'enterprise',
@@ -36,7 +36,7 @@ const DEFAULT_PLANS = [
     priceNote: 'per month',
     memberLimit: 999,
     limits: { fetchesPerMonth: 1500, storageItems: 999999, tokenBudgetMonthly: 10000000, blogGenerationsMonthly: 1000, socialPostsMonthly: 2000 },
-    access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
+    access: { canFetch: true, canCreateMembers: true, canUseContentRepository: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
   },
   {
     planId: 'premium',
@@ -45,7 +45,7 @@ const DEFAULT_PLANS = [
     priceNote: 'per month',
     memberLimit: 10,
     limits: { fetchesPerMonth: 300, storageItems: 15000, tokenBudgetMonthly: 3500000, blogGenerationsMonthly: 150, socialPostsMonthly: 300 },
-    access: { canFetch: true, canCreateMembers: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
+    access: { canFetch: true, canCreateMembers: true, canUseContentRepository: true, canUseBlogStudio: true, canUseSavedSearches: true, canUseScheduler: true }
   }
 ];
 

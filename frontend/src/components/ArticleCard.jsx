@@ -5,7 +5,7 @@ const TYPE_STYLES = {
   news:       { label: 'News Articles', accent: '#3b82f6' },
   govt:       { label: 'Government Updates', accent: '#10b981' },
   competitor: { label: 'Competitor Intel', accent: '#f59e0b' },
-  evergreen:  { label: 'Evergreen Guides',  accent: '#8b5cf6' },
+  evergreen:  { label: 'Evergreen Topics',  accent: '#8b5cf6' },
 };
 
 function formatDateTime(value) {

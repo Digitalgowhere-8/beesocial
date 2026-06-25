@@ -177,6 +177,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     access: {
       canFetch: true,
       canCreateMembers: true,
+      canUseContentRepository: true,
       canUseBlogStudio: false,
       canUseSavedSearches: true,
       canUseScheduler: false

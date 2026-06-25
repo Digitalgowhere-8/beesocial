@@ -8,6 +8,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const { state } = useLocation();
+  const robotoFont = '"Roboto", system-ui, sans-serif';
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +48,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex overflow-x-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
+    <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={{ fontFamily: robotoFont }}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-12 pt-12 pb-0"
         style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
@@ -71,24 +72,20 @@ export default function Login() {
           <img src="/logo-white.png" style={{ height: '75px', width: 'auto' }} alt="Logo-white" />
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-start fade-in pt-40 xl:pt-44 ml-6 xl:ml-10" style={{ animationDelay: '0.1s' }}>
-          <div className="inline-flex items-center gap-2 mb-8 w-fit px-3.5 py-1.5 rounded-full text-[12px] font-semibold"
-            style={{ background: 'rgba(255,255,255,0.18)', color: 'white', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.25)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-300 inline-block" style={{ boxShadow: '0 0 4px #86efac' }} />
-            Live Market Signal
-          </div>
-
-          <h1
-            className="max-w-[800px] text-white font-black leading-[1.08] mb-8"
-            style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: '"Roboto", system-ui, sans-serif' }}
+        <div className="relative z-10 flex-1 flex flex-col justify-center gap-4 fade-in max-w-[760px] pl-6 pr-8 xl:pl-10 xl:pr-10 pb-10 pt-0 -mt-14" style={{ animationDelay: '0.1s' }}>
+            <h1
+              className="max-w-[700px] text-white font-black leading-[1.08] mb-0"
+              style={{ fontSize: 'clamp(2.15rem, 3.55vw, 3.55rem)', fontFamily: robotoFont }}
           >
-            The Market Intelligence<br />
-            that Runs Your Content<br />
-            Pipeline, On Autopilot.
+            The smarter way to
+            <br />
+            track, rank, and create
+            <br />
+            around what matters
           </h1>
 
-          <div className="max-w-[720px] text-white/70 text-[11px] font-semibold uppercase tracking-[0.14em] leading-[1.9]">
-            100+ TRUSTED SOURCES &nbsp;&middot;&nbsp; GOVERNMENT PORTALS &nbsp;&middot;&nbsp; INDUSTRY PUBLICATIONS &nbsp;&middot;&nbsp; MARKET BRIEFINGS
+          <div className="max-w-[560px] text-white/75 text-[12px] font-semibold uppercase tracking-[0.14em] leading-[1.9]">
+            An AI-powered system that runs your content pipeline on autopilot.
           </div>
         </div>
 
@@ -97,23 +94,24 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-screen flex items-center justify-center px-4 py-24 sm:p-10 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
+      <div className="flex-1 min-h-screen lg:h-screen flex items-center justify-center px-4 py-14 sm:p-10 lg:px-10 xl:px-14 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
         <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
           <img src="/logo.png" style={{ height: '75px', width: 'auto' }} alt="OpportunityOS AI Logo" />
         </div>
 
-        <div className="relative z-10 w-full max-w-md fade-in" style={{ animationDelay: '0.05s' }}>
+        <div className="relative z-10 w-full max-w-[460px] fade-in lg:-mt-4" style={{ animationDelay: '0.05s' }}>
           <div
-            className="bg-white rounded-2xl p-5 sm:p-8 lg:p-10"
+            className="bg-white rounded-2xl p-5 sm:p-8 lg:p-9"
             style={{
               boxShadow: '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
               border: '1px solid rgba(209,18,67,0.05)'
             }}
           >
-            <h1 className="text-3xl font-black text-gray-900 mb-2 tracking-tight" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-              Secure sign-in
+            <h1 className="text-[1.4rem] xl:text-[1.55rem] font-black text-gray-900 mb-5 tracking-tight leading-[1.2]" style={{ fontFamily: robotoFont }}>
+              Secure sign-in to your
+              <br />
+              content intelligence dashboard.
             </h1>
-            <p className="text-gray-400 text-sm mb-6">to your content intelligence dashboard.</p>
 
             <form onSubmit={submit} className="space-y-4">
               <div>
@@ -124,7 +122,7 @@ export default function Login() {
                   autoFocus
                   placeholder="name@company.com"
                   className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 border border-gray-200 placeholder:text-gray-300 outline-none transition-all duration-200 shadow-sm"
-                  style={{ background: '#FAFAFA' }}
+                  style={{ background: '#FAFAFA', fontFamily: robotoFont }}
                   onFocus={inputFocus}
                   onBlur={inputBlur}
                   value={form.email}
@@ -140,13 +138,13 @@ export default function Login() {
                     required
                     placeholder="Enter your password"
                     className="w-full px-4 py-3 pr-10 rounded-xl text-sm text-gray-800 border border-gray-200 placeholder:text-gray-300 outline-none transition-all duration-200 shadow-sm"
-                    style={{ background: '#FAFAFA' }}
+                    style={{ background: '#FAFAFA', fontFamily: robotoFont }}
                     onFocus={inputFocus}
                     onBlur={inputBlur}
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                   />
-                  <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" style={{ fontFamily: robotoFont }}>
                     {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
@@ -171,7 +169,8 @@ export default function Login() {
                 className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 mt-4"
                 style={{
                   background: loading ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
-                  boxShadow: '0 4px 14px rgba(209,18,67,0.3)'
+                  boxShadow: '0 4px 14px rgba(209,18,67,0.3)',
+                  fontFamily: robotoFont
                 }}
                 onMouseOver={(e) => {
                   if (!loading) {
@@ -190,7 +189,7 @@ export default function Login() {
 
             <p className="text-center text-xs text-gray-400 mt-5">
               Need access?{' '}
-              <Link to="/register" className="font-bold hover:underline" style={{ color: '#D11243' }}>
+              <Link to="/register" className="font-bold hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                 Request an account
               </Link>
             </p>

@@ -16,6 +16,7 @@ const TYPE_OPTIONS = [
 ];
 
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
+const CONTENT_STUDIO_UPCOMING_MODE = true;
 
 const STYLE_OPTIONS = {
   tone: [
@@ -536,7 +537,8 @@ export default function BlogStudio() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
+      <div className="relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
+        <div className={CONTENT_STUDIO_UPCOMING_MODE ? 'pointer-events-none select-none blur-[5px] saturate-[0.82]' : ''}>
         {error && (
           <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
             {error}
@@ -859,8 +861,24 @@ export default function BlogStudio() {
         />
         </>
         )}
+        </div>
+        {CONTENT_STUDIO_UPCOMING_MODE ? <UpcomingStudioOverlay /> : null}
       </div>
     </Layout>
+  );
+}
+
+function UpcomingStudioOverlay() {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-8">
+      <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(209,18,67,0.16),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.42),rgba(255,255,255,0.76))]" />
+      <div className="relative flex min-h-[220px] w-full max-w-xl items-center justify-center overflow-hidden rounded-[28px] border border-white/70 bg-white/82 p-8 text-center shadow-[0_28px_80px_rgba(209,18,67,0.18)] backdrop-blur-xl sm:p-10">
+        <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-brand-crimson via-rose-400 to-brand-crimson" />
+        <h2 className="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">
+          Upcoming
+        </h2>
+      </div>
+    </div>
   );
 }
 

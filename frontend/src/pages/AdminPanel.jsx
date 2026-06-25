@@ -35,6 +35,7 @@ const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
 
 const MEMBER_ACCESS_OPTIONS = [
   { key: 'canFetch', label: 'Fetch' },
+  { key: 'canUseContentRepository', label: 'Content Repository' },
   { key: 'canUseBlogStudio', label: 'Social Media Studio' },
   { key: 'canUseSavedSearches', label: 'Saved' },
   { key: 'canUseScheduler', label: 'Schedule' }
@@ -2547,6 +2548,7 @@ function UsersTab({ dbPlans }) {
     access: {
       canFetch: true,
       canCreateMembers: false,
+      canUseContentRepository: true,
       canUseBlogStudio: false,
       canUseSavedSearches: true,
       canUseScheduler: false
@@ -2632,6 +2634,7 @@ function UsersTab({ dbPlans }) {
         access: {
           canFetch: true,
           canCreateMembers: plan !== 'free',
+          canUseContentRepository: true,
           canUseBlogStudio: ['scale', 'premium', 'enterprise'].includes(plan),
           canUseSavedSearches: plan !== 'free',
           canUseScheduler: plan !== 'free'
@@ -2684,6 +2687,7 @@ function UsersTab({ dbPlans }) {
         access: {
           canFetch: true,
           canCreateMembers: false,
+          canUseContentRepository: true,
           canUseBlogStudio: false,
           canUseSavedSearches: true,
           canUseScheduler: false
@@ -2776,6 +2780,7 @@ function UsersTab({ dbPlans }) {
   const memberAccessChecked = (u, key) => {
     const defaults = {
       canFetch: true,
+      canUseContentRepository: true,
       canUseBlogStudio: false,
       canUseSavedSearches: true,
       canUseScheduler: false
@@ -3663,6 +3668,7 @@ function SessionInfoBlock({ label, value }) {
 const PLAN_FEATURES_META = [
   { key: 'canUseScheduler',     label: 'Auto Scheduler',        help: 'Daily/weekly automated fetch runs' },
   { key: 'canUseSavedSearches', label: 'Saved Searches',        help: 'Save and reload fetch presets' },
+  { key: 'canUseContentRepository', label: 'Content Repository', help: 'Access published content and saved posts library' },
   { key: 'canUseBlogStudio',    label: 'Blog Studio AI',        help: 'AI blog & social content generation' },
   { key: 'canCreateMembers',    label: 'Team Members Addition', help: 'Add/manage team members under account' },
   { key: 'canFetch',            label: 'Manual Fetching',       help: 'Trigger scraping and fetching manually' }
@@ -3708,6 +3714,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           access: {
             canFetch: dbPlan.access?.canFetch ?? true,
             canCreateMembers: dbPlan.access?.canCreateMembers ?? false,
+            canUseContentRepository: dbPlan.access?.canUseContentRepository ?? true,
             canUseBlogStudio: dbPlan.access?.canUseBlogStudio ?? false,
             canUseSavedSearches: dbPlan.access?.canUseSavedSearches ?? false,
             canUseScheduler: dbPlan.access?.canUseScheduler ?? false,
@@ -3730,6 +3737,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           access: {
             canFetch: true,
             canCreateMembers: k !== 'free',
+            canUseContentRepository: true,
             canUseBlogStudio: k === 'scale' || k === 'premium' || k === 'enterprise',
             canUseSavedSearches: k !== 'free',
             canUseScheduler: k !== 'free',

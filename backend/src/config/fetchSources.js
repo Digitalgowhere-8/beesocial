@@ -433,21 +433,13 @@ function configuredFetchCountries() {
 
 function mergeSourceDomains({ country, type = 'news', userSources = [], strictSources = false }) {
   const defaults = defaultSourceDomainsForCountry(country, type);
-  if (type === 'govt') {
-    return {
-      includeDomains: [...new Set(defaults.map(cleanDomain).filter(Boolean))],
-      strictSources: true,
-      defaultDomains: defaults,
-      userDomains: []
-    };
-  }
+  const defaultDomains = [...new Set(defaults.map(cleanDomain).filter(Boolean))];
   const userDomains = cleanList(userSources).map(cleanDomain).filter(Boolean);
-  const trusted = type === 'competitor' ? [] : TRUSTED_INTELLIGENCE_DOMAINS;
-  const merged = [...new Set([...defaults, ...trusted, ...userDomains].map(cleanDomain).filter(Boolean))];
+  const includeDomains = [...new Set([...defaultDomains, ...userDomains])];
 
   return {
-    includeDomains: merged,
-    strictSources: Boolean(strictSources),
+    includeDomains,
+    strictSources: true,
     defaultDomains: defaults,
     userDomains
   };

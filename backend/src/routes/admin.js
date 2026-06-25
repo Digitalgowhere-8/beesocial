@@ -57,10 +57,11 @@ const AVG_AI_TOKENS_PER_RESULT = Number(process.env.AVG_AI_TOKENS_PER_RESULT || 
 const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
 const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
 const PAID_PLANS = ['growth', 'scale', 'enterprise', 'premium'];
-const ACCESS_KEYS = ['canFetch', 'canCreateMembers', 'canUseBlogStudio', 'canUseSavedSearches', 'canUseScheduler'];
+const ACCESS_KEYS = ['canFetch', 'canCreateMembers', 'canUseContentRepository', 'canUseBlogStudio', 'canUseSavedSearches', 'canUseScheduler'];
 const DEFAULT_MEMBER_ACCESS = {
   canFetch: true,
   canCreateMembers: false,
+  canUseContentRepository: true,
   canUseBlogStudio: false,
   canUseSavedSearches: true,
   canUseScheduler: false
@@ -84,7 +85,7 @@ async function getPlanDefaults(planId) {
   return {
     memberLimit: 1,
     limits: { fetchesPerMonth: 10, storageItems: 100, tokenBudgetMonthly: 50000, blogGenerationsMonthly: 3, socialPostsMonthly: 5 },
-    access: { canFetch: true, canCreateMembers: false, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
+    access: { canFetch: true, canCreateMembers: false, canUseContentRepository: true, canUseBlogStudio: false, canUseSavedSearches: false, canUseScheduler: false }
   };
 }
 
@@ -1380,6 +1381,7 @@ router.put('/plans', requireRole('super_admin'), asyncHandler(async (req, res) =
           access: {
             canFetch: Boolean(config.access?.canFetch ?? true),
             canCreateMembers: Boolean(config.access?.canCreateMembers ?? false),
+            canUseContentRepository: Boolean(config.access?.canUseContentRepository ?? true),
             canUseBlogStudio: Boolean(config.access?.canUseBlogStudio ?? false),
             canUseSavedSearches: Boolean(config.access?.canUseSavedSearches ?? false),
             canUseScheduler: Boolean(config.access?.canUseScheduler ?? false)

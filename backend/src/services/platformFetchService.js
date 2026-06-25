@@ -200,7 +200,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         minTavilyScore: config.minTavilyScore,
         language: config.language,
         timezone: config.timezone,
-        strictSources: false
+        strictSources: true
       }, {
         logId: String(logId),
         startedAt: startedAt.toISOString()

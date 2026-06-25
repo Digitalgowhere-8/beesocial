@@ -18,7 +18,7 @@ const SUPER_ADMIN_SECTIONS = [
   { key: 'settings', label: 'Settings', icon: KeyRound }
 ];
 
-function SideNavItem({ icon: Icon, label, to, onActiveClick }) {
+function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '' }) {
   return (
     <NavLink
       to={to}
@@ -41,7 +41,12 @@ function SideNavItem({ icon: Icon, label, to, onActiveClick }) {
       })}
     >
       <Icon size={15} />
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge ? (
+        <span className="shrink-0 rounded-full border border-brand-crimson/10 bg-brand-crimson px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm">
+          {badge}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -232,7 +237,7 @@ function ProfileMenu({ user, role, onProfile, onLogout }) {
       <div className="p-2">
         <button onClick={onProfile} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
           <UserIcon size={14} />
-          Profile settings
+          My Hive Profile
         </button>
         <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-all">
           <LogOut size={14} />
@@ -263,6 +268,7 @@ export default function Layout({ children, headerActions = null }) {
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
+  const canUseContentRepository = isSuperAdmin || user?.access?.canUseContentRepository !== false;
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
   const unreadCount = notifications.unreadKeys.length;
@@ -320,15 +326,19 @@ export default function Layout({ children, headerActions = null }) {
     try {
       const requests = [
         api.get('/articles/dashboard', { params: { limit: 8, sharedOnly: true } }),
-        api.get('/articles/dashboard', { params: { limit: 8, personalOnly: true } }),
-        api.get('/blogs', { params: { status: 'published', limit: 8 } })
+        api.get('/articles/dashboard', { params: { limit: 8, personalOnly: true } })
       ];
+
+      if (canUseContentRepository) {
+        requests.push(api.get('/blogs', { params: { status: 'published', limit: 8 } }));
+      }
 
       if (canUseBlogStudio) {
         requests.push(api.get('/blogs/social-posts', { params: { platform: 'linkedin', limit: 8 } }));
       }
 
-      const [sharedArticlesResponse, personalArticlesResponse, blogsResponse, socialResponse] = await Promise.all(requests);
+      const responses = await Promise.all(requests);
+      const [sharedArticlesResponse, personalArticlesResponse, blogsResponse, socialResponse] = responses;
       const sharedArticleBuckets = sharedArticlesResponse?.data || {};
       const personalArticleBuckets = personalArticlesResponse?.data || {};
       const articles = [
@@ -381,7 +391,7 @@ export default function Layout({ children, headerActions = null }) {
     } catch {
       // Skip notification updates on transient API failures.
     }
-  }, [canUseBlogStudio, isSuperAdmin, saveNotifications, user?._id]);
+  }, [canUseBlogStudio, canUseContentRepository, isSuperAdmin, saveNotifications, user?._id]);
 
   useEffect(() => {
     setNotifications(readNotificationState(user?._id));
@@ -471,11 +481,11 @@ export default function Layout({ children, headerActions = null }) {
     const path = location.pathname;
     if (isSuperAdmin) return 'Owner Console';
     if (path.startsWith('/admin')) return 'Admin Panel';
-    if (path.startsWith('/profile')) return 'Profile Settings';
-    if (path.startsWith('/social-media-studio') || path.startsWith('/content-studio') || path.startsWith('/blog-studio')) return 'Social Media Studio';
-    if (path.startsWith('/blogs')) return 'Social Media Posts';
+    if (path.startsWith('/profile')) return 'My Hive Profile';
+    if (path.startsWith('/social-media-studio') || path.startsWith('/content-studio') || path.startsWith('/blog-studio')) return 'Content Studio';
+    if (path.startsWith('/blogs')) return 'Content Repository';
     if (path.startsWith('/intel-desk')) return 'Intel Desk';
-    return 'Dashboard';
+    return 'Daily Intelligence Briefing';
   };
 
   const initials = user?.name 
@@ -655,30 +665,32 @@ export default function Layout({ children, headerActions = null }) {
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <Newspaper size={16} />
               </button>
-              <button onClick={() => navigate('/blogs')} title="Social Media Posts"
-                className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
-                <BookOpenText size={16} />
-              </button>
+              {canUseContentRepository && (
+                <button onClick={() => navigate('/blogs')} title="Content Repository"
+                  className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  <BookOpenText size={16} />
+                </button>
+              )}
               {canUseBlogStudio && (
-                <button onClick={() => navigate('/social-media-studio')} title="Social Media Studio"
+                <button onClick={() => navigate('/social-media-studio')} title="Content Studio Beta"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
-              <button onClick={() => navigate('/profile')} title="Profile"
+              <button onClick={() => navigate('/profile')} title="My Hive Profile"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
             </>
           ) : (
             <>
-              <SideNavItem icon={LayoutDashboard} label="Dashboard" to="/dashboard" />
+              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" />
               <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" />
-              <SideNavItem icon={BookOpenText} label="Social Media Posts" to="/blogs" />
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Social Media Studio" to="/social-media-studio" />
+                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" />
               )}
-              <SideNavItem icon={UserIcon} label="Profile" to="/profile" />
+              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" />
             </>
           )}
           </>
@@ -813,10 +825,19 @@ export default function Layout({ children, headerActions = null }) {
           <Newspaper size={16} />
           Intel
         </button>
-        <button onClick={() => navigate('/blogs')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/blogs') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <BookOpenText size={16} />
-          Posts
-        </button>
+        {canUseContentRepository ? (
+          <button onClick={() => navigate('/blogs')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/blogs') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+            <BookOpenText size={16} />
+            Posts
+          </button>
+        ) : canUseBlogStudio ? (
+          <button onClick={() => navigate('/social-media-studio')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${(location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio')) ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+            <BookOpenText size={16} />
+            Studio
+          </button>
+        ) : (
+          <div className="rounded-lg py-2" />
+        )}
         <button onClick={() => navigate('/profile')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/profile') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
           <UserIcon size={16} />
           Profile

@@ -29,6 +29,19 @@ function requireBlogAdmin(req, res, next) {
   next();
 }
 
+function hasContentRepositoryAccess(user) {
+  if (user?.role === 'super_admin') return true;
+  if (ADMIN_ROLES.includes(user?.role)) return user?.access?.canUseContentRepository !== false;
+  return user?.access?.canUseContentRepository === true;
+}
+
+function requireContentRepository(req, res, next) {
+  if (!hasContentRepositoryAccess(req.user)) {
+    return res.status(403).json({ message: 'Content Repository access is disabled for this account.' });
+  }
+  next();
+}
+
 function hasBlogStudioAccess(user) {
   if (user?.role === 'super_admin') return true;
   if (ADMIN_ROLES.includes(user?.role)) return user?.access?.canUseBlogStudio !== false;
@@ -259,7 +272,7 @@ const bulkDeleteSchema = Joi.object({
   ids: Joi.array().items(Joi.string().required()).min(1).max(100).required()
 });
 
-router.get('/', protect, asyncHandler(async (req, res) => {
+router.get('/', protect, requireContentRepository, asyncHandler(async (req, res) => {
   const q = tenantQuery(req.user);
   if (!isBlogAdmin(req.user)) {
     q.status = 'published';
@@ -441,7 +454,7 @@ router.delete('/social-posts/:id', protect, requireBlogAdmin, asyncHandler(async
   res.json({ message: 'Deleted', id: req.params.id });
 }));
 
-router.get('/:id', protect, asyncHandler(async (req, res) => {
+router.get('/:id', protect, requireContentRepository, asyncHandler(async (req, res) => {
   const item = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) }).lean();
   if (!item) return res.status(404).json({ message: 'Blog not found' });
   if (!isBlogAdmin(req.user) && item.status !== 'published') {

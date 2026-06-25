@@ -39,8 +39,8 @@ const canAccessFetchControls = (user) => {
 };
 
 const PROFILE_TABS = [
-  { key: 'profile', label: 'Profile & Security' },
-  { key: 'fetch', label: 'Intelligence Fetch' }
+  { key: 'profile', label: 'My Hive Profile' },
+  { key: 'fetch', label: 'My Personalisation' }
 ];
 
 export default function Profile() {
@@ -308,7 +308,7 @@ export default function Profile() {
                   <RefreshCw size={12} />
                   Fetch controls
                 </div>
-                <h2 className="text-xl font-black tracking-tight text-gray-900">Intelligence Fetch</h2>
+                <h2 className="text-xl font-black tracking-tight text-gray-900">My Personalisation</h2>
                 <p className="mt-1 text-sm font-medium text-gray-500">
                   Manage your fetch settings, scheduling, and latest run status from your profile.
                 </p>

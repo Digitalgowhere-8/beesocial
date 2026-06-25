@@ -18,7 +18,7 @@ const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 const FEED_COLUMNS = [
   { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
   { key: 'news', label: 'News Articles', icon: Newspaper, dot: 'bg-rose-500', color: '#e11d48', tint: 'rgba(225,29,72,0.08)' },
-  { key: 'evergreen', label: 'Evergreen Guides', icon: BookOpen, dot: 'bg-violet-500', color: '#8b5cf6', tint: 'rgba(139,92,246,0.08)' },
+  { key: 'evergreen', label: 'Evergreen Topics', icon: BookOpen, dot: 'bg-violet-500', color: '#8b5cf6', tint: 'rgba(139,92,246,0.08)' },
   { key: 'competitor', label: 'Competitor Intel', icon: Building2, dot: 'bg-amber-500', color: '#f59e0b', tint: 'rgba(245,158,11,0.08)' },
 ];
 
@@ -378,8 +378,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       {isIntelDesk && (
         <div className="grid grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
           {[
-            { key: 'intel', label: 'My Intelligence', icon: Sparkles },
-            { key: 'tailored', label: 'Tailored Feed', icon: Newspaper },
+            { key: 'intel', label: 'Intelligence Library', icon: Sparkles },
+            { key: 'tailored', label: 'Personalized Feed', icon: Newspaper },
             { key: 'saved', label: 'Saved Briefs', icon: Bookmark },
           ].map((item) => {
             const Icon = item.icon;
@@ -406,7 +406,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           <div className="inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
             {[
               { key: 'today', label: 'Today' },
-              ...(isAdmin ? [{ key: 'all', label: 'All Data' }] : []),
+              ...(isAdmin ? [{ key: 'all', label: 'Full Hive' }] : []),
             ].map((mode) => (
               <button
                 key={mode.key}
@@ -424,7 +424,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </div>
           <div className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
             <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72]" />
-            {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Signals' : 'No Signals'}
+            {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}
           </div>
         </>
       )}
