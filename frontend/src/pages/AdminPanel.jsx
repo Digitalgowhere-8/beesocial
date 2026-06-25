@@ -7,7 +7,7 @@ import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
 import {
-  Play, Eye, Trash2, RefreshCw, Activity,
+  Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
   Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles,
   MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
@@ -2382,6 +2382,7 @@ function UsersTab({ dbPlans }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -2544,6 +2545,7 @@ function UsersTab({ dbPlans }) {
           socialPostsMonthly: 20
         }
       });
+      setShowPassword(false);
       load();
     } catch (e) {
       setErr(e.message || 'User creation failed');
@@ -2688,7 +2690,26 @@ function UsersTab({ dbPlans }) {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
           <input className="input min-h-[44px] rounded-xl" required placeholder="Full name" value={form.name} onChange={(e) => updateForm('name', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" type="email" required placeholder="Email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
-          <input className="input min-h-[44px] rounded-xl" type="password" required minLength={6} placeholder="Password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
+          <div className="relative">
+            <input
+              className="input min-h-[44px] rounded-xl pr-11"
+              type={showPassword ? 'text' : 'password'}
+              required
+              minLength={6}
+              placeholder="Password"
+              value={form.password}
+              onChange={(e) => updateForm('password', e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((value) => !value)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-brand-crimson"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              title={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           <input className="input min-h-[44px] rounded-xl" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
           <div className="flex gap-2">

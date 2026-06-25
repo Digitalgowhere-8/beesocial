@@ -373,39 +373,15 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
     relevanceReason: article.relevanceReason || ''
   };
 
-  const saved = await SocialPost.create({
-    tenantAdminId: tenantAdminId(req.user),
-    createdBy: req.user._id,
-    sourceArticleId: article._id,
-    platform: 'linkedin',
-    status: 'draft',
-    selectedTopic: generated.selectedTopic || article.title || '',
-    postText: generated.postText,
-    hashtags: generated.hashtags || [],
-    framework: generated.framework || '',
-    topicTier: generated.topicTier || '',
-    emotionalJob: generated.emotionalJob || '',
-    sourceSnapshot,
-    options: value.options
-  });
-
-  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
-    scope: 'social',
-    action: 'generated',
-    id: String(saved._id)
-  });
-
   res.status(201).json({
     item: {
       ...generated,
-      _id: saved._id,
-      status: saved.status,
-      platform: saved.platform,
-      saved: true,
+      sourceArticleId: article._id,
+      status: 'draft',
+      platform: 'linkedin',
+      saved: false,
       sourceSnapshot,
-      options: value.options,
-      createdAt: saved.createdAt,
-      updatedAt: saved.updatedAt
+      options: value.options
     }
   });
 }));
@@ -436,6 +412,33 @@ router.post('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req,
     id: String(item._id)
   });
   res.status(201).json({ item });
+}));
+
+router.delete('/social-posts/bulk', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const { error, value } = bulkDeleteSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const ids = value.ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  if (!ids.length) return res.status(400).json({ message: 'No valid social post ids provided' });
+
+  const result = await SocialPost.deleteMany({ _id: { $in: ids }, ...tenantQuery(req.user) });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'deleted',
+    ids: ids.map(String)
+  });
+  res.json({ message: 'Deleted', deletedCount: result.deletedCount || 0, ids });
+}));
+
+router.delete('/social-posts/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const item = await SocialPost.findOneAndDelete({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!item) return res.status(404).json({ message: 'Social post not found' });
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'deleted',
+    id: String(item._id)
+  });
+  res.json({ message: 'Deleted', id: req.params.id });
 }));
 
 router.get('/:id', protect, asyncHandler(async (req, res) => {

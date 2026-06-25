@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
-import { BookOpenText, Check, ChevronDown, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Trash2, Square, CheckSquare } from 'lucide-react';
+import { BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -89,6 +89,27 @@ const DEFAULT_STYLE = {
   includeStats: true
 };
 
+const DEFAULT_LINKEDIN_FORM = {
+  postGoal: 'thought_leadership',
+  tone: 'professional',
+  audience: 'business decision-makers',
+  length: 'medium',
+  hookStyle: 'proof',
+  framework: 'auto',
+  topicTier: 'auto',
+  emotionalJob: 'auto',
+  personaProfile: 'founder/operator/advisor',
+  icpPainPoints: '',
+  marketReality: '',
+  proofElement: '',
+  authorityLine: '',
+  takeaway: '',
+  includeHashtags: true,
+  includeCTA: true,
+  cta: 'Follow us for more market intelligence.',
+  customInstructions: ''
+};
+
 export default function BlogStudio() {
   const { user, refreshMe } = useAuth();
   const location = useLocation();
@@ -134,35 +155,19 @@ export default function BlogStudio() {
   const [loadingSocialPosts, setLoadingSocialPosts] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
+  const [savingLinkedinPost, setSavingLinkedinPost] = useState(false);
   const [deletingBlogs, setDeletingBlogs] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftForm, setDraftForm] = useState({ title: '', excerpt: '', bodyMarkdown: '' });
   const [draftEditorOpen, setDraftEditorOpen] = useState(false);
+  const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [selectedBlogIds, setSelectedBlogIds] = useState([]);
   const [error, setError] = useState('');
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
-  const [linkedinForm, setLinkedinForm] = useState({
-    postGoal: 'thought_leadership',
-    tone: 'professional',
-    audience: 'business decision-makers',
-    length: 'medium',
-    hookStyle: 'proof',
-    framework: 'auto',
-    topicTier: 'auto',
-    emotionalJob: 'auto',
-    personaProfile: 'founder/operator/advisor',
-    icpPainPoints: '',
-    marketReality: '',
-    proofElement: '',
-    authorityLine: '',
-    takeaway: '',
-    includeHashtags: true,
-    includeCTA: true,
-    cta: 'Follow us for more market intelligence.',
-    customInstructions: ''
-  });
+  const [pendingDraftId, setPendingDraftId] = useState('');
+  const [linkedinForm, setLinkedinForm] = useState(DEFAULT_LINKEDIN_FORM);
   const [linkedinOutput, setLinkedinOutput] = useState(null);
   const selectedArticleRef = useRef(selectedArticle);
 
@@ -291,6 +296,44 @@ export default function BlogStudio() {
     });
   }, [selectedBlog]);
 
+  const deleteBlogsInternal = useCallback(async (ids) => {
+    const targetIds = ids.filter(Boolean);
+    if (!targetIds.length) return;
+
+    if (targetIds.length === 1) {
+      await api.delete(`/blogs/${targetIds[0]}`);
+    } else {
+      await api.delete('/blogs/bulk', { data: { ids: targetIds } });
+    }
+
+    setSelectedBlogIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+    if (targetIds.includes(selectedBlog?._id)) {
+      setSelectedBlog(null);
+      setDraftEditorOpen(false);
+    }
+    if (targetIds.includes(pendingDraftId)) {
+      setPendingDraftId('');
+    }
+    await loadBlogs();
+    emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
+  }, [loadBlogs, pendingDraftId, selectedBlog?._id]);
+
+  const closeDraftDrawer = useCallback(async () => {
+    const draftId = pendingDraftId;
+    const shouldDeletePendingDraft = draftId && selectedBlog?._id === draftId && selectedBlog?.status === 'draft';
+
+    setDraftDrawerOpen(false);
+    setDraftEditorOpen(false);
+
+    if (!shouldDeletePendingDraft) return;
+
+    try {
+      await deleteBlogsInternal([draftId]);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not clear temporary draft');
+    }
+  }, [deleteBlogsInternal, pendingDraftId, selectedBlog?._id, selectedBlog?.status]);
+
   const generate = async () => {
     if (!selectedArticle?._id) {
       setError('Select or drag a topic first.');
@@ -306,6 +349,9 @@ export default function BlogStudio() {
         status: 'draft'
       });
       setSelectedBlog(data.item);
+      setPendingDraftId(data.item?._id || '');
+      setDraftDrawerOpen(true);
+      setDraftEditorOpen(true);
       await loadBlogs();
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
@@ -321,6 +367,7 @@ export default function BlogStudio() {
     try {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
       setSelectedBlog(data.item);
+      setPendingDraftId('');
       await loadBlogs();
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'status', id: data.item?._id || '' });
     } catch (err) {
@@ -337,6 +384,7 @@ export default function BlogStudio() {
     try {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
       setSelectedBlog(data.item);
+      setPendingDraftId('');
       await loadBlogs();
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
@@ -352,9 +400,13 @@ export default function BlogStudio() {
     ));
   };
 
-  const clearBlogSelection = () => setSelectedBlogIds([]);
+  const toggleSelectAllBlogs = useCallback(() => {
+    setSelectedBlogIds((prev) => (
+      prev.length === blogs.length ? [] : blogs.map((blog) => blog._id).filter(Boolean)
+    ));
+  }, [blogs]);
 
-  const deleteBlogs = async (ids) => {
+  const deleteBlogs = useCallback(async (ids) => {
     const targetIds = ids.filter(Boolean);
     if (!targetIds.length) return;
     const confirmed = window.confirm(targetIds.length === 1 ? 'Delete this post?' : `Delete ${targetIds.length} posts?`);
@@ -363,24 +415,13 @@ export default function BlogStudio() {
     setDeletingBlogs(true);
     setError('');
     try {
-      if (targetIds.length === 1) {
-        await api.delete(`/blogs/${targetIds[0]}`);
-      } else {
-        await api.delete('/blogs/bulk', { data: { ids: targetIds } });
-      }
-      setSelectedBlogIds((prev) => prev.filter((id) => !targetIds.includes(id)));
-      if (targetIds.includes(selectedBlog?._id)) {
-        setSelectedBlog(null);
-        setDraftEditorOpen(false);
-      }
-      await loadBlogs();
-      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
+      await deleteBlogsInternal(targetIds);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Delete failed');
     } finally {
       setDeletingBlogs(false);
     }
-  };
+  }, [deleteBlogsInternal]);
 
   const generateLinkedinPost = async () => {
     try {
@@ -406,14 +447,65 @@ export default function BlogStudio() {
         options: linkedinForm
       });
       setLinkedinOutput(data.item);
-      await loadSocialPosts();
-      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
     } finally {
       setGeneratingLinkedin(false);
     }
   };
+
+  const saveLinkedinPost = async () => {
+    if (!linkedinOutput?.postText) return;
+    setSavingLinkedinPost(true);
+    setError('');
+    try {
+      const payload = {
+        sourceArticleId: linkedinOutput.sourceArticleId || selectedArticle?._id || '',
+        platform: 'linkedin',
+        status: 'draft',
+        selectedTopic: linkedinOutput.selectedTopic || selectedArticle?.title || '',
+        postText: linkedinOutput.postText,
+        hashtags: Array.isArray(linkedinOutput.hashtags) ? linkedinOutput.hashtags : [],
+        framework: linkedinOutput.framework || '',
+        topicTier: linkedinOutput.topicTier || '',
+        emotionalJob: linkedinOutput.emotionalJob || '',
+        sourceSnapshot: linkedinOutput.sourceSnapshot || {},
+        options: linkedinOutput.options || linkedinForm
+      };
+      const { data } = await api.post('/blogs/social-posts', payload);
+      const savedItem = { ...data.item, saved: true };
+      setLinkedinOutput(savedItem);
+      await loadSocialPosts();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'created', id: savedItem?._id || '' });
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not save social post');
+    } finally {
+      setSavingLinkedinPost(false);
+    }
+  };
+
+  const resetStudioComposer = useCallback(() => {
+    setSelectedArticle(null);
+    setSelectedBlog(null);
+    setSelectedBlogIds([]);
+    setDraftForm({ title: '', excerpt: '', bodyMarkdown: '' });
+    setDraftEditorOpen(false);
+    setDraftDrawerOpen(false);
+    setPendingDraftId('');
+    setKeywords('');
+    setStyle(DEFAULT_STYLE);
+    setLinkedinForm(DEFAULT_LINKEDIN_FORM);
+    setLinkedinOutput(null);
+    setBlogQuery('');
+    setError('');
+  }, []);
+
+  const refreshStudio = useCallback(() => {
+    resetStudioComposer();
+    loadArticles();
+    loadBlogs();
+    loadSocialPosts();
+  }, [loadArticles, loadBlogs, loadSocialPosts, resetStudioComposer]);
 
   const headerActions = (
     <div className="flex items-center gap-2">
@@ -435,7 +527,7 @@ export default function BlogStudio() {
           Social Media Post
         </button>
       </div>
-      <button type="button" onClick={() => { loadArticles(); loadBlogs(); loadSocialPosts(); }} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+      <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
         <RefreshCw size={14} />
         Refresh
       </button>
@@ -471,9 +563,11 @@ export default function BlogStudio() {
                 setLinkedinForm={setLinkedinForm}
                 generatingLinkedin={generatingLinkedin}
                 generateLinkedinPost={generateLinkedinPost}
+                saveLinkedinPost={saveLinkedinPost}
                 canUseBlogStudio={canUseBlogStudio}
                 linkedinOutput={linkedinOutput}
                 setLinkedinOutput={setLinkedinOutput}
+                savingLinkedinPost={savingLinkedinPost}
                 socialPosts={socialPosts}
                 loadingSocialPosts={loadingSocialPosts}
               />
@@ -482,10 +576,11 @@ export default function BlogStudio() {
         )}
 
         {contentType === 'blog' && (
-        <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-2 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,340px)_minmax(420px,1fr)_minmax(560px,640px)]">
+        <>
+        <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-2 xl:grid-cols-2">
           
           {/* Panel 1: Topics */}
-          <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel lg:h-[calc(100vh-96px)]">
+          <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel xl:h-[calc(100vh-96px)]">
             <PanelHeader icon={Layers} title="Intelligence Topics" />
             <TopicFilterBar
               filters={topicFilters}
@@ -496,46 +591,65 @@ export default function BlogStudio() {
               types={topicMeta.types || EMPTY_META.types}
             />
             
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/30 p-3 custom-scrollbar">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-3 custom-scrollbar">
               {loadingArticles ? (
                 <LoadingRows label="Loading intelligence topics..." />
-              ) : articles.length ? articles.map((item) => {
-                const isSelected = selectedArticle?._id === item._id;
-                return (
-                  <div
-                    key={item._id}
-                    role="button"
-                    tabIndex={0}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData('text/plain', item._id);
-                      setDraggingArticleId(item._id);
-                    }}
-                    onDragEnd={() => setDraggingArticleId('')}
-                    onClick={() => setSelectedArticle(item)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
-                    }}
-                    className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'opacity-50 scale-95' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
-                  >
-                    <ArticleCard item={item} compact selected={isSelected} />
-                    <div className={`mt-0 flex items-center justify-between rounded-b-xl px-3 py-2 text-xs font-black transition-colors ${isSelected ? 'bg-brand-crimson text-white' : 'bg-white text-gray-500 border-x border-b border-gray-100 group-hover/panel:border-gray-200'}`}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        {isSelected ? <Check size={14} /> : <GripVertical size={14} className="text-gray-400" />}
-                        <span className="truncate">{isSelected ? 'Selected for Generation' : 'Drag or Click to Select'}</span>
-                      </span>
-                      {isSelected ? <Sparkles size={14} /> : <MousePointer2 size={14} className="opacity-50" />}
-                    </div>
-                  </div>
-                );
-              }) : (
+              ) : articles.length ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {articles.map((item) => {
+                    const isSelected = selectedArticle?._id === item._id;
+                    return (
+                      <div
+                        key={item._id}
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData('text/plain', item._id);
+                          setDraggingArticleId(item._id);
+                        }}
+                        onDragEnd={() => setDraggingArticleId('')}
+                        onClick={() => setSelectedArticle(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
+                        }}
+                        className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'opacity-50 scale-95' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+                      >
+                        <ArticleCard item={item} compact selected={isSelected} />
+                        <div className={`relative mt-0 flex items-center justify-between rounded-b-xl border-x border-b px-3 py-3 text-xs transition-all ${isSelected ? 'border-brand-crimson bg-brand-crimson text-white' : 'border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(253,242,246,0.96)_100%)] text-gray-600 group-hover/panel:border-brand-crimson/25'}`}>
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_8px_18px_rgba(209,18,67,0.10)]'}`}>
+                              {isSelected ? <Check size={13} /> : <MousePointer2 size={13} />}
+                            </span>
+                            <div className="min-w-0">
+                              <div className={`truncate text-[11px] font-black tracking-[0.16em] uppercase ${isSelected ? 'text-white' : 'text-brand-crimson'}`}>
+                                {isSelected ? 'Ready to Generate' : 'Select Topic'}
+                              </div>
+                              <div className={`truncate text-[11px] font-medium ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                                {isSelected ? 'Topic selected for blog generation' : 'Click once or drag this card into the generator'}
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected ? (
+                            <Sparkles size={14} className="shrink-0" />
+                          ) : (
+                            <div className="shrink-0 rounded-full border border-brand-crimson/10 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-sm">
+                              Select
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
                 <Empty icon={FileText} label="No topics found matching criteria" />
               )}
             </div>
           </section>
 
           {/* Panel 2: Studio Generator */}
-          <section className="relative z-10 flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+          <section className="relative z-10 flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]">
             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
             <PanelHeader icon={Settings2} title="Style & Generation Settings" />
             
@@ -685,189 +799,257 @@ export default function BlogStudio() {
             </div>
             
             <div className="border-t border-gray-200/50 bg-white/70 p-4 backdrop-blur">
-              <button 
-                type="button" 
-                onClick={generate} 
-                disabled={generating || !selectedArticle} 
-                className="btn-primary w-full py-3 text-base rounded-xl font-black tracking-wide shadow-lg hover:shadow-brand-crimson/20 transition-all hover-lift disabled:hover:translate-y-0 relative overflow-hidden group"
-              >
-                {generating ? (
-                  <>
-                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                    <Loader2 size={18} className="animate-spin relative z-10" />
-                    <span className="relative z-10">Generating Content...</span>
-                  </>
-                ) : (
-                  <>
-                    <PenLine size={18} />
-                    Generate Blog Draft
-                  </>
-                )}
-              </button>
-            </div>
-          </section>
-
-          {/* Panel 3: Drafts Editor */}
-          <section className="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-2 lg:h-[calc(100vh-96px)] 2xl:col-span-1">
-            <PanelHeader icon={BookOpenText} title="Drafts & Publishing" />
-            
-            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
-              <aside className="flex min-h-[260px] flex-col border-b border-gray-100 bg-gray-50/60 md:min-h-0 md:border-b-0 md:border-r">
-                <div className="border-b border-gray-100 bg-white p-3">
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson" value={blogQuery} onChange={(e) => setBlogQuery(e.target.value)} placeholder="Search drafts..." />
-                  </div>
-                  {selectedBlogIds.length ? (
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2">
-                      <span className="text-xs font-black text-brand-crimson">{selectedBlogIds.length} selected</span>
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={clearBlogSelection} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
-                          Clear
-                        </button>
-                        <button type="button" onClick={() => deleteBlogs(selectedBlogIds)} disabled={deletingBlogs} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
-                          {deletingBlogs ? 'Deleting...' : 'Delete'}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
-                  {loadingBlogs ? (
-                    <LoadingRows label="Loading drafts..." />
-                  ) : blogs.length ? blogs.map((blog) => {
-                    const selectedForBulk = selectedBlogIds.includes(blog._id);
-                    const active = selectedBlog?._id === blog._id;
-                    return (
-                      <div
-                        key={blog._id}
-                        className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleBlogSelection(blog._id)}
-                            className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
-                            title={selectedForBulk ? 'Unselect' : 'Select'}
-                          >
-                            {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedBlog(blog);
-                              setDraftEditorOpen(false);
-                            }}
-                            onDoubleClick={() => {
-                              setSelectedBlog(blog);
-                              setDraftEditorOpen(true);
-                            }}
-                            className="min-w-0 flex-1 text-left"
-                          >
-                            <div className="mb-2 flex items-start justify-between gap-2">
-                              <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
-                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                                blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
-                                blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                                'bg-gray-50 text-gray-500 border-gray-200'
-                              }`}>
-                                {blog.status}
-                              </span>
-                            </div>
-                            <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteBlogs([blog._id])}
-                            disabled={deletingBlogs}
-                            className="mt-0.5 rounded-lg border border-transparent p-1.5 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete post"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }) : (
-                    <Empty icon={BookOpenText} label="No drafts generated yet" />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <button 
+                  type="button" 
+                  onClick={generate} 
+                  disabled={generating || !selectedArticle} 
+                  className="btn-primary w-full py-3 text-base rounded-xl font-black tracking-wide shadow-lg hover:shadow-brand-crimson/20 transition-all hover-lift disabled:hover:translate-y-0 relative overflow-hidden group"
+                >
+                  {generating ? (
+                    <>
+                      <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                      <Loader2 size={18} className="animate-spin relative z-10" />
+                      <span className="relative z-10">Generating Content...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PenLine size={18} />
+                      Generate Blog Draft
+                    </>
                   )}
-                </div>
-              </aside>
-
-              <div className="min-h-[560px] overflow-y-auto bg-white p-4 custom-scrollbar md:min-h-0">
-                {selectedBlog && draftEditorOpen ? (
-                  <div className="animate-fade-in-up stagger-1">
-                    <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
-                            selectedBlog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
-                            selectedBlog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                            'bg-gray-50 text-gray-500 border-gray-200'
-                          }`}>
-                            {selectedBlog.status}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        <StatusButton status="review" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
-                        <StatusButton status="published" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
-                        <button
-                          type="button"
-                          onClick={() => deleteBlogs([selectedBlog._id])}
-                          disabled={deletingBlogs}
-                          className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] font-black text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
-                        >
-                          {deletingBlogs ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 gap-4">
-                      <Field label="Post Title">
-                        <input className="input min-h-[42px] rounded-xl font-bold transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.title} onChange={(e) => setDraftForm({ ...draftForm, title: e.target.value })} />
-                      </Field>
-                      <Field label="Short Excerpt">
-                        <textarea className="input min-h-[92px] resize-y rounded-xl text-sm transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.excerpt} onChange={(e) => setDraftForm({ ...draftForm, excerpt: e.target.value })} />
-                      </Field>
-                      <Field label="Markdown Content">
-                        <textarea className="input min-h-[360px] resize-y rounded-xl bg-gray-50 font-mono text-xs leading-relaxed transition-colors hover:border-gray-300 focus:bg-white focus:border-brand-crimson custom-scrollbar md:min-h-[430px]" value={draftForm.bodyMarkdown} onChange={(e) => setDraftForm({ ...draftForm, bodyMarkdown: e.target.value })} />
-                      </Field>
-                      <button type="button" onClick={saveDraftEdits} disabled={savingDraft} className="btn-secondary w-full rounded-xl bg-white py-3 font-black">
-                        {savingDraft ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                        Save Edits
-                      </button>
-                    </div>
-                  </div>
-                ) : selectedBlog ? (
-                  <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
-                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
-                      <BookOpenText size={18} />
-                    </div>
-                    <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
-                    <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
-                      Double-click this draft in the list to open edit mode.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setDraftEditorOpen(true)}
-                      className="mt-4 rounded-xl bg-brand-crimson px-4 py-2 text-xs font-black text-white shadow-sm transition-all hover:bg-brand-hoverred"
-                    >
-                      Open Editor
-                    </button>
-                  </div>
-                ) : (
-                  <Empty icon={Settings2} label="Double-click a draft to open" />
-                )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraftDrawerOpen(true)}
+                  className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                >
+                  <BookOpenText size={16} />
+                  Drafts & Publishing
+                </button>
+              </div>
+              <div className="mt-3 text-xs font-semibold text-gray-500">
+                After generation, the draft will open in the right-side drawer. If you close it without saving or publishing, the temporary draft will be removed.
               </div>
             </div>
           </section>
         </div>
+        <BlogDraftDrawer
+          open={draftDrawerOpen}
+          onClose={closeDraftDrawer}
+          blogQuery={blogQuery}
+          setBlogQuery={setBlogQuery}
+          selectedBlogIds={selectedBlogIds}
+          toggleSelectAllBlogs={toggleSelectAllBlogs}
+          deleteBlogs={deleteBlogs}
+          deletingBlogs={deletingBlogs}
+          loadingBlogs={loadingBlogs}
+          blogs={blogs}
+          selectedBlog={selectedBlog}
+          setSelectedBlog={setSelectedBlog}
+          toggleBlogSelection={toggleBlogSelection}
+          draftEditorOpen={draftEditorOpen}
+          setDraftEditorOpen={setDraftEditorOpen}
+          savingStatus={savingStatus}
+          updateBlogStatus={updateBlogStatus}
+          draftForm={draftForm}
+          setDraftForm={setDraftForm}
+          saveDraftEdits={saveDraftEdits}
+          savingDraft={savingDraft}
+        />
+        </>
         )}
       </div>
     </Layout>
+  );
+}
+
+function BlogDraftDrawer({
+  open,
+  onClose,
+  blogQuery,
+  setBlogQuery,
+  selectedBlogIds,
+  toggleSelectAllBlogs,
+  deleteBlogs,
+  deletingBlogs,
+  loadingBlogs,
+  blogs,
+  selectedBlog,
+  setSelectedBlog,
+  toggleBlogSelection,
+  draftEditorOpen,
+  setDraftEditorOpen,
+  savingStatus,
+  updateBlogStatus,
+  draftForm,
+  setDraftForm,
+  saveDraftEdits,
+  savingDraft
+}) {
+  const allBlogsSelected = blogs.length > 0 && selectedBlogIds.length === blogs.length;
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-40 bg-gray-950/30 backdrop-blur-[2px] transition-opacity duration-300 ${open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
+      />
+      <aside
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[760px] border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+            <div className="min-w-0">
+              <div className="text-base font-black text-gray-900">Drafts & Publishing</div>
+              <div className="text-xs font-semibold text-gray-500">Review, edit, and publish your generated drafts from here.</div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+            <aside className="flex min-h-[260px] flex-col border-b border-gray-100 bg-gray-50/60 lg:min-h-0 lg:border-b-0 lg:border-r">
+              <div className="border-b border-gray-100 bg-white p-3">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson" value={blogQuery} onChange={(e) => setBlogQuery(e.target.value)} placeholder="Search drafts..." />
+                </div>
+                {selectedBlogIds.length ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2">
+                    <span className="text-xs font-black text-brand-crimson">{selectedBlogIds.length} selected</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+                        {allBlogsSelected ? 'Unselect All' : 'Select All'}
+                      </button>
+                      <button type="button" onClick={() => deleteBlogs(selectedBlogIds)} disabled={deletingBlogs} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+                        {deletingBlogs ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
+                {loadingBlogs ? (
+                  <LoadingRows label="Loading drafts..." />
+                ) : blogs.length ? blogs.map((blog) => {
+                  const selectedForBulk = selectedBlogIds.includes(blog._id);
+                  const active = selectedBlog?._id === blog._id;
+                  return (
+                    <div
+                      key={blog._id}
+                      className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleBlogSelection(blog._id)}
+                          className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                          title={selectedForBulk ? 'Unselect' : 'Select'}
+                        >
+                          {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBlog(blog);
+                            setDraftEditorOpen(false);
+                          }}
+                          onDoubleClick={() => {
+                            setSelectedBlog(blog);
+                            setDraftEditorOpen(true);
+                          }}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                              blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                              blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                              'bg-gray-50 text-gray-500 border-gray-200'
+                            }`}>
+                              {blog.status}
+                            </span>
+                          </div>
+                          <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <Empty icon={BookOpenText} label="No drafts generated yet" />
+                )}
+              </div>
+            </aside>
+
+            <div className="min-h-[560px] overflow-y-auto bg-white p-4 custom-scrollbar lg:min-h-0">
+              {selectedBlog && draftEditorOpen ? (
+                <div className="animate-fade-in-up stagger-1">
+                  <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
+                          selectedBlog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                          selectedBlog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                          'bg-gray-50 text-gray-500 border-gray-200'
+                        }`}>
+                          {selectedBlog.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <StatusButton status="review" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
+                      <StatusButton status="published" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <Field label="Post Title">
+                      <input className="input min-h-[42px] rounded-xl font-bold transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.title} onChange={(e) => setDraftForm({ ...draftForm, title: e.target.value })} />
+                    </Field>
+                    <Field label="Short Excerpt">
+                      <textarea className="input min-h-[92px] resize-y rounded-xl text-sm transition-colors hover:border-gray-300 focus:border-brand-crimson" value={draftForm.excerpt} onChange={(e) => setDraftForm({ ...draftForm, excerpt: e.target.value })} />
+                    </Field>
+                    <Field label="Markdown Content">
+                      <textarea className="input min-h-[360px] resize-y rounded-xl bg-gray-50 font-mono text-xs leading-relaxed transition-colors hover:border-gray-300 focus:bg-white focus:border-brand-crimson custom-scrollbar md:min-h-[430px]" value={draftForm.bodyMarkdown} onChange={(e) => setDraftForm({ ...draftForm, bodyMarkdown: e.target.value })} />
+                    </Field>
+                    <button type="button" onClick={saveDraftEdits} disabled={savingDraft} className="btn-secondary w-full rounded-xl bg-white py-3 font-black">
+                      {savingDraft ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                      Save Edits
+                    </button>
+                  </div>
+                </div>
+              ) : selectedBlog ? (
+                <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
+                  <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
+                    <BookOpenText size={18} />
+                  </div>
+                  <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
+                  <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
+                    Double-click this draft in the list to open edit mode.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDraftEditorOpen(true)}
+                    className="mt-4 rounded-xl bg-brand-crimson px-4 py-2 text-xs font-black text-white shadow-sm transition-all hover:bg-brand-hoverred"
+                  >
+                    Open Editor
+                  </button>
+                </div>
+              ) : (
+                <Empty icon={Settings2} label="Double-click a draft to open" />
+              )}
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -989,7 +1171,21 @@ function CompactPlatformSelector({ value, onChange }) {
   );
 }
 
-function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, onSelectSaved, onClear }) {
+function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, onSelectSaved, onSave, saving = false }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyOutput = useCallback(async () => {
+    if (!output?.postText) return;
+    const hashtags = Array.isArray(output.hashtags) && output.hashtags.length ? `\n\n${output.hashtags.join(' ')}` : '';
+    try {
+      await navigator.clipboard.writeText(`${output.postText}${hashtags}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }, [output]);
+
   if (!output) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/50 p-4 custom-scrollbar">
@@ -1014,13 +1210,29 @@ function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, 
             <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.topicTier || 'Tier'}</span>
             <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.emotionalJob || 'Job'}</span>
           </div>
-          <button
-            type="button"
-            onClick={onClear}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-          >
-            Clear
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {!output.saved ? (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
+              >
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            ) : (
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
+            )}
+            <button
+              type="button"
+              onClick={copyOutput}
+              className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
         </div>
         <div className="mb-3 text-sm font-black leading-snug text-gray-900">{output.selectedTopic}</div>
         <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-inner">
@@ -1039,7 +1251,7 @@ function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, 
           <div className="mt-3 break-words text-sm font-bold leading-relaxed text-brand-crimson">{output.hashtags.join(' ')}</div>
         ) : null}
       </div>
-      <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} activeId={output._id} />
+      <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} activeId={output.saved ? output._id : ''} />
     </div>
   );
 }
@@ -1194,22 +1406,30 @@ function LinkedInStudio({
   setLinkedinForm,
   generatingLinkedin,
   generateLinkedinPost,
+  saveLinkedinPost,
   canUseBlogStudio,
   linkedinOutput,
   setLinkedinOutput,
+  savingLinkedinPost,
   socialPosts,
   loadingSocialPosts
 }) {
   const update = (key, value) => setLinkedinForm({ ...linkedinForm, [key]: value });
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
+  const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
   const selectArticleById = (articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
   };
 
+  useEffect(() => {
+    if (linkedinOutput) setOutputDrawerOpen(true);
+  }, [linkedinOutput]);
+
   return (
-    <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 lg:grid-cols-[minmax(280px,350px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(290px,340px)_minmax(460px,1fr)_minmax(360px,460px)]">
+    <>
+    <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 xl:grid-cols-2">
       <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
         <PanelHeader icon={Layers} title="Intelligence Topics" />
         <TopicFilterBar
@@ -1220,39 +1440,58 @@ function LinkedInStudio({
           countries={countries}
           types={types}
         />
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/30 p-4 custom-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-4 custom-scrollbar">
           {loadingArticles ? (
             <LoadingRows label="Loading intelligence topics..." />
-          ) : articles.length ? articles.map((item) => {
-            const isSelected = selectedArticle?._id === item._id;
-            return (
-              <div
-                key={item._id}
-                role="button"
-                tabIndex={0}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData('text/plain', item._id);
-                  setDraggingArticleId(item._id);
-                }}
-                onDragEnd={() => setDraggingArticleId('')}
-                onClick={() => setSelectedArticle(item)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
-                }}
-                className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-95 opacity-50' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
-              >
-                <ArticleCard item={item} compact selected={isSelected} />
-                <div className={`mt-0 flex items-center justify-between rounded-b-xl px-3 py-2 text-xs font-black transition-colors ${isSelected ? 'bg-brand-crimson text-white' : 'bg-white text-gray-500 border-x border-b border-gray-100'}`}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    {isSelected ? <Check size={14} /> : <GripVertical size={14} className="text-gray-400" />}
-                    <span className="truncate">{isSelected ? 'Selected for Post' : 'Drag or Click to Select'}</span>
-                  </span>
-                  {isSelected ? <Sparkles size={14} /> : <MousePointer2 size={14} className="opacity-50" />}
-                </div>
-              </div>
-            );
-          }) : (
+          ) : articles.length ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {articles.map((item) => {
+                const isSelected = selectedArticle?._id === item._id;
+                return (
+                  <div
+                    key={item._id}
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData('text/plain', item._id);
+                      setDraggingArticleId(item._id);
+                    }}
+                    onDragEnd={() => setDraggingArticleId('')}
+                    onClick={() => setSelectedArticle(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
+                    }}
+                    className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-95 opacity-50' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+                  >
+                    <ArticleCard item={item} compact selected={isSelected} />
+                    <div className={`relative mt-0 flex items-center justify-between rounded-b-xl border-x border-b px-3 py-3 text-xs transition-all ${isSelected ? 'border-brand-crimson bg-brand-crimson text-white' : 'border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(253,242,246,0.96)_100%)] text-gray-600'}`}>
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_8px_18px_rgba(209,18,67,0.10)]'}`}>
+                          {isSelected ? <Check size={13} /> : <MousePointer2 size={13} />}
+                        </span>
+                        <div className="min-w-0">
+                          <div className={`truncate text-[11px] font-black tracking-[0.16em] uppercase ${isSelected ? 'text-white' : 'text-brand-crimson'}`}>
+                            {isSelected ? 'Ready to Generate' : 'Select Topic'}
+                          </div>
+                          <div className={`truncate text-[11px] font-medium ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                            {isSelected ? 'Topic selected for social post' : 'Click once or drag this card into the builder'}
+                          </div>
+                        </div>
+                      </div>
+                      {isSelected ? (
+                        <Sparkles size={14} className="shrink-0" />
+                      ) : (
+                        <div className="shrink-0 rounded-full border border-brand-crimson/10 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-sm">
+                          Select
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
             <Empty icon={FileText} label="No topics found matching criteria" />
           )}
         </div>
@@ -1260,194 +1499,256 @@ function LinkedInStudio({
 
       <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
-        <PanelHeader icon={MessageSquareText} title="Post Builder" subtitle="Customize before generation" />
+        <PanelHeader icon={Settings2} title="Post Builder" subtitle="Customize before generation" />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
-          <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
-
-          <div
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDropActive(true);
-            }}
-            onDragLeave={() => setDropActive(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDropActive(false);
-              selectArticleById(event.dataTransfer.getData('text/plain'));
-            }}
-            className={`mb-4 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/70' : 'border-gray-200 bg-gray-50/70'}`}
-          >
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
-              {selectedArticle ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedArticle(null);
-                    setLinkedinOutput(null);
-                  }}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-            {selectedArticle ? (
-              <>
-                <div className="text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
-                <p className="mt-2 line-clamp-3 border-l-2 border-gray-200 pl-3 text-xs font-medium italic text-gray-500">
-                  {selectedArticle.summary || selectedArticle.aiSummary}
-                </p>
-              </>
-            ) : (
-              <div className="flex min-h-[90px] items-center justify-center rounded-lg bg-white/60 text-center text-sm font-bold text-gray-500">
-                Drag a topic here or click one from the left.
+          <div className="space-y-4">
+            <SettingsGroup title="Platform & Source">
+              <div className="md:col-span-2">
+                <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
               </div>
-            )}
-          </div>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDropActive(true);
+                }}
+                onDragLeave={() => setDropActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDropActive(false);
+                  selectArticleById(event.dataTransfer.getData('text/plain'));
+                }}
+                className={`md:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
+                  {selectedArticle ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedArticle(null);
+                        setLinkedinOutput(null);
+                      }}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                {selectedArticle ? (
+                  <>
+                    <div className="text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
+                    <p className="mt-2 line-clamp-3 border-l-2 border-gray-200 pl-3 text-xs font-medium italic text-gray-500">
+                      {selectedArticle.summary || selectedArticle.aiSummary}
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex min-h-[90px] items-center justify-center rounded-lg bg-white/60 text-center text-sm font-bold text-gray-500">
+                    Drag a topic here or click one from the left.
+                  </div>
+                )}
+              </div>
+            </SettingsGroup>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SelectField
-              label="Post Goal"
-              value={linkedinForm.postGoal}
-              onChange={(value) => update('postGoal', value)}
-              options={[
-                ['thought_leadership', 'Thought Leadership'],
-                ['client_alert', 'Client Alert'],
-                ['market_insight', 'Market Insight'],
-                ['educational', 'Educational'],
-                ['lead_generation', 'Lead Generation']
-              ]}
-            />
-            <SelectField
-              label="Tone"
-              value={linkedinForm.tone}
-              onChange={(value) => update('tone', value)}
-              options={STYLE_OPTIONS.tone}
-            />
-            <SelectField
-              label="Length"
-              value={linkedinForm.length}
-              onChange={(value) => update('length', value)}
-              options={[
-                ['short', 'Short'],
-                ['medium', 'Medium'],
-                ['long', 'Long']
-              ]}
-            />
-            <SelectField
-              label="Hook Style"
-              value={linkedinForm.hookStyle}
-              onChange={(value) => update('hookStyle', value)}
-              options={[
-                ['proof', 'Proof-led'],
-                ['contrarian', 'Contrarian'],
-                ['personal_story', 'Personal story'],
-                ['insight', 'Insight-led'],
-                ['question', 'Question-led'],
-                ['stat', 'Stat-led']
-              ]}
-            />
-            <SelectField
-              label="Framework"
-              value={linkedinForm.framework}
-              onChange={(value) => update('framework', value)}
-              options={[
-                ['auto', 'Auto select'],
-                ['SLAY', 'SLAY - story-led authority'],
-                ['PAS', 'PAS - pain-driven inbound'],
-                ['POV', 'POV - high reach'],
-                ['5-Line Mirror', '5-Line Mirror'],
-                ['AIDA', 'AIDA - conversion']
-              ]}
-            />
-            <SelectField
-              label="Topic Tier"
-              value={linkedinForm.topicTier}
-              onChange={(value) => update('topicTier', value)}
-              options={[
-                ['auto', 'Auto select'],
-                ['Broad', 'Broad - reach'],
-                ['Narrow', 'Narrow - authority'],
-                ['Niche', 'Niche - conversion']
-              ]}
-            />
-            <SelectField
-              label="Emotional Job"
-              value={linkedinForm.emotionalJob}
-              onChange={(value) => update('emotionalJob', value)}
-              options={[
-                ['auto', 'Auto select'],
-                ['Inspire', 'Inspire'],
-                ['Educate', 'Educate'],
-                ['Provoke', 'Provoke'],
-                ['Convert', 'Convert']
-              ]}
-            />
-            <Field label="Target Audience">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.audience} onChange={(e) => update('audience', e.target.value)} />
-            </Field>
-            <Field label="Person Profile">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
-            </Field>
-            <Field label="Call to Action">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} />
-            </Field>
-            <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700">
-              <input type="checkbox" checked={linkedinForm.includeHashtags} onChange={(e) => update('includeHashtags', e.target.checked)} />
-              Include hashtags
-            </label>
-            <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700">
-              <input type="checkbox" checked={linkedinForm.includeCTA} onChange={(e) => update('includeCTA', e.target.checked)} />
-              Include CTA
-            </label>
-            <Field label="ICP Pain Points">
-              <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.icpPainPoints} onChange={(e) => update('icpPainPoints', e.target.value)} placeholder="What painful truth should this speak to?" />
-            </Field>
-            <Field label="Market Realities">
-              <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.marketReality} onChange={(e) => update('marketReality', e.target.value)} placeholder="What is changing in the market?" />
-            </Field>
-            <Field label="Proof Element">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.proofElement} onChange={(e) => update('proofElement', e.target.value)} placeholder="Number / timeframe / result, if known" />
-            </Field>
-            <Field label="Soft Authority Line">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />
-            </Field>
-            <Field label="Rule of One Takeaway">
-              <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.takeaway} onChange={(e) => update('takeaway', e.target.value)} placeholder="One clear thing reader should remember" />
-            </Field>
-            <Field label="Custom Instructions">
-              <textarea className="input rounded-xl min-h-[120px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.customInstructions} onChange={(e) => update('customInstructions', e.target.value)} placeholder="Add brand voice, angle, keywords, do/don't rules..." />
-            </Field>
+            <SettingsGroup title="Post Strategy">
+              <SelectField
+                label="Post Goal"
+                value={linkedinForm.postGoal}
+                onChange={(value) => update('postGoal', value)}
+                options={[
+                  ['thought_leadership', 'Thought Leadership'],
+                  ['client_alert', 'Client Alert'],
+                  ['market_insight', 'Market Insight'],
+                  ['educational', 'Educational'],
+                  ['lead_generation', 'Lead Generation']
+                ]}
+              />
+              <SelectField
+                label="Tone"
+                value={linkedinForm.tone}
+                onChange={(value) => update('tone', value)}
+                options={STYLE_OPTIONS.tone}
+              />
+              <SelectField
+                label="Length"
+                value={linkedinForm.length}
+                onChange={(value) => update('length', value)}
+                options={[
+                  ['short', 'Short'],
+                  ['medium', 'Medium'],
+                  ['long', 'Long']
+                ]}
+              />
+              <SelectField
+                label="Hook Style"
+                value={linkedinForm.hookStyle}
+                onChange={(value) => update('hookStyle', value)}
+                options={[
+                  ['proof', 'Proof-led'],
+                  ['contrarian', 'Contrarian'],
+                  ['personal_story', 'Personal story'],
+                  ['insight', 'Insight-led'],
+                  ['question', 'Question-led'],
+                  ['stat', 'Stat-led']
+                ]}
+              />
+              <SelectField
+                label="Framework"
+                value={linkedinForm.framework}
+                onChange={(value) => update('framework', value)}
+                options={[
+                  ['auto', 'Auto select'],
+                  ['SLAY', 'SLAY - story-led authority'],
+                  ['PAS', 'PAS - pain-driven inbound'],
+                  ['POV', 'POV - high reach'],
+                  ['5-Line Mirror', '5-Line Mirror'],
+                  ['AIDA', 'AIDA - conversion']
+                ]}
+              />
+              <SelectField
+                label="Topic Tier"
+                value={linkedinForm.topicTier}
+                onChange={(value) => update('topicTier', value)}
+                options={[
+                  ['auto', 'Auto select'],
+                  ['Broad', 'Broad - reach'],
+                  ['Narrow', 'Narrow - authority'],
+                  ['Niche', 'Niche - conversion']
+                ]}
+              />
+              <SelectField
+                label="Emotional Job"
+                value={linkedinForm.emotionalJob}
+                onChange={(value) => update('emotionalJob', value)}
+                options={[
+                  ['auto', 'Auto select'],
+                  ['Inspire', 'Inspire'],
+                  ['Educate', 'Educate'],
+                  ['Provoke', 'Provoke'],
+                  ['Convert', 'Convert']
+                ]}
+              />
+              <Field label="Rule of One Takeaway">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.takeaway} onChange={(e) => update('takeaway', e.target.value)} placeholder="One clear thing reader should remember" />
+              </Field>
+            </SettingsGroup>
+
+            <SettingsGroup title="Audience & CTA">
+              <Field label="Target Audience">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.audience} onChange={(e) => update('audience', e.target.value)} />
+              </Field>
+              <Field label="Person Profile">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
+              </Field>
+              <Field label="Call to Action">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} />
+              </Field>
+              <Field label="Soft Authority Line">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />
+              </Field>
+              <ToggleField label="Include hashtags" checked={linkedinForm.includeHashtags} onChange={(checked) => update('includeHashtags', checked)} />
+              <ToggleField label="Include CTA" checked={linkedinForm.includeCTA} onChange={(checked) => update('includeCTA', checked)} />
+            </SettingsGroup>
+
+            <SettingsGroup title="Market Context">
+              <Field label="ICP Pain Points">
+                <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.icpPainPoints} onChange={(e) => update('icpPainPoints', e.target.value)} placeholder="What painful truth should this speak to?" />
+              </Field>
+              <Field label="Market Realities">
+                <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.marketReality} onChange={(e) => update('marketReality', e.target.value)} placeholder="What is changing in the market?" />
+              </Field>
+              <Field label="Proof Element">
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.proofElement} onChange={(e) => update('proofElement', e.target.value)} placeholder="Number / timeframe / result, if known" />
+              </Field>
+              <Field label="Custom Instructions">
+                <textarea className="input rounded-xl min-h-[120px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.customInstructions} onChange={(e) => update('customInstructions', e.target.value)} placeholder="Add brand voice, angle, keywords, do/don't rules..." />
+              </Field>
+            </SettingsGroup>
           </div>
 
         </div>
 
-        <div className="border-t border-gray-200/50 bg-white/50 p-5 backdrop-blur">
-          <button
-            type="button"
-            disabled={generatingLinkedin || !canUseBlogStudio}
-            onClick={generateLinkedinPost}
-            className="btn-primary w-full rounded-xl py-3.5 text-base font-black tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
-            {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
-          </button>
+        <div className="border-t border-gray-200/50 bg-white/70 p-5 backdrop-blur">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+            <button
+              type="button"
+              disabled={generatingLinkedin || !canUseBlogStudio}
+              onClick={generateLinkedinPost}
+              className="btn-primary w-full rounded-xl py-3.5 text-base font-black tracking-wide shadow-lg transition-all hover:shadow-brand-crimson/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
+              {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOutputDrawerOpen(true)}
+              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              <MessageSquareText size={16} />
+              Saved Posts & Preview
+            </button>
+          </div>
+          <div className="mt-3 text-xs font-semibold text-gray-500">
+            After generation, the post preview will open in the right-side drawer. You can also reopen saved posts from there anytime.
+          </div>
         </div>
-      </section>
-
-      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-2 2xl:col-span-1 2xl:h-[calc(100vh-96px)]">
-        <PanelHeader icon={MessageSquareText} title="Output Preview" subtitle="Generated post" />
-        <LinkedInOutputPreview
-          output={linkedinOutput}
-          savedPosts={socialPosts}
-          loadingSaved={loadingSocialPosts}
-          onSelectSaved={setLinkedinOutput}
-          onClear={() => setLinkedinOutput(null)}
-        />
       </section>
     </div>
+    <SocialOutputDrawer
+      open={outputDrawerOpen}
+      onClose={() => {
+        setOutputDrawerOpen(false);
+        if (!linkedinOutput?.saved) setLinkedinOutput(null);
+      }}
+      output={linkedinOutput}
+      savedPosts={socialPosts}
+      loadingSaved={loadingSocialPosts}
+      onSelectSaved={(post) => {
+        setLinkedinOutput({ ...post, saved: true });
+        setOutputDrawerOpen(true);
+      }}
+      onSave={saveLinkedinPost}
+      saving={savingLinkedinPost}
+    />
+    </>
+  );
+}
+
+function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, onSelectSaved, onSave, saving }) {
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-40 bg-gray-950/30 backdrop-blur-[2px] transition-opacity duration-300 ${open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
+      />
+      <aside
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[620px] border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+            <div className="min-w-0">
+              <div className="text-base font-black text-gray-900">Output Preview</div>
+              <div className="text-xs font-semibold text-gray-500">Review the generated post and reopen saved posts from here.</div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              Close
+            </button>
+          </div>
+          <LinkedInOutputPreview
+            output={output}
+            savedPosts={savedPosts}
+            loadingSaved={loadingSaved}
+            onSelectSaved={onSelectSaved}
+            onSave={onSave}
+            saving={saving}
+          />
+        </div>
+      </aside>
+    </>
   );
 }
 

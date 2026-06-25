@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { BookOpenText, CalendarDays, CheckSquare, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2 } from 'lucide-react';
+import { BookOpenText, CalendarDays, CheckSquare, Copy, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 
 export default function BlogLibrary() {
@@ -13,9 +13,11 @@ export default function BlogLibrary() {
   const [selected, setSelected] = useState(null);
   const [selectedSocial, setSelectedSocial] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [selectedSocialIds, setSelectedSocialIds] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -73,6 +75,24 @@ export default function BlogLibrary() {
     ));
   };
 
+  const toggleSelectAllBlogs = () => {
+    setSelectedIds((prev) => (
+      prev.length === items.length ? [] : items.map((item) => item._id)
+    ));
+  };
+
+  const toggleSocialSelection = (id) => {
+    setSelectedSocialIds((prev) => (
+      prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
+    ));
+  };
+
+  const toggleSelectAllSocial = () => {
+    setSelectedSocialIds((prev) => (
+      prev.length === socialItems.length ? [] : socialItems.map((item) => item._id)
+    ));
+  };
+
   const deletePosts = async (ids) => {
     const targetIds = ids.filter(Boolean);
     if (!targetIds.length) return;
@@ -96,6 +116,61 @@ export default function BlogLibrary() {
       setDeleting(false);
     }
   };
+
+  const deleteSocialPosts = async (ids) => {
+    const targetIds = ids.filter(Boolean);
+    if (!targetIds.length) return;
+    const confirmed = window.confirm(targetIds.length === 1 ? 'Delete this social post?' : `Delete ${targetIds.length} social posts?`);
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError('');
+    try {
+      if (targetIds.length === 1) {
+        await api.delete(`/blogs/social-posts/${targetIds[0]}`);
+      } else {
+        await api.delete('/blogs/social-posts/bulk', { data: { ids: targetIds } });
+      }
+      setSelectedSocialIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+      if (targetIds.includes(selectedSocial?._id)) setSelectedSocial(null);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const copyBlogPost = useCallback(async () => {
+    if (!selected) return;
+    const parts = [
+      selected.title || '',
+      selected.excerpt || '',
+      selected.bodyMarkdown || ''
+    ].filter(Boolean);
+
+    try {
+      await navigator.clipboard.writeText(parts.join('\n\n'));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch (err) {
+      setError(err.message || 'Could not copy content');
+    }
+  }, [selected]);
+
+  const copySocialPost = useCallback(async () => {
+    if (!selectedSocial?.postText) return;
+    const hashtags = Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length
+      ? `\n\n${selectedSocial.hashtags.join(' ')}`
+      : '';
+    try {
+      await navigator.clipboard.writeText(`${selectedSocial.postText}${hashtags}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch (err) {
+      setError(err.message || 'Could not copy content');
+    }
+  }, [selectedSocial]);
 
   const headerActions = (
     <div className="flex items-center gap-2">
@@ -127,6 +202,36 @@ export default function BlogLibrary() {
             <h2 className="mt-1 text-lg font-black tracking-tight text-gray-900">
               {mode === 'linkedin' ? 'Find Saved Social Posts' : 'Find Published Content'}
             </h2>
+            {mode === 'linkedin' && isAdmin && selectedSocialIds.length ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-black text-gray-800">{selectedSocialIds.length} selected</span>
+                <button type="button" onClick={toggleSelectAllSocial} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+                  {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
+                </button>
+                <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+                  {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  Delete
+                </button>
+                <button type="button" onClick={() => setSelectedSocialIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
+            {mode === 'blogs' && isAdmin && selectedIds.length ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
+                <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+                  {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
+                </button>
+                <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+                  {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  Delete
+                </button>
+                <button type="button" onClick={() => setSelectedIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="relative min-w-0 w-full max-w-xl group z-10">
             <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10"></div>
@@ -146,21 +251,6 @@ export default function BlogLibrary() {
           </div>
         )}
 
-        {mode === 'blogs' && isAdmin && selectedIds.length ? (
-          <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3 animate-fade-in-up stagger-2">
-            <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-500 hover:border-gray-300">
-                Clear
-              </button>
-              <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
-                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                Delete Selected
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
           <section className="min-h-0 overflow-y-auto glass-panel p-3 custom-scrollbar sm:p-4">
             {loading ? (
@@ -173,22 +263,39 @@ export default function BlogLibrary() {
               <div className="space-y-3">
                 {socialItems.map((post) => {
                   const isSelected = selectedSocial?._id === post._id;
+                  const isMarked = selectedSocialIds.includes(post._id);
                   return (
-                    <button
+                    <div
                       key={post._id}
-                      type="button"
-                      onClick={() => setSelectedSocial(post)}
                       className={`w-full rounded-xl border p-4 text-left transition-all duration-300 ${
                         isSelected ? 'border-brand-crimson/40 bg-white shadow-md' : 'border-white/40 bg-white/50 hover:bg-white hover:shadow-sm'
                       }`}
                     >
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">LinkedIn</span>
-                        <span className="text-[10px] font-bold text-gray-400">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</span>
+                      <div className="flex items-start gap-3">
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleSocialSelection(post._id)}
+                            className={`mt-0.5 rounded-lg p-1 transition-all ${isMarked ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                            title={isMarked ? 'Unselect' : 'Select'}
+                          >
+                            {isMarked ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSocial(post)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">LinkedIn</span>
+                            <span className="text-[10px] font-bold text-gray-400">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</span>
+                          </div>
+                          <div className="line-clamp-2 text-sm font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
+                          <p className="mt-2 line-clamp-3 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
+                        </button>
                       </div>
-                      <div className="line-clamp-2 text-sm font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
-                      <p className="mt-2 line-clamp-3 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -231,17 +338,6 @@ export default function BlogLibrary() {
                             {blog.type && <span className={`rounded-md px-2 py-1 border ${isSelected ? 'bg-brand-pink/10 border-brand-crimson/20 text-brand-crimson' : 'bg-white border-gray-200'}`}>{blog.type}</span>}
                           </div>
                         </button>
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => deletePosts([blog._id])}
-                            disabled={deleting}
-                            className="mt-0.5 rounded-lg border border-transparent p-1.5 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete post"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        ) : null}
                       </div>
                     </div>
                   );
@@ -256,10 +352,20 @@ export default function BlogLibrary() {
             {mode === 'linkedin' ? (
               selectedSocial ? (
                 <div className="max-w-3xl mx-auto animate-fade-in-up">
-                  <div className="mb-5 flex flex-wrap gap-2">
-                    <Pill icon={MessageSquareText} highlight>LinkedIn</Pill>
-                    {selectedSocial.framework && <Pill icon={Tag}>{selectedSocial.framework}</Pill>}
-                    {selectedSocial.createdAt && <Pill icon={CalendarDays}>{new Date(selectedSocial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Pill icon={MessageSquareText} highlight>LinkedIn</Pill>
+                      {selectedSocial.framework && <Pill icon={Tag}>{selectedSocial.framework}</Pill>}
+                      {selectedSocial.createdAt && <Pill icon={CalendarDays}>{new Date(selectedSocial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copySocialPost}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                    >
+                      {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
                   </div>
                   <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -285,17 +391,14 @@ export default function BlogLibrary() {
                     {selected.subcategory && <Pill icon={Tag}>{selected.subcategory}</Pill>}
                     {selected.publishedAt && <Pill icon={CalendarDays} highlight>{new Date(selected.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
                   </div>
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => deletePosts([selected._id])}
-                      disabled={deleting}
-                      className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
-                    >
-                      {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                      Delete
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={copyBlogPost}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                  >
+                    {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
                 </div>
                 
                 <h2 className="text-3xl sm:text-4xl font-black leading-tight text-gray-900 mb-6 font-display tracking-tight text-gradient">{selected.title}</h2>
