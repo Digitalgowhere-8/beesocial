@@ -256,15 +256,7 @@ export default function Layout({ children, headerActions = null }) {
     }
   });
 
-  const avatarKey = `profile_avatar_${user?._id || 'default'}`;
-
-  const [avatar, setAvatar] = useState(() => {
-    try {
-      return localStorage.getItem(avatarKey) || '';
-    } catch {
-      return '';
-    }
-  });
+  const [avatar, setAvatar] = useState(user?.avatar || '');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
@@ -278,6 +270,10 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
   }, [collapsed]);
+
+  useEffect(() => {
+    setAvatar(user?.avatar || '');
+  }, [user?.avatar]);
 
   const saveNotifications = useCallback((nextStateOrUpdater) => {
     setNotifications((current) => {

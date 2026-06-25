@@ -57,14 +57,7 @@ export default function Profile() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
 
-  const avatarKey = `profile_avatar_${user?._id || 'default'}`;
-  const [avatar, setAvatar] = useState(() => {
-    try {
-      return localStorage.getItem(avatarKey) || '';
-    } catch {
-      return '';
-    }
-  });
+  const [avatar, setAvatar] = useState(user?.avatar || '');
 
   const initials = useMemo(() => {
     const name = user?.name || form.name || 'User';
@@ -74,6 +67,10 @@ export default function Profile() {
   useEffect(() => {
     if (user) setForm(initialFormFromUser(user));
   }, [user]);
+
+  useEffect(() => {
+    setAvatar(user?.avatar || '');
+  }, [user?.avatar]);
 
   useEffect(() => {
     if (!canSeeFetchSection && activeTab === 'fetch') {
@@ -86,24 +83,35 @@ export default function Profile() {
     [key]: value
   }));
 
-  const handleImageUpload = (event) => {
+  const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64 = reader.result;
       setAvatar(base64);
-      localStorage.setItem(avatarKey, base64);
-      window.dispatchEvent(new CustomEvent('profile_avatar_updated', { detail: { avatar: base64, userId: user?._id } }));
+      try {
+        await updateProfile({ avatar: base64 });
+        window.dispatchEvent(new CustomEvent('profile_avatar_updated', { detail: { avatar: base64, userId: user?._id } }));
+      } catch (error) {
+        setAvatar(user?.avatar || '');
+        setErr(error.message || 'Avatar upload failed');
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveImage = () => {
+  const handleRemoveImage = async () => {
+    setErr('');
     setAvatar('');
-    localStorage.removeItem(avatarKey);
-    window.dispatchEvent(new CustomEvent('profile_avatar_updated', { detail: { avatar: '', userId: user?._id } }));
+    try {
+      await updateProfile({ avatar: '' });
+      window.dispatchEvent(new CustomEvent('profile_avatar_updated', { detail: { avatar: '', userId: user?._id } }));
+    } catch (error) {
+      setAvatar(user?.avatar || '');
+      setErr(error.message || 'Avatar remove failed');
+    }
   };
 
   const saveProfile = async (event) => {
@@ -114,7 +122,8 @@ export default function Profile() {
       const payload = {
         name: form.name,
         company: form.company,
-        designation: form.designation
+        designation: form.designation,
+        avatar
       };
 
       await updateProfile(payload);

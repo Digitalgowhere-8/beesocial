@@ -68,7 +68,7 @@ export default function Login() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/logo.png" style={{ filter: 'brightness(0) invert(1)', height: '52px', width: 'auto' }} alt="OpportunityOS AI Logo" />
+          <img src="/logo-white.png" style={{ height: '52px', width: 'auto' }} alt="OpportunityOS AI Logo" />
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col justify-start fade-in pt-40 xl:pt-44 ml-6 xl:ml-10" style={{ animationDelay: '0.1s' }}>
