@@ -16,7 +16,7 @@ const TYPE_OPTIONS = [
 ];
 
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
-const CONTENT_STUDIO_UPCOMING_MODE = true;
+const CONTENT_STUDIO_UPCOMING_MODE = false;
 
 const STYLE_OPTIONS = {
   tone: [

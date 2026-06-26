@@ -134,6 +134,206 @@ function blogSourceContext(article = {}) {
     .slice(0, 3000);
 }
 
+function uniqueStrings(values = []) {
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = String(value || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeLineBreaks(value) {
+  return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function buildPlainToc(lines = []) {
+  const headings = [];
+  for (const line of lines) {
+    const match = String(line || '').match(/^##\s+(.+)$/);
+    if (!match) continue;
+    const heading = match[1].trim();
+    if (/^table of contents$/i.test(heading)) continue;
+    if (/^need help\b/i.test(heading)) continue;
+    if (/^cta\b/i.test(heading)) continue;
+    headings.push(heading);
+  }
+  const uniqueHeadings = uniqueStrings(headings);
+  if (!uniqueHeadings.length) return [];
+  return [
+    '## Table of Contents',
+    '',
+    ...uniqueHeadings.map((heading) => `- ${heading}`),
+    ''
+  ];
+}
+
+function formatBlogMarkdown(bodyMarkdown, title) {
+  const normalized = normalizeLineBreaks(bodyMarkdown)
+    .replace(/\u2019/g, "'")
+    .replace(/\u2018/g, "'")
+    .replace(/\u201c/g, '"')
+    .replace(/\u201d/g, '"')
+    .replace(/â€™/g, "'")
+    .replace(/â€œ|â€/g, '"')
+    .replace(/\t/g, '  ')
+    .trim();
+
+  const rawLines = normalized
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''));
+
+  const firstH1Index = rawLines.findIndex((line) => /^#\s+/.test(String(line || '').trim()));
+  const prefixLines = firstH1Index > 0
+    ? rawLines.slice(0, firstH1Index)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => line.toLowerCase() !== String(title || '').trim().toLowerCase())
+    : [];
+  const workingLines = firstH1Index > 0 ? rawLines.slice(firstH1Index) : rawLines;
+
+  const cleaned = [];
+  let hasH1 = false;
+  let lastHeadingKey = '';
+  let skipTocBlock = false;
+
+  for (let i = 0; i < workingLines.length; i += 1) {
+    let line = workingLines[i].trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      if (cleaned.at(-1) !== '') cleaned.push('');
+      continue;
+    }
+
+    if (/^##?\s*table of contents\b/i.test(trimmed)) {
+      skipTocBlock = true;
+      continue;
+    }
+
+    if (skipTocBlock) {
+      if (/^(-|\*|\d+\.)\s+/.test(trimmed)) continue;
+      if (/^\[[^\]]+\]\(#.+\)$/.test(trimmed)) continue;
+      skipTocBlock = false;
+    }
+
+    if (/^\[[^\]]+\]\(#.+\)$/.test(trimmed)) continue;
+
+    if (/^#\s+/.test(trimmed)) {
+      if (hasH1) continue;
+      line = `# ${title}`.trim();
+      hasH1 = true;
+      lastHeadingKey = `h1:${line.toLowerCase()}`;
+      cleaned.push(line, '');
+      continue;
+    }
+
+    if (/^##+\s+/.test(trimmed)) {
+      const normalizedHeading = trimmed.replace(/^#+\s*/, '').trim();
+      const headingKey = normalizedHeading.toLowerCase();
+      if (headingKey === lastHeadingKey || headingKey === String(title || '').trim().toLowerCase()) continue;
+      lastHeadingKey = headingKey;
+      if (cleaned.at(-1) !== '') cleaned.push('');
+      cleaned.push(`${trimmed.match(/^#+/)?.[0] || '##'} ${normalizedHeading}`, '');
+      continue;
+    }
+
+    cleaned.push(trimmed);
+  }
+
+  while (cleaned[0] === '') cleaned.shift();
+  while (cleaned.at(-1) === '') cleaned.pop();
+
+  const withoutExtraBlanks = [];
+  for (const line of cleaned) {
+    if (line === '' && withoutExtraBlanks.at(-1) === '') continue;
+    withoutExtraBlanks.push(line);
+  }
+
+  const h1 = hasH1 ? [] : [`# ${title}`, ''];
+  const introLines = prefixLines.length ? [...prefixLines, ''] : [];
+  const bodyWithH1 = [...h1, ...introLines, ...withoutExtraBlanks];
+  const hasToc = bodyWithH1.some((line) => /^##\s+table of contents$/i.test(line.trim()));
+  const toc = hasToc ? [] : buildPlainToc(bodyWithH1);
+
+  const finalLines = [];
+  let insertedToc = false;
+  for (let i = 0; i < bodyWithH1.length; i += 1) {
+    const line = bodyWithH1[i];
+    finalLines.push(line);
+    if (!insertedToc && /^#\s+/.test(String(line || '').trim())) {
+      finalLines.push('');
+      if (toc.length) finalLines.push(...toc);
+      insertedToc = true;
+    }
+  }
+
+  return finalLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function formatExcerpt(value, fallback) {
+  const text = String(value || fallback || '').replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+function blogFormatBlueprint(format = 'insight_article') {
+  const map = {
+    how_to_guide: [
+      '- Use a guide-style layout that reads like a practical compliance or advisory handbook.',
+      '- Prefer question-led or obligation-led H2s such as "What...", "Why...", "How...", "Which...", or "Key requirements...".',
+      '- Move from definition or context to obligations, process, risks, checklist, and FAQ.',
+      '- Include a practical checklist or action framework near the end.'
+    ],
+    guide: [
+      '- Use a guide-style layout that reads like a practical compliance or advisory handbook.',
+      '- Prefer question-led or obligation-led H2s such as "What...", "Why...", "How...", "Which...", or "Key requirements...".',
+      '- Move from definition or context to obligations, process, risks, checklist, and FAQ.',
+      '- Include a practical checklist or action framework near the end.'
+    ],
+    beginners_guide: [
+      '- Write as a structured beginner-friendly advisory guide.',
+      '- Start with what the concept means, then explain why it matters, what steps are involved, and common mistakes.',
+      '- Keep headings simple, direct, and educational without sounding generic.',
+      '- End with a practical checklist and FAQ.'
+    ],
+    news_updates: [
+      '- Use a current-awareness advisory format.',
+      '- Structure the article around: what changed, who may be affected, why it matters now, what companies should review, and what remains uncertain.',
+      '- Keep the flow sharp and decision-oriented rather than educational or textbook-like.'
+    ],
+    client_alert: [
+      '- Format the article like a client alert.',
+      '- Move quickly from the triggering development to business implications, affected parties, immediate actions, and next steps.',
+      '- Keep headings concise and action-oriented.'
+    ],
+    insight_article: [
+      '- Use an executive advisory article structure.',
+      '- Organize around signal, implications, decisions, risks, and practical takeaways.',
+      '- The article should feel analytical, commercial, and useful for leadership teams.'
+    ],
+    thought_leadership: [
+      '- Use a sharp editorial-advisory structure.',
+      '- Present a clear thesis, support it with grounded business implications, and end with a perspective readers can act on.',
+      '- Avoid sounding promotional or abstract.'
+    ],
+    faq_article: [
+      '- Build the article around clear question-led sections.',
+      '- Each major section should answer a direct business or compliance question.',
+      '- End with a standalone FAQ block that feels distinct from the main body.'
+    ],
+    case_study: [
+      '- Structure the piece as situation, challenge, response, lessons, and implications.',
+      '- Keep examples grounded in the source and do not invent unsupported outcomes.'
+    ]
+  };
+
+  return (map[format] || map.insight_article).join('\n');
+}
+
 /**
  * Generate a 1-2 sentence summary of an article.
  * Returns null on any failure (caller should keep the existing summary).
@@ -455,6 +655,12 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Make the conclusion summarize the practical business signal and nudge the reader toward the CTA.',
             '- If FAQ is requested, include useful search-friendly FAQs.',
             '- Use proper heading hierarchy.',
+            '- Write clean publication-ready Markdown.',
+            '- Include exactly one H1 at the top of the article body and do not repeat the title again in the introduction.',
+            '- Do not output placeholder text, editorial notes, drafting comments, or AI-style scene-setting language.',
+            '- Do not use anchor-link Table of Contents formats such as [Heading](#heading).',
+            '- If a Table of Contents is included, format it as a clean plain list in Markdown only.',
+            '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
             '',
             'ANTI-GENERIC WRITING RULES',
             '- Avoid empty promotional phrases such as "vibrant market", "remarkable achievement", "unparalleled opportunities", "robust business environment", "game changer", "dynamic landscape", "in today\'s fast-paced world", and similar filler.',
@@ -462,6 +668,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Avoid paragraphs that only restate the heading.',
             '- Avoid generic advice like "stay informed" unless paired with a concrete action.',
             '- Avoid obvious statements. Every section should add a useful business implication, decision point, caveat, checklist item, or example grounded in the source.',
+            '- Avoid weak intros that simply define the topic. Start with the concrete compliance, business, or operational issue the reader must act on.',
             '',
             'ADVISORY DEPTH RULES',
             '- For news or market-ranking topics, separate: what changed, why it matters, what companies should review, and what remains uncertain.',
@@ -486,6 +693,9 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Format: ${format}`,
             `Length: ${length}${length === 'custom' && customLength ? ` (${customLength})` : ''}`,
             `Target search intent: ${searchIntent}`,
+            '',
+            'FORMAT BLUEPRINT',
+            blogFormatBlueprint(format),
             '',
             'SEO REQUIREMENTS',
             `Primary SEO keyword: ${primaryKeyword || keywords[0] || ''}`,
@@ -527,17 +737,18 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Matched interests: ${Array.isArray(article.matchedInterests) ? article.matchedInterests.join(', ') : ''}`,
             '',
             'BLOG WRITING INSTRUCTIONS',
-            '1. Start with a specific, editorial introduction that explains the real business signal behind the headline.',
-            '2. Include a Table of Contents.',
-            '3. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
-            '4. Explain why the topic matters to the target audience in practical business terms.',
-            '5. Use examples where helpful, but do not invent unsupported examples.',
-            '6. Include a practical checklist, table, or decision framework when useful.',
-            '7. Include internal linking suggestions naturally if focus page or internal pages are provided.',
-            '8. Include practical takeaways that a reader can act on or discuss internally.',
-            '9. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
-            '10. End with a concise conclusion and CTA.',
-            '11. Keep the blog coherent, flowing, and professionally written.',
+            '1. Start with a specific editorial introduction that explains the real business signal behind the headline.',
+            '2. Write the body as a publish-ready article, not as notes, prompts, or a content brief.',
+            '3. Include a clean Table of Contents in plain Markdown list format only. Do not use anchor links.',
+            '4. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
+            '5. Explain why the topic matters to the target audience in practical business terms.',
+            '6. Use examples where helpful, but do not invent unsupported examples.',
+            '7. Include a practical checklist, table, or decision framework when useful.',
+            '8. Include internal linking suggestions naturally if focus page or internal pages are provided.',
+            '9. Include practical takeaways that a reader can act on or discuss internally.',
+            '10. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
+            '11. End with a concise conclusion and CTA.',
+            '12. Keep the blog coherent, flowing, and professionally written.',
             '',
             'QUALITY BAR BEFORE RETURNING',
             '- Rewrite any generic paragraph before final output.',
@@ -545,6 +756,9 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure each major section answers "so what?" for the target audience.',
             '- Ensure the blog is useful even to a reader who already knows the headline.',
             '- Ensure the CTA is connected to the topic, not a generic sales line.',
+            '- Ensure the final article looks ready to publish in a CMS without cleanup.',
+            '- Ensure the opening paragraph does not merely define the topic or repeat the title.',
+            '- Ensure the Markdown has one H1, clean H2/H3 structure, no duplicate headings, and no broken link syntax.',
             '',
             'OUTPUT FORMAT',
             'Return ONLY valid JSON. No markdown outside JSON.',
@@ -553,7 +767,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '{',
             '  "title": "<SEO-friendly blog title>",',
             '  "excerpt": "<short blog summary, 2-3 sentences>",',
-            '  "bodyMarkdown": "<full blog in Markdown with H1, TOC, headings, body, FAQ if requested, conclusion and CTA>",',
+            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown with one H1, plain-list TOC, headings, body, FAQ if requested, conclusion and CTA>",',
             '  "suggestedKeywords": ["<keyword 1>", "<keyword 2>", "<keyword 3>"],',
             '  "metaTitle": "<SEO title, 50-60 characters, ideally question-style if suitable>",',
             '  "metaDescription": "<SEO meta description, 150-160 characters>",',
@@ -585,13 +799,19 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
         model: MODEL
       };
     }
+    const finalTitle = String(parsed.title).trim();
+    const finalBodyMarkdown = formatBlogMarkdown(parsed.bodyMarkdown, finalTitle);
     return {
-      title: String(parsed.title).trim(),
-      excerpt: String(parsed.excerpt || '').trim(),
-      bodyMarkdown: String(parsed.bodyMarkdown).trim(),
-      suggestedKeywords: Array.isArray(parsed.suggestedKeywords) ? parsed.suggestedKeywords.map(String) : keywords,
-      metaTitle: String(parsed.metaTitle || parsed.title || '').trim(),
-      metaDescription: String(parsed.metaDescription || parsed.excerpt || '').trim(),
+      title: finalTitle,
+      excerpt: formatExcerpt(parsed.excerpt, article?.summary || article?.aiSummary || ''),
+      bodyMarkdown: finalBodyMarkdown,
+      suggestedKeywords: uniqueStrings(
+        Array.isArray(parsed.suggestedKeywords)
+          ? parsed.suggestedKeywords.map((item) => String(item || '').trim())
+          : keywords
+      ).slice(0, 8),
+      metaTitle: String(parsed.metaTitle || finalTitle || '').trim(),
+      metaDescription: formatExcerpt(parsed.metaDescription, parsed.excerpt || article?.summary || '').slice(0, 160),
       model: MODEL
     };
   } catch (err) {

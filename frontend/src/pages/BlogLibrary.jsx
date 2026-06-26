@@ -5,6 +5,140 @@ import { useAuth } from '../context/AuthContext';
 import { BookOpenText, CalendarDays, CheckSquare, Copy, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 
+function renderInlineMarkdown(text = '') {
+  const parts = [];
+  const pattern = /\*\*(.+?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    parts.push(<strong key={`${match.index}-${match[1]}`}>{match[1]}</strong>);
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length ? parts : text;
+}
+
+function normalizePreviewMarkdown(bodyMarkdown = '', title = '') {
+  const lines = String(bodyMarkdown || '').replace(/\r\n/g, '\n').split('\n');
+  const output = [];
+  let skippedFirstH1 = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) {
+      output.push('');
+      continue;
+    }
+
+    if (!skippedFirstH1 && /^#\s+/.test(trimmed)) {
+      const headingText = trimmed.replace(/^#\s+/, '').trim().toLowerCase();
+      if (!title || headingText === String(title).trim().toLowerCase()) {
+        skippedFirstH1 = true;
+        continue;
+      }
+    }
+
+    output.push(line);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
+  const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line) {
+      i += 1;
+      continue;
+    }
+
+    if (/^###\s+/.test(line)) {
+      blocks.push(
+        <h4 key={`h3-${i}`} className="mt-6 text-lg font-black text-gray-900">
+          {line.replace(/^###\s+/, '')}
+        </h4>
+      );
+      i += 1;
+      continue;
+    }
+
+    if (/^##\s+/.test(line)) {
+      const heading = line.replace(/^##\s+/, '');
+      if (/^table of contents$/i.test(heading)) {
+        const items = [];
+        i += 1;
+        while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*-\s+/, '').trim());
+          i += 1;
+        }
+        blocks.push(
+          <section key={`toc-${i}`} className="mb-8 rounded-2xl border border-gray-200 bg-gray-50/70 p-5">
+            <h3 className="text-base font-black uppercase tracking-[0.14em] text-gray-500">Table of Contents</h3>
+            <ul className="mt-4 space-y-2 text-[15px] font-semibold leading-7 text-gray-700">
+              {items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+            </ul>
+          </section>
+        );
+        continue;
+      }
+
+      blocks.push(
+        <h3 key={`h2-${i}`} className="mt-10 text-2xl font-black tracking-tight text-gray-900">
+          {heading}
+        </h3>
+      );
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*-\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*-\s+/, '').trim());
+        i += 1;
+      }
+      blocks.push(
+        <ul key={`ul-${i}`} className="my-5 list-disc space-y-2 pl-6 text-[15px] leading-8 text-gray-700 marker:text-brand-crimson">
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    const paragraphLines = [line];
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i].trim();
+      if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*-\s+/.test(next)) break;
+      paragraphLines.push(next);
+      i += 1;
+    }
+
+    blocks.push(
+      <p key={`p-${i}`} className="mt-5 text-[15px] leading-8 text-gray-700">
+        {renderInlineMarkdown(paragraphLines.join(' '))}
+      </p>
+    );
+  }
+
+  return <div>{blocks}</div>;
+}
+
 export default function BlogLibrary() {
   const { isAdmin } = useAuth();
   const [mode, setMode] = useState('blogs');
@@ -411,9 +545,9 @@ export default function BlogLibrary() {
                   </div>
                 )}
                 
-                <div className="prose prose-sm sm:prose-base prose-gray max-w-none">
-                  <div className="whitespace-pre-wrap text-gray-800 leading-loose font-medium text-[15px]">
-                    {selected.bodyMarkdown}
+                <div className="max-w-none">
+                  <div className="text-gray-800">
+                    <MarkdownArticle bodyMarkdown={selected.bodyMarkdown} title={selected.title} />
                   </div>
                 </div>
               </div>
