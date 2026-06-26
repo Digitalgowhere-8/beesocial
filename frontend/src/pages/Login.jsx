@@ -131,7 +131,12 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Password</label>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">Password</label>
+                  <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
+                    Forgot Password?
+                  </Link>
+                </div>
                 <div className="relative">
                   <input
                     type={showPass ? 'text' : 'password'}

@@ -45,6 +45,33 @@ function formatDashboardDate(date) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+function parseFilterDateStart(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function parseFilterDateEnd(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function effectiveDateRangeMatch(from, to) {
+  const start = parseFilterDateStart(from);
+  const end = parseFilterDateEnd(to);
+  if (!start && !end) return null;
+
+  const match = {};
+  if (start) match.$gte = start;
+  if (end) match.$lte = end;
+  return match;
+}
+
 function withEffectiveDateSort(match, extraStages = []) {
   return [
     { $match: match },
@@ -52,7 +79,7 @@ function withEffectiveDateSort(match, extraStages = []) {
       $addFields: {
         effectiveDate: {
           $convert: {
-            input: { $ifNull: ['$fetchedAt', '$publishedAt'] },
+            input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
             to: 'date',
             onError: new Date(0),
             onNull: new Date(0)
@@ -122,7 +149,7 @@ const asyncHandler = (fn) => (req, res, next) => {
  *  subcategory - sub-category
  *  source      - sourceId
  *  q           - full-text search keyword (title)
- *  from / to   - ISO date strings; filters by fetchedAt
+ *  from / to   - ISO date strings; filters by publishedAt, fallback fetchedAt
  */
 function buildQuery(req, opts = {}) {
   const q = {};
@@ -164,12 +191,6 @@ function buildQuery(req, opts = {}) {
     }
   } else if (req.query.personalized === 'true' && req.user.role === 'super_admin') {
     q.userId = req.user._id;
-  }
-
-  if (req.query.from || req.query.to) {
-    q.fetchedAt = {};
-    if (req.query.from) q.fetchedAt.$gte = new Date(req.query.from);
-    if (req.query.to)   q.fetchedAt.$lte = new Date(req.query.to);
   }
 
   if (req.query.q) {
@@ -306,11 +327,15 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     buildQuery(req)
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
 
   const types = ['news', 'govt', 'competitor', 'evergreen'];
   const results = await Promise.all(
     types.map((t) => {
       const pipeline = withEffectiveDateSort({ ...baseQuery, type: t });
+      if (dateRange) {
+        pipeline.push({ $match: { effectiveDate: dateRange } });
+      }
       if (limit && limit > 0) {
         pipeline.push({ $limit: limit });
       }
@@ -337,6 +362,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - 6);
+  const explicitDateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
 
   const pipeline = [
     { $match: baseQuery },
@@ -344,7 +370,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
       $addFields: {
         effectiveDate: {
           $convert: {
-            input: { $ifNull: ['$fetchedAt', '$publishedAt'] },
+            input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
             to: 'date',
             onError: new Date(0),
             onNull: new Date(0)
@@ -354,7 +380,9 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
     },
   ];
 
-  if (!datasetScope) {
+  if (explicitDateRange) {
+    pipeline.push({ $match: { effectiveDate: explicitDateRange } });
+  } else if (!datasetScope) {
     pipeline.push({ $match: { effectiveDate: { $gte: start, $lte: now } } });
   }
 
@@ -407,6 +435,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 // GET /api/articles?type=news&category=...&page=1&limit=20
 router.get('/', protect, asyncHandler(async (req, res) => {
   const q = await applySavedFilter(req, buildQuery(req));
+  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
@@ -424,17 +453,31 @@ router.get('/', protect, asyncHandler(async (req, res) => {
 
   const [items, total] = await Promise.all([
     sort
-      ? Article.find(q).sort(sortObj).skip(skip).limit(limit).lean()
-      : Article.aggregate(withEffectiveDateSort(q, [{ $skip: skip }, { $limit: limit }])),
-    Article.countDocuments(q)
+      ? Article.aggregate(withEffectiveDateSort(q, [
+        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        { $sort: sortObj },
+        { $skip: skip },
+        { $limit: limit }
+      ]))
+      : Article.aggregate(withEffectiveDateSort(q, [
+        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        { $skip: skip },
+        { $limit: limit }
+      ])),
+    Article.aggregate(withEffectiveDateSort(q, [
+      ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+      { $count: 'total' }
+    ]))
   ]);
+
+  const totalCount = total[0]?.total || 0;
 
   res.json({
     items: await annotateSaved(req, items),
     page,
     limit,
-    total,
-    pages: Math.ceil(total / limit)
+    total: totalCount,
+    pages: Math.ceil(totalCount / limit)
   });
 }));
 

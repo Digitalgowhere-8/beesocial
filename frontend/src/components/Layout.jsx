@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
+import GuidedOnboarding from './GuidedOnboarding';
 import {
   LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound
 } from 'lucide-react';
@@ -18,10 +19,11 @@ const SUPER_ADMIN_SECTIONS = [
   { key: 'settings', label: 'Settings', icon: KeyRound }
 ];
 
-function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '' }) {
+function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '', dataTour = '' }) {
   return (
     <NavLink
       to={to}
+      data-tour={dataTour || undefined}
       onClick={(event) => {
         if (onActiveClick && window.location.pathname.startsWith(to)) {
           event.preventDefault();
@@ -226,7 +228,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
   );
 }
 
-function ProfileMenu({ user, role, onProfile, onLogout }) {
+function ProfileMenu({ user, role, onProfile, onLogout, onStartTour }) {
   return (
     <div className="absolute right-0 top-12 z-50 w-[min(280px,calc(100vw-24px))] rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
@@ -238,6 +240,10 @@ function ProfileMenu({ user, role, onProfile, onLogout }) {
         <button onClick={onProfile} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
           <UserIcon size={14} />
           My Hive Profile
+        </button>
+        <button onClick={onStartTour} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
+          <LayoutDashboard size={14} />
+          Take product tour
         </button>
         <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-all">
           <LogOut size={14} />
@@ -265,6 +271,7 @@ export default function Layout({ children, headerActions = null }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
+  const [tourOpen, setTourOpen] = useState(false);
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
@@ -272,6 +279,7 @@ export default function Layout({ children, headerActions = null }) {
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
   const unreadCount = notifications.unreadKeys.length;
+  const onboardingSeenKey = `app_onboarding_seen_${user?._id || 'guest'}`;
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
@@ -396,6 +404,37 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     setNotifications(readNotificationState(user?._id));
   }, [user?._id]);
+
+  useEffect(() => {
+    if (!user?._id) return;
+    try {
+      const seen = localStorage.getItem(onboardingSeenKey) === 'true';
+      if (!seen) setTourOpen(true);
+    } catch {
+      setTourOpen(true);
+    }
+  }, [onboardingSeenKey, user?._id]);
+
+  useEffect(() => {
+    const handleStartTour = () => setTourOpen(true);
+    window.addEventListener('app:start-tour', handleStartTour);
+    return () => window.removeEventListener('app:start-tour', handleStartTour);
+  }, []);
+
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    try {
+      localStorage.setItem(onboardingSeenKey, 'true');
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [onboardingSeenKey]);
+
+  const startTour = useCallback(() => {
+    setShowProfileMenu(false);
+    setShowNotifications(false);
+    setTourOpen(true);
+  }, []);
 
   useEffect(() => {
     const handleAvatarUpdate = (e) => {
@@ -544,6 +583,7 @@ export default function Layout({ children, headerActions = null }) {
 
       {/* Sidebar */}
       <aside
+        data-tour="layout-sidebar"
         className="hidden md:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
         style={{ width: collapsed ? '60px' : '232px', minWidth: collapsed ? '60px' : '232px' }}
       >
@@ -657,11 +697,11 @@ export default function Layout({ children, headerActions = null }) {
           <>
           {collapsed ? (
             <>
-              <button onClick={() => navigate('/dashboard')} title="Dashboard"
+              <button onClick={() => navigate('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <LayoutDashboard size={16} />
               </button>
-              <button onClick={() => navigate('/intel-desk')} title="Intel Desk"
+              <button onClick={() => navigate('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <Newspaper size={16} />
               </button>
@@ -677,20 +717,20 @@ export default function Layout({ children, headerActions = null }) {
                   <BookOpenText size={16} />
                 </button>
               )}
-              <button onClick={() => navigate('/profile')} title="My Hive Profile"
+              <button onClick={() => navigate('/profile')} title="My Hive Profile" data-tour="nav-profile"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
             </>
           ) : (
             <>
-              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" />
-              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" />
+              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" />
+              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" />
               {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" />}
               {canUseBlogStudio && (
                 <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" />
               )}
-              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" />
+              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" />
             </>
           )}
           </>
@@ -727,6 +767,7 @@ export default function Layout({ children, headerActions = null }) {
             {headerActions ? <div className="mr-2 flex min-w-0 max-w-[min(62vw,920px)] items-center overflow-hidden">{headerActions}</div> : null}
             <div className="relative" ref={notificationsRef}>
               <button
+                data-tour="header-notifications"
                 onClick={() => {
                   setShowNotifications((v) => {
                     const next = !v;
@@ -759,6 +800,7 @@ export default function Layout({ children, headerActions = null }) {
 
             <div className="relative" ref={profileMenuRef}>
             <button
+              data-tour="header-profile-menu"
               className="flex items-center gap-2.5 pl-2 border-l border-gray-100 cursor-pointer hover:opacity-85"
               onClick={() => {
                 setShowProfileMenu((v) => !v);
@@ -779,7 +821,7 @@ export default function Layout({ children, headerActions = null }) {
               </div>
             </button>
             {showProfileMenu && (
-              <ProfileMenu user={user} role={roleLabel(user?.role)} onProfile={openProfile} onLogout={handleLogout} ownerMode={isSuperAdmin} />
+              <ProfileMenu user={user} role={roleLabel(user?.role)} onProfile={openProfile} onLogout={handleLogout} onStartTour={startTour} ownerMode={isSuperAdmin} />
             )}
             </div>
           </div>
@@ -817,11 +859,11 @@ export default function Layout({ children, headerActions = null }) {
         </nav>
       ) : (
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-4 gap-1">
-        <button onClick={() => navigate('/dashboard')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/dashboard') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+        <button onClick={() => navigate('/dashboard')} data-tour="nav-dashboard" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/dashboard') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
           <LayoutDashboard size={16} />
           Dashboard
         </button>
-        <button onClick={() => navigate('/intel-desk')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/intel-desk') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+        <button onClick={() => navigate('/intel-desk')} data-tour="nav-intel" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/intel-desk') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
           <Newspaper size={16} />
           Intel
         </button>
@@ -838,12 +880,13 @@ export default function Layout({ children, headerActions = null }) {
         ) : (
           <div className="rounded-lg py-2" />
         )}
-        <button onClick={() => navigate('/profile')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/profile') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+        <button onClick={() => navigate('/profile')} data-tour="nav-profile" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/profile') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
           <UserIcon size={16} />
           Profile
         </button>
       </nav>
       )}
+      <GuidedOnboarding user={user} open={tourOpen} onClose={closeTour} />
     </div>
   );
 }

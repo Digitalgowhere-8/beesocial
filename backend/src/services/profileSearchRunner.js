@@ -97,6 +97,61 @@ function cleanDomain(value) {
     .toLowerCase();
 }
 
+function isValidParsedDate(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime());
+}
+
+function parseDateCandidate(value) {
+  const parsed = new Date(value);
+  return isValidParsedDate(parsed) ? parsed : null;
+}
+
+function extractTextDates(value = '') {
+  const source = text(value).replace(/\s+/g, ' ').trim();
+  if (!source) return [];
+
+  const patterns = [
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/gi,
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})/gi,
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})/gi,
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{4})/gi
+  ];
+
+  const dates = [];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      const parsed = parseDateCandidate(match[1]);
+      if (parsed) dates.push(parsed);
+    }
+  }
+
+  return dates;
+}
+
+function inferResultDate(row = {}) {
+  const explicitDate = parseDateCandidate(row?.publishedAt);
+  if (explicitDate) return explicitDate;
+
+  const candidates = [
+    ...extractTextDates(row?.title),
+    ...extractTextDates(row?.snippet),
+    ...extractTextDates(row?.rawContent),
+    ...extractTextDates(row?.summary),
+    ...extractTextDates(row?.content)
+  ].filter(isValidParsedDate);
+
+  if (!candidates.length) return null;
+  return candidates.sort((a, b) => b.getTime() - a.getTime())[0];
+}
+
+function resultMatchesDayWindow(row, maxAgeDays = 30) {
+  const publishedAt = inferResultDate(row);
+  if (!publishedAt) return maxAgeDays > 30;
+  const ageMs = Date.now() - publishedAt.getTime();
+  return ageMs <= Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
+}
+
 function isGovernmentHost(host) {
   const normalized = cleanDomain(host);
   if (!normalized) return false;
@@ -413,7 +468,9 @@ function articleFromResult(row, request) {
   const snippet = text(row.snippet || row.content || row.summary);
   const rawContent = text(row.rawContent || row.raw_content);
   const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
+  const inferredPublishedAt = inferResultDate(row);
   if (!title || !url) return null;
+  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) return null;
   if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
     return null;
   }
@@ -460,7 +517,7 @@ function articleFromResult(row, request) {
     sourceType,
     sourceQuery: request.sourceQuery,
     fetched_at: new Date().toISOString(),
-    publishedAt: row.publishedAt || new Date().toISOString()
+    publishedAt: inferredPublishedAt?.toISOString?.() || row.publishedAt || ''
   };
 }
 
@@ -547,7 +604,7 @@ function resultFromArticle(article, topic, ai = {}) {
     aiSummary: ai.summary || article.aiSummary || '',
     sourceQuery: article.sourceQuery || '',
     fetched_at: article.fetched_at || new Date().toISOString(),
-    publishedAt: article.publishedAt || new Date().toISOString()
+    publishedAt: article.publishedAt || ''
   };
 }
 
@@ -670,7 +727,7 @@ function buildBackendCallback(profile, topicItems) {
       aiSummary: d.aiSummary || d.summary || '',
       sourceQuery: d.sourceQuery || '',
       fetched_at: d.fetched_at || new Date().toISOString(),
-      publishedAt: d.publishedAt || new Date().toISOString()
+      publishedAt: d.publishedAt || ''
     };
 
     byTopic[result.type] = byTopic[result.type] || [];

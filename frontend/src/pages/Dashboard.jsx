@@ -77,7 +77,7 @@ function EmptyState({ icon: Icon, isAdmin }) {
 }
 
 function getEffectiveTime(item) {
-  return new Date(item.fetchedAt || item.publishedAt || 0).getTime();
+  return new Date(item.publishedAt || item.fetchedAt || 0).getTime();
 }
 
 function getEffectiveDateKey(item) {
@@ -186,7 +186,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       const [dashboardRes, analyticsRes, analyticsVelocityRes] = await Promise.all([
         api.get('/articles/dashboard', { params }),
         api.get('/articles/dashboard'),
-        api.get('/articles/velocity', { params: { scope: 'dataset' } })
+        api.get('/articles/velocity', { params })
       ]);
       setData(normalizeBuckets(dashboardRes.data));
       setAnalyticsData(normalizeBuckets(analyticsRes.data));
@@ -431,6 +431,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       <button
         type="button"
         onClick={() => setRefreshKey((k) => k + 1)}
+        data-tour="dashboard-refresh"
         className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white"
       >
         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -443,7 +444,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     <Layout headerActions={headerActions}>
       <div className="flex h-full min-h-0 flex-col">
         {dashTab === 'analytics' ? (
-          <div className="min-h-0 flex-1" data-analytics-section="Intelligence analytics dashboard">
+          <div className="min-h-0 flex-1" data-tour="dashboard-analytics" data-analytics-section="Intelligence analytics dashboard">
             <AnalyticsSection
               data={analyticsData}
               velocityData={analyticsVelocityData}
@@ -455,7 +456,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalized intelligence feed">
-            <div className="mb-4 shrink-0">
+            <div className="mb-4 shrink-0" data-tour="intel-filters">
               <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} />
             </div>
 
@@ -524,14 +525,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </div>
             ) : (
               <>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-8 xl:hidden">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
                 {loading
                   ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                   : mobileFeedItems.length
                     ? mobileFeedItems.map(item => renderDraggableArticle(item))
                     : <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />}
               </div>
-              <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5">
+              <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5" data-tour="intel-feed">
                 {visibleColumns.map(col => (
                   <FeedColumn
                     key={col.key}

@@ -8,6 +8,8 @@ import {
   Building2,
   Camera,
   Check,
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
   Mail,
@@ -51,6 +53,11 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('profile');
   const [form, setForm] = useState(() => initialFormFromUser(user));
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '', confirm: '' });
+  const [pwdVisibility, setPwdVisibility] = useState({
+    currentPassword: false,
+    newPassword: false,
+    confirm: false
+  });
   const [savedProfile, setSavedProfile] = useState(false);
   const [savedPwd, setSavedPwd] = useState(false);
   const [err, setErr] = useState('');
@@ -152,6 +159,7 @@ export default function Profile() {
       });
       setAuthState(data);
       setPwd({ currentPassword: '', newPassword: '', confirm: '' });
+      setPwdVisibility({ currentPassword: false, newPassword: false, confirm: false });
       setSavedPwd(true);
       window.setTimeout(() => setSavedPwd(false), 2200);
     } catch (error) {
@@ -163,7 +171,7 @@ export default function Profile() {
 
   const headerActions = (
     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-      <div className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      <div data-tour="profile-tabs" className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -184,6 +192,7 @@ export default function Profile() {
         <button
           type="button"
           onClick={() => navigate('/admin')}
+          data-tour="profile-admin-controls"
           className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
         >
           Admin Controls
@@ -241,7 +250,7 @@ export default function Profile() {
             </section>
           </aside>
 
-          <form onSubmit={saveProfile} className="animate-fade-in-up stagger-2 md:order-3 md:col-span-2 2xl:order-none 2xl:col-span-1">
+          <form onSubmit={saveProfile} data-tour="profile-account" className="animate-fade-in-up stagger-2 md:order-3 md:col-span-2 2xl:order-none 2xl:col-span-1">
             <Section icon={User} eyebrow="Identity" title="Account Details" className="flex h-full min-h-0 flex-col 2xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-1">
                 <Field label="Full name">
@@ -278,13 +287,30 @@ export default function Profile() {
             <Section icon={Lock} eyebrow="Security" title="Password" compact className="flex h-full min-h-0 flex-col 2xl:min-h-[420px]" bodyClassName="flex flex-1 flex-col justify-between">
               <div className="space-y-4">
                 <Field label="Current password">
-                  <input type="password" className="input min-h-[44px] rounded-xl" value={pwd.currentPassword} onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })} required />
+                  <PasswordInput
+                    value={pwd.currentPassword}
+                    visible={pwdVisibility.currentPassword}
+                    onToggle={() => setPwdVisibility((prev) => ({ ...prev, currentPassword: !prev.currentPassword }))}
+                    onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })}
+                  />
                 </Field>
                 <Field label="New password">
-                  <input type="password" minLength={6} className="input min-h-[44px] rounded-xl" value={pwd.newPassword} onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })} required />
+                  <PasswordInput
+                    value={pwd.newPassword}
+                    visible={pwdVisibility.newPassword}
+                    minLength={6}
+                    onToggle={() => setPwdVisibility((prev) => ({ ...prev, newPassword: !prev.newPassword }))}
+                    onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })}
+                  />
                 </Field>
                 <Field label="Confirm password">
-                  <input type="password" minLength={6} className="input min-h-[44px] rounded-xl" value={pwd.confirm} onChange={(e) => setPwd({ ...pwd, confirm: e.target.value })} required />
+                  <PasswordInput
+                    value={pwd.confirm}
+                    visible={pwdVisibility.confirm}
+                    minLength={6}
+                    onToggle={() => setPwdVisibility((prev) => ({ ...prev, confirm: !prev.confirm }))}
+                    onChange={(e) => setPwd({ ...pwd, confirm: e.target.value })}
+                  />
                 </Field>
               </div>
               <div className="mt-6">
@@ -301,7 +327,7 @@ export default function Profile() {
           ) : null}
 
         {activeTab === 'fetch' && canSeeFetchSection ? (
-          <section className="mt-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-in-up stagger-3">
+          <section data-tour="profile-personalization" className="mt-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-in-up stagger-3">
             <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-brand-pink/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
@@ -345,6 +371,30 @@ function Field({ label, children, tight = false }) {
     <div className={tight ? '' : 'min-w-0'}>
       <label className="label text-gray-500 font-bold tracking-wider">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function PasswordInput({ value, onChange, visible, onToggle, minLength }) {
+  return (
+    <div className="relative">
+      <input
+        type={visible ? 'text' : 'password'}
+        minLength={minLength}
+        className="input min-h-[44px] rounded-xl pr-11"
+        value={value}
+        onChange={onChange}
+        required
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-brand-crimson"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        title={visible ? 'Hide password' : 'Show password'}
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
     </div>
   );
 }

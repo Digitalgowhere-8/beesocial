@@ -5,9 +5,11 @@ const User = require('../models/User');
 const Plan = require('../models/Plan');
 const UserSession = require('../models/UserSession');
 const { protect, signToken } = require('../middleware/auth');
+const { buildPasswordResetEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
 
 const router = express.Router();
 const JWT_SESSION_DAYS = Math.max(1, Number(process.env.JWT_SESSION_DAYS || 7));
+const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(5, Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 15));
 
 function sessionExpiryDate() {
   return new Date(Date.now() + JWT_SESSION_DAYS * 24 * 60 * 60 * 1000);
@@ -130,6 +132,18 @@ const loginSchema = Joi.object({
   password: Joi.string().required()
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required().custom((value) => {
+    if (!isValidEmail(value)) throw new Error('Invalid email format. Please check for typos like multiple domain suffixes (e.g., .com.com)');
+    return value;
+  })
+});
+
+const resetPasswordSchema = Joi.object({
+  token: Joi.string().trim().min(20).required(),
+  newPassword: Joi.string().min(6).max(128).required()
+});
+
 const updateSchema = Joi.object({
   name: Joi.string().min(2).max(120),
   company: Joi.string().allow('').max(120),
@@ -246,6 +260,86 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = signToken(user, session.sessionId);
   res.json({ token, user: user.toPublicJSON(), session: session.toObject() });
+}));
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', asyncHandler(async (req, res) => {
+  const { error, value } = forgotPasswordSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  if (!isEmailConfigured()) {
+    return res.status(503).json({ message: 'Password recovery email is not configured yet.' });
+  }
+
+  const normalizedEmail = value.email.toLowerCase();
+  const user = await User.findOne({ email: normalizedEmail, isActive: true }).select('name email');
+  const genericMessage = 'If this email exists in our system, we have sent a password reset link.';
+
+  if (!user) return res.json({ message: genericMessage });
+
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+  const frontendBaseUrl = String(process.env.FRONTEND_URL || '').replace(/\/$/, '');
+
+  if (!frontendBaseUrl) {
+    return res.status(500).json({ message: 'FRONTEND_URL is missing on the server.' });
+  }
+
+  user.passwordResetToken = hashedResetToken;
+  user.passwordResetExpiresAt = expiresAt;
+  await user.save({ validateBeforeSave: false });
+
+  const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(resetToken)}&email=${encodeURIComponent(user.email)}`;
+  const emailPayload = buildPasswordResetEmail({
+    name: user.name,
+    resetUrl,
+    expiresMinutes: PASSWORD_RESET_TOKEN_TTL_MINUTES
+  });
+
+  try {
+    await sendEmail({
+      to: user.email,
+      replyTo: process.env.EMAIL_REPLY_TO || undefined,
+      ...emailPayload
+    });
+  } catch (sendError) {
+    user.passwordResetToken = undefined;
+    user.passwordResetExpiresAt = undefined;
+    await user.save({ validateBeforeSave: false });
+    throw sendError;
+  }
+
+  res.json({ message: genericMessage });
+}));
+
+// POST /api/auth/reset-password
+router.post('/reset-password', asyncHandler(async (req, res) => {
+  const { error, value } = resetPasswordSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+
+  const hashedToken = crypto.createHash('sha256').update(value.token).digest('hex');
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpiresAt: { $gt: new Date() }
+  }).select('+password +passwordResetToken +passwordResetExpiresAt');
+
+  if (!user) {
+    return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+  }
+
+  user.password = value.newPassword;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpiresAt = undefined;
+  user.lastLoginAt = new Date();
+  user.lastSeenAt = user.lastLoginAt;
+  await user.save();
+
+  await revokeSessionsForUser(user._id, {
+    revokedBy: user._id,
+    reason: 'password_reset'
+  });
+
+  res.json({ message: 'Password reset successful. You can now sign in with your new password.' });
 }));
 
 // GET /api/auth/me

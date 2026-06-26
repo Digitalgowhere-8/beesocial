@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
-  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles,
+  Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles, Mail, Send,
   MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -77,7 +77,8 @@ const SUPER_ADMIN_SUBTABS = {
     { key: 'builder', label: 'Plan Builder' }
   ],
   settings: [
-    { key: 'system', label: 'System Settings' }
+    { key: 'system', label: 'System Settings' },
+    { key: 'mail', label: 'Mail Center' }
   ]
 };
 
@@ -231,7 +232,7 @@ export default function AdminPanel() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
+      <div data-tour="admin-shell" className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full space-y-5 pb-10">
           {isSuperAdmin ? (
             <SuperAdminWorkspace tabs={tabs} activeTab={tab} onTabChange={handleSuperAdminTabChange} subTabs={SUPER_ADMIN_SUBTABS[tab] || []} activeSubTab={subTab} onSubTabChange={setSubTab} user={user}>
@@ -240,7 +241,9 @@ export default function AdminPanel() {
               {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} />}
               {tab === 'users' && <UsersTab key={`users-${superAdminRefreshKey}`} dbPlans={dbPlans} activeSubTab={subTab} />}
               {tab === 'plans' && <PlanBuilderTab key={`plans-${superAdminRefreshKey}`} dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
-              {tab === 'settings' && <SystemSettingsTab key={`settings-${superAdminRefreshKey}`} />}
+              {tab === 'settings' && (subTab === 'mail'
+                ? <SuperAdminMailCenter key={`settings-mail-${superAdminRefreshKey}`} />
+                : <SystemSettingsTab key={`settings-${superAdminRefreshKey}`} />)}
             </SuperAdminWorkspace>
           ) : null}
           {!isSuperAdmin && <>
@@ -3954,6 +3957,336 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Plan Config</>}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// =============== SUPER ADMIN MAIL CENTER ===============
+
+const MAIL_AUDIENCE_OPTIONS_UI = [
+  { key: 'all', label: 'All active users', help: 'Sends to every active super admin, admin, and member.' },
+  { key: 'admins', label: 'Admins only', help: 'Targets super admins and tenant admins.' },
+  { key: 'members', label: 'Members only', help: 'Targets end users and team members.' },
+  { key: 'inactive', label: 'Inactive users', help: 'Useful for onboarding nudges or reactivation.' },
+  { key: 'custom', label: 'Custom selection', help: 'Pick exact recipients from the user directory.' }
+];
+
+function SuperAdminMailCenter() {
+  const [audienceItems, setAudienceItems] = useState([]);
+  const [loadingAudience, setLoadingAudience] = useState(true);
+  const [sendError, setSendError] = useState('');
+  const [sendSuccess, setSendSuccess] = useState('');
+  const [sending, setSending] = useState(false);
+  const [configured, setConfigured] = useState(false);
+  const [senderEmail, setSenderEmail] = useState('');
+  const [replyToEmail, setReplyToEmail] = useState('');
+  const [recipientQuery, setRecipientQuery] = useState('');
+  const [form, setForm] = useState({
+    audience: 'all',
+    subject: '',
+    heading: '',
+    preview: '',
+    message: '',
+    ctaLabel: '',
+    ctaUrl: '',
+    footerNote: '',
+    userIds: []
+  });
+
+  const loadAudience = useCallback(async () => {
+    setLoadingAudience(true);
+    setSendError('');
+    try {
+      const { data } = await api.get('/admin/email/audience');
+      setAudienceItems(data.items || []);
+      setConfigured(Boolean(data.configured));
+      setSenderEmail(data.sender || '');
+      setReplyToEmail(data.replyTo || '');
+    } catch (err) {
+      setSendError(err.response?.data?.message || err.message || 'Could not load mail audience.');
+    } finally {
+      setLoadingAudience(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAudience();
+  }, [loadAudience]);
+
+  const filteredAudienceItems = useMemo(() => {
+    const query = recipientQuery.trim().toLowerCase();
+    if (!query) return audienceItems;
+    return audienceItems.filter((item) => (
+      [item.name, item.email, item.company, item.role]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    ));
+  }, [audienceItems, recipientQuery]);
+
+  const selectedRecipients = useMemo(() => {
+    if (form.audience === 'custom') {
+      const selectedSet = new Set(form.userIds);
+      return audienceItems.filter((item) => selectedSet.has(item._id));
+    }
+    if (form.audience === 'admins') return audienceItems.filter((item) => ['admin', 'super_admin'].includes(item.role) && item.isActive);
+    if (form.audience === 'members') return audienceItems.filter((item) => item.role === 'user' && item.isActive);
+    if (form.audience === 'inactive') return audienceItems.filter((item) => !item.isActive);
+    return audienceItems.filter((item) => item.isActive);
+  }, [audienceItems, form.audience, form.userIds]);
+
+  const previewHeading = form.heading.trim() || form.subject.trim() || 'Platform update';
+  const previewIntro = form.preview.trim() || 'A new message from the super admin team is ready to go.';
+  const previewMessage = form.message.trim() || 'Write your message here. Line breaks will be preserved in the final email.';
+
+  const updateForm = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const toggleRecipient = (userId) => {
+    setForm((prev) => ({
+      ...prev,
+      userIds: prev.userIds.includes(userId)
+        ? prev.userIds.filter((id) => id !== userId)
+        : [...prev.userIds, userId]
+    }));
+  };
+
+  const handleAudienceChange = (audience) => {
+    setForm((prev) => ({
+      ...prev,
+      audience,
+      userIds: audience === 'custom' ? prev.userIds : []
+    }));
+  };
+
+  const handleSend = async () => {
+    setSendError('');
+    setSendSuccess('');
+
+    if (!configured) {
+      setSendError('Email delivery is not configured yet. Add RESEND_API_KEY and EMAIL_FROM to the backend environment first.');
+      return;
+    }
+    if (!form.subject.trim()) {
+      setSendError('Subject is required.');
+      return;
+    }
+    if (!form.message.trim()) {
+      setSendError('Message is required.');
+      return;
+    }
+    if (form.audience === 'custom' && !form.userIds.length) {
+      setSendError('Select at least one recipient for a custom send.');
+      return;
+    }
+
+    setSending(true);
+    try {
+      const { data } = await api.post('/admin/email/send', {
+        ...form,
+        subject: form.subject.trim(),
+        heading: form.heading.trim(),
+        preview: form.preview.trim(),
+        message: form.message,
+        ctaLabel: form.ctaLabel.trim(),
+        ctaUrl: form.ctaUrl.trim(),
+        footerNote: form.footerNote.trim()
+      });
+      setSendSuccess(data.message || 'Email sent successfully.');
+    } catch (err) {
+      setSendError(err.response?.data?.message || err.message || 'Could not send email.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loadingAudience) return <Loader />;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">
+                <Mail size={12} />
+                Super Admin Mail Center
+              </div>
+              <h3 className="text-xl font-black tracking-tight text-gray-900">Send platform notifications by email</h3>
+              <p className="mt-1 text-sm text-gray-500">Compose a branded email, choose the audience, and deliver updates directly from the super admin console.</p>
+            </div>
+            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${configured ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'}`}>
+              <span className={`h-2 w-2 rounded-full ${configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              {configured ? 'Mail ready' : 'Mail setup needed'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Subject</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.subject} onChange={(e) => updateForm('subject', e.target.value)} placeholder="Service update, launch note, billing reminder..." />
+            </div>
+            <div>
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Hero heading</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.heading} onChange={(e) => updateForm('heading', e.target.value)} placeholder="Optional; falls back to subject" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Preview line</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.preview} onChange={(e) => updateForm('preview', e.target.value)} placeholder="Short supporting line shown near the top of the email" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Message body</label>
+              <textarea className="input min-h-[220px] rounded-2xl py-3" value={form.message} onChange={(e) => updateForm('message', e.target.value)} placeholder={'Write your message here.\n\nYou can use multiple paragraphs.\nEach line break is preserved in the final email.'} />
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">CTA label</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.ctaLabel} onChange={(e) => updateForm('ctaLabel', e.target.value)} placeholder="Open dashboard" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">CTA URL</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.ctaUrl} onChange={(e) => updateForm('ctaUrl', e.target.value)} placeholder="https://beesocial.digitalgowhere.com/dashboard" />
+            </div>
+            <div className="md:col-span-3">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Footer note</label>
+              <input className="input min-h-[46px] rounded-xl" value={form.footerNote} onChange={(e) => updateForm('footerNote', e.target.value)} placeholder="Why the recipient is receiving this email" />
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-gray-100 pt-6">
+            <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Audience</div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {MAIL_AUDIENCE_OPTIONS_UI.map((option) => {
+                const active = form.audience === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => handleAudienceChange(option.key)}
+                    className={`rounded-2xl border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson bg-brand-pink/30 shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-brand-crimson/20 hover:bg-white'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-800'}`}>{option.label}</div>
+                      {active ? <Check size={16} className="text-brand-crimson" /> : null}
+                    </div>
+                    <div className="mt-1 text-xs font-medium leading-5 text-gray-500">{option.help}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {form.audience === 'custom' ? (
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-black text-gray-900">Choose recipients</div>
+                    <div className="text-xs font-medium text-gray-500">{form.userIds.length} selected</div>
+                  </div>
+                  <input className="input min-h-[42px] rounded-xl sm:w-[240px]" value={recipientQuery} onChange={(e) => setRecipientQuery(e.target.value)} placeholder="Search name, email, company..." />
+                </div>
+                <div className="grid max-h-[320px] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
+                  {filteredAudienceItems.map((item) => {
+                    const checked = form.userIds.includes(item._id);
+                    return (
+                      <button
+                        key={item._id}
+                        type="button"
+                        onClick={() => toggleRecipient(item._id)}
+                        className={`rounded-xl border px-3 py-3 text-left transition-all ${checked ? 'border-brand-crimson bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-brand-crimson/20'}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-black text-gray-900">{item.name || item.email}</div>
+                            <div className="truncate text-xs font-medium text-gray-500">{item.email}</div>
+                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                              {item.role === 'super_admin' ? 'Super Admin' : item.role === 'admin' ? 'Admin' : 'Member'}
+                              {item.company ? ` • ${item.company}` : ''}
+                            </div>
+                          </div>
+                          <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${checked ? 'border-brand-crimson bg-brand-crimson text-white' : 'border-gray-300 bg-white text-transparent'}`}>
+                            <Check size={12} />
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {(sendError || sendSuccess) ? (
+            <div className={`mt-5 rounded-xl border px-4 py-3 text-sm font-bold ${sendError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+              {sendError || sendSuccess}
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm font-medium text-gray-500">
+              {selectedRecipients.length} recipient{selectedRecipients.length === 1 ? '' : 's'} will receive this email.
+            </div>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sending}
+              className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-brand-crimson px-5 text-sm font-black text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              Send Email
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Delivery setup</div>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-xl bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">From</div>
+                <div className="mt-1 break-all font-bold text-gray-800">{senderEmail || 'Not configured'}</div>
+              </div>
+              <div className="rounded-xl bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Reply-To</div>
+                <div className="mt-1 break-all font-bold text-gray-800">{replyToEmail || 'Uses sender address'}</div>
+              </div>
+              {!configured ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                  Add `RESEND_API_KEY` and `EMAIL_FROM` to `backend/.env`, then restart the backend.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Live preview</div>
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-[#faf0f2]">
+              <div className="bg-gradient-to-br from-brand-crimson to-brand-hoverred px-5 py-5 text-white">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/80">Super Admin Message</div>
+                <div className="mt-2 text-xl font-black leading-tight">{previewHeading}</div>
+                <div className="mt-2 text-sm font-medium leading-6 text-white/85">{previewIntro}</div>
+              </div>
+              <div className="space-y-4 bg-white px-5 py-5">
+                <div className="text-sm font-medium text-gray-600">
+                  Hi {selectedRecipients[0]?.name || selectedRecipients[0]?.email || 'recipient'},
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">{previewMessage}</div>
+                {form.ctaUrl.trim() ? (
+                  <div>
+                    <span className="inline-flex items-center rounded-xl bg-brand-crimson px-4 py-2 text-sm font-black text-white">
+                      {form.ctaLabel.trim() || 'Open link'}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="border-t border-gray-100 pt-4 text-xs font-medium leading-6 text-gray-400">
+                  {form.footerNote.trim() || 'You received this email because your account is part of the platform workspace.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

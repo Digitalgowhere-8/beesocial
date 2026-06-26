@@ -19,6 +19,7 @@ const {
   triggerPlatformFetch,
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
+const { buildAdminBroadcastEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
 
@@ -66,6 +67,7 @@ const DEFAULT_MEMBER_ACCESS = {
   canUseSavedSearches: true,
   canUseScheduler: false
 };
+const MAIL_AUDIENCE_OPTIONS = ['all', 'admins', 'members', 'inactive', 'custom'];
 
 function startOfDay(days = 30) {
   const date = new Date();
@@ -217,6 +219,42 @@ function normalizeAccessPatch(access, { allowMemberManagement = false } = {}) {
     if (key in access) out[key] = Boolean(access[key]);
     return out;
   }, {});
+}
+
+function normalizeMultilineText(value = '') {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+}
+
+async function resolveMailRecipients({ audience = 'all', userIds = [] } = {}) {
+  const selectedAudience = MAIL_AUDIENCE_OPTIONS.includes(audience) ? audience : 'all';
+  const query = { email: { $exists: true, $ne: '' } };
+
+  if (selectedAudience === 'admins') {
+    query.role = { $in: ['admin', 'super_admin'] };
+    query.isActive = true;
+  } else if (selectedAudience === 'members') {
+    query.role = 'user';
+    query.isActive = true;
+  } else if (selectedAudience === 'inactive') {
+    query.isActive = false;
+  } else if (selectedAudience === 'custom') {
+    const validIds = Array.isArray(userIds)
+      ? userIds.filter((id) => mongoose.Types.ObjectId.isValid(id))
+      : [];
+    if (!validIds.length) return [];
+    query._id = { $in: validIds };
+  } else {
+    query.isActive = true;
+    query.role = { $in: ['admin', 'user', 'super_admin'] };
+  }
+
+  return User.find(query)
+    .select('name email role company isActive')
+    .sort({ role: 1, name: 1, email: 1 })
+    .lean();
 }
 
 // Every route here requires an operational admin.
@@ -1012,6 +1050,80 @@ router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res
   }
   const settings = await saveSystemSettings(patch);
   res.json({ settings });
+}));
+
+// ============== SUPER ADMIN MAIL CENTER ==============
+
+router.get('/email/audience', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const items = await User.find({ role: { $in: ['super_admin', 'admin', 'user'] } })
+    .select('name email role company isActive')
+    .sort({ isActive: -1, role: 1, name: 1, email: 1 })
+    .lean();
+
+  res.json({
+    configured: isEmailConfigured(),
+    sender: process.env.EMAIL_FROM || '',
+    replyTo: process.env.EMAIL_REPLY_TO || '',
+    items
+  });
+}));
+
+router.post('/email/send', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  if (!isEmailConfigured()) {
+    return res.status(503).json({ message: 'Email delivery is not configured. Add RESEND_API_KEY and EMAIL_FROM first.' });
+  }
+
+  const audience = MAIL_AUDIENCE_OPTIONS.includes(req.body?.audience) ? req.body.audience : 'all';
+  const subject = String(req.body?.subject || '').trim();
+  const heading = String(req.body?.heading || '').trim() || subject;
+  const preview = String(req.body?.preview || '').trim();
+  const message = normalizeMultilineText(req.body?.message);
+  const ctaLabel = String(req.body?.ctaLabel || '').trim();
+  const ctaUrl = String(req.body?.ctaUrl || '').trim();
+  const footerNote = String(req.body?.footerNote || '').trim();
+  const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
+
+  if (!subject) return res.status(400).json({ message: 'Subject is required.' });
+  if (!message) return res.status(400).json({ message: 'Message is required.' });
+  if (subject.length > 180) return res.status(400).json({ message: 'Subject is too long.' });
+  if (heading.length > 180) return res.status(400).json({ message: 'Heading is too long.' });
+  if (preview.length > 220) return res.status(400).json({ message: 'Preview is too long.' });
+  if (message.length > 10000) return res.status(400).json({ message: 'Message is too long.' });
+  if (ctaLabel.length > 60) return res.status(400).json({ message: 'CTA label is too long.' });
+  if (ctaUrl && !/^https?:\/\//i.test(ctaUrl)) {
+    return res.status(400).json({ message: 'CTA URL must start with http:// or https://.' });
+  }
+
+  const recipients = await resolveMailRecipients({ audience, userIds });
+  if (!recipients.length) {
+    return res.status(400).json({ message: 'No recipients found for this audience.' });
+  }
+
+  for (const recipient of recipients) {
+    const payload = buildAdminBroadcastEmail({
+      heading,
+      preview,
+      message,
+      ctaLabel,
+      ctaUrl,
+      footerNote,
+      recipientName: recipient.name || recipient.email
+    });
+
+    await sendEmail({
+      to: recipient.email,
+      subject,
+      replyTo: process.env.EMAIL_REPLY_TO || undefined,
+      ...payload
+    });
+  }
+
+  res.json({
+    success: true,
+    message: `Email sent to ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}.`,
+    sent: recipients.length,
+    audience
+  });
 }));
 
 // ============== LOGS ==============

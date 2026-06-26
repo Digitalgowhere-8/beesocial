@@ -67,6 +67,8 @@ const userSchema = new mongoose.Schema(
     usageResetAt: { type: Date, default: null },
     avatar: { type: String, default: '' },  // optional URL
     passwordChangedAt: { type: Date },
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpiresAt: { type: Date, select: false },
 
     lastLoginAt: { type: Date },
     lastSeenAt: { type: Date },

@@ -178,7 +178,7 @@ function SignalChart({ data, mode, className = '' }) {
           <span className="text-sm font-bold text-gray-700">Signal Velocity</span>
         </div>
         <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">
-          {mode === 'today' ? 'Today' : 'All dataset by date'}
+          {mode === 'today' ? 'Today' : 'Dataset by date'}
         </span>
       </div>
 
