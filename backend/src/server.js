@@ -42,22 +42,34 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 
-const origins = (process.env.CORS_ORIGINS || '*')
+// Parse multiple origins from environment variables if present
+const origins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
 
-//app.use(
- // cors({
-   // origin: origins.includes('*') ? true : origins,
-    //credentials: true
-  //})
-//);
+// Core allowed whitelist array
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://beesocial-frontend.beautifulmoss-11cf811e.centralindia.azurecontainerapps.io',
+  ...origins
+];
 
-app.use(cors({
-  origin: 'https://beesocial-frontend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true
+  })
+);
 
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
