@@ -33,11 +33,15 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      # CHANGED: Updated --build-arg name to VITE_API_BASE_URL to match your axios.js configuration
+      # Create a production env file directly before running docker build
+      # This guarantees Vite compiles with the live backend endpoint
+      - name: Create Production Environment File
+        run: |
+          echo "VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io" > ./frontend/.env.production
+
       - name: Build and Push Frontend Image
         run: |
           docker build \
-            --build-arg VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io \
             -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
           docker push beesocial.azurecr.io/beesocial-frontend:latest
 
