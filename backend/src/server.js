@@ -47,12 +47,17 @@ const origins = (process.env.CORS_ORIGINS || '*')
   .map((s) => s.trim())
   .filter(Boolean);
 
-app.use(
-  cors({
-    origin: origins.includes('*') ? true : origins,
-    credentials: true
-  })
-);
+//app.use(
+ // cors({
+   // origin: origins.includes('*') ? true : origins,
+    //credentials: true
+  //})
+//);
+
+app.use(cors({
+  origin: 'https://beesocial-frontend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io',
+  credentials: true
+}));
 
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));

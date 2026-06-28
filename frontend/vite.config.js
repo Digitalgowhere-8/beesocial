@@ -8,7 +8,7 @@ export default defineConfig({
 	host: true,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY || 'http://backend:5000',
+        target: process.env.VITE_API_PROXY || 'https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io',
         changeOrigin: true
       }
     }
