@@ -39,9 +39,11 @@ jobs:
         run: |
           echo "VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io" > ./frontend/.env.production
 
+      # Pass the URL directly into the docker build command
       - name: Build and Push Frontend Image
         run: |
           docker build \
+            --build-arg VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io \
             -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
           docker push beesocial.azurecr.io/beesocial-frontend:latest
 
