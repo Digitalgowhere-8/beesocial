@@ -33,9 +33,12 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
+      # Injected the live backend URL into the docker build arguments
       - name: Build and Push Frontend Image
         run: |
-          docker build -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
+          docker build \
+            --build-arg VITE_API_URL=https://beesocial-backend.beautifulmoss-11cf811e.centralindia.azurecontainerapps.io \
+            -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
           docker push beesocial.azurecr.io/beesocial-frontend:latest
 
       - name: Log in to Azure CLI via OIDC
