@@ -128,10 +128,11 @@ app.use((err, _req, res, _next) => {
 // --------- Boot ---------
 async function start() {
   await connectDB();
-  app.listen(PORT, () => {
+  const HOST = '0.0.0.0';
+  app.listen(PORT, HOST, () => {
     console.log('----------------------------------------------');
     console.log('  Ascentium Intelligence API');
-    console.log(`  Listening on http://localhost:${PORT}`);
+    console.log(`  Listening on http://${HOST}:${PORT}`);
     console.log(`  ENV: ${process.env.NODE_ENV || 'development'}`);
     console.log('----------------------------------------------');
     cronRunner.start();
