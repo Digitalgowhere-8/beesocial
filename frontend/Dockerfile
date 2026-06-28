@@ -1,5 +1,5 @@
 # Step 1: Build the React application
-FROM FROM mcr.microsoft.com/mirror/docker/library/node:20-alpine AS build
+FROM mcr.microsoft.com/mirror/docker/library/node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
