@@ -4,4 +4,5 @@ COPY package*.json ./
 RUN npm ci --only=production
 COPY . .
 EXPOSE 5000
-CMD ["node", "src/index.js"]
+# Updated execution command to target your real file name
+CMD ["node", "src/server.js"]
