@@ -5,7 +5,6 @@ on:
     branches:
       - azuredeploy
 
-# Required for passwordless Azure OIDC authentication
 permissions:
   id-token: write
   contents: read
@@ -19,6 +18,13 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+
+      # Log into Docker Hub to avoid rate limits and connection drops
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Azure Container Registry
         uses: azure/docker-login@v1
@@ -54,6 +60,12 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Azure Container Registry
         uses: azure/docker-login@v1
