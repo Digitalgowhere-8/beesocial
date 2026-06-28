@@ -45,3 +45,25 @@ jobs:
             --name beesocial-frontend \
             --resource-group DGW-RG-BS \
             --image beesocial.azurecr.io/beesocial-frontend:latest
+            
+      # 3. Build your React Docker image by pointing to the frontend folder context
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
+          docker push beesocial.azurecr.io/beesocial-frontend:latest
+
+      # 4. Log in to Azure CLI via OIDC
+      - name: Log in to Azure CLI via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 5. Tell Azure Container Apps to deploy your fresh image on port 80
+      - name: Update Azure Container App
+        run: |
+          az containerapp update \
+            --name beesocial-frontend \
+            --resource-group DGW-RG-BS \
+            --image beesocial.azurecr.io/beesocial-frontend:latest
