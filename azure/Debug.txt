@@ -1,0 +1,17 @@
+# Live stream (like `docker logs -f`)
+az containerapp logs show \
+  --name beesocial-backend \
+  --resource-group DGW-RG-BS \
+  --follow
+
+# Frontend logs
+az containerapp logs show \
+  --name beesocial-frontend \
+  --resource-group DGW-RG-BS \
+  --follow
+
+# Last 100 lines (like `docker logs --tail 100`)
+az containerapp logs show \
+  --name beesocial-backend \
+  --resource-group DGW-RG-BS \
+  --tail 100
