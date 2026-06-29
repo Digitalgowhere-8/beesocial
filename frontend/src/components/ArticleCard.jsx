@@ -21,10 +21,18 @@ function formatDateTime(value) {
 }
 
 function sourceHost(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    return new URL(value).hostname.replace(/^www\./, '');
   } catch (_err) {
-    return '';
+    if (!/^[\w.-]+\.[a-z]{2,}/i.test(value)) return '';
+    try {
+      return new URL(`https://${value}`).hostname.replace(/^www\./, '');
+    } catch (_nestedErr) {
+      return '';
+    }
   }
 }
 
@@ -81,14 +89,15 @@ export default function ArticleCard({
   const region = item.region || '';
   const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
+  const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
 
   return (
     <article
       data-analytics-section={`Article: ${item.type || 'signal'} - ${item.category || 'General'}`}
       className={[
-        'group relative isolate flex flex-col overflow-hidden rounded-lg bg-white fade-in',
+        'group relative isolate flex flex-col overflow-hidden rounded-lg bg-white font-sans fade-in',
         'transition-all duration-200',
-        compact ? 'p-4' : 'p-5',
+        compact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5',
         selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
@@ -179,13 +188,13 @@ export default function ArticleCard({
         </p>
       )}
 
-      <div className="mt-auto border-t border-gray-100 pl-3 pt-3">
-        <div className="mb-2 grid grid-cols-2 gap-2">
+      <div className="mt-auto border-t border-gray-100 pl-0 pt-3 sm:pl-3">
+        <div className={['mb-2 grid grid-cols-1 gap-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
           <MetaPill icon={MapPin} title="Country or region">{[region, country].filter(Boolean).join(', ')}</MetaPill>
           <MetaPill icon={Globe} title={`Source: ${source}`}>{source}</MetaPill>
         </div>
         {(item.sector || opportunityType) && (
-          <div className="mb-2 grid grid-cols-2 gap-2">
+          <div className={['mb-2 grid grid-cols-1 gap-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
             <MetaPill icon={Folder} title="Service focus">{item.sector}</MetaPill>
             <MetaPill icon={Tag} title="Opportunity type">{opportunityType}</MetaPill>
           </div>
@@ -201,47 +210,74 @@ export default function ArticleCard({
           </MetaPill>
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-md bg-gray-50 px-2.5 py-2 ring-1 ring-gray-100 transition-colors group-hover:bg-white">
-          <div className="min-w-0">
-            <div className="text-[9px] font-black uppercase tracking-wider text-gray-400">Source domain</div>
-            <div className="truncate text-[11px] font-bold text-gray-500">{host || item.url}</div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {onSaveToggle && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onSaveToggle(item);
-                }}
-                className={[
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all',
-                  item.isSaved
-                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                    : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
-                  saving ? 'cursor-wait opacity-70' : ''
-                ].join(' ')}
-                title={item.isSaved ? 'Remove from saved' : 'Save this article'}
-              >
-                {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
-                {saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}
-              </button>
-            )}
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all hover:bg-brand-pink/50"
-              style={{ color: typeStyle.accent }}
-              title="Open source article"
-              data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
-              onClick={(event) => event.stopPropagation()}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white">
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-w-0 items-center gap-2 rounded-lg bg-white/90 px-2 py-1.5 ring-1 ring-gray-100 transition-all hover:bg-white hover:ring-brand-crimson/20"
+            title={sourceDomain}
+            data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: `${typeStyle.accent}12`, color: typeStyle.accent }}
             >
-              Source <ExternalLink size={12} />
-            </a>
-          </div>
+              <Globe size={13} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">Source</span>
+              <span
+              className={[
+                'block text-[11px] font-black text-gray-600',
+                'truncate'
+              ].join(' ')}
+              >
+                {sourceDomain}
+              </span>
+            </span>
+          </a>
+          {onSaveToggle && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onSaveToggle(item);
+              }}
+              className={[
+                'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
+                compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
+                item.isSaved
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                  : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+                saving ? 'cursor-wait opacity-70' : ''
+              ].join(' ')}
+              aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
+              title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+            >
+              {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
+              {!compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>}
+            </button>
+          )}
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={[
+              'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
+              compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3'
+            ].join(' ')}
+            style={{ color: typeStyle.accent }}
+            title="Open source article"
+            aria-label="Open source article"
+            data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {!compact && <span className="hidden sm:inline">Source</span>} <ExternalLink size={12} />
+          </a>
         </div>
       </div>
 

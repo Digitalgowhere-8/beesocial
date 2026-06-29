@@ -646,8 +646,8 @@ function CategoryMomentumCard({ categories, className = '' }) {
         {categories.length ? categories.map((item) => (
           <div key={item.label} className="flex min-h-[34px] shrink-0 flex-col justify-center">
             <div className="mb-[clamp(0.1rem,0.35vh,0.25rem)] flex items-center justify-between gap-2">
-              <span className="truncate text-[clamp(10px,1.45vh,12px)] font-bold leading-none text-gray-700">{item.label}</span>
-              <span className="shrink-0 text-[10px] font-black leading-none text-gray-400">{item.count}</span>
+              <span className="truncate text-[12px] font-black leading-none text-gray-700">{item.label}</span>
+              <span className="shrink-0 text-[10px] font-black leading-none text-gray-500">{item.count}</span>
             </div>
             <div className="h-[clamp(0.2rem,0.55vh,0.4rem)] shrink-0 rounded-full bg-gray-100">
               <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${Math.round((item.count / max) * 100)}%` }} />
@@ -701,7 +701,7 @@ function MarketDistributionCard({ markets, className = '' }) {
             <div key={market.market} className="flex min-h-[58px] shrink-0 flex-col justify-center rounded-lg border border-gray-100 px-3 py-[clamp(0.28rem,0.65vh,0.5rem)]">
               <div className="mb-[clamp(0.18rem,0.45vh,0.35rem)] grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <div className="truncate text-[12px] font-black text-gray-800">{market.market}</div>
+                  <div className="truncate text-[12px] font-black text-gray-700">{market.market}</div>
                   <div className="truncate text-[9px] font-bold uppercase tracking-wider text-gray-400">
                     {market.types.length ? market.types.join(' / ') : 'Unclassified'}
                   </div>

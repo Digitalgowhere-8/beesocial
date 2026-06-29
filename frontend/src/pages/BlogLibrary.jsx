@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { BookOpenText, CalendarDays, CheckSquare, Copy, FileText, Loader2, MessageSquareText, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
+import { BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 
 function renderInlineMarkdown(text = '') {
@@ -150,9 +150,11 @@ export default function BlogLibrary() {
   const [selectedSocialIds, setSelectedSocialIds] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mobileModeMenuOpen, setMobileModeMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,78 +308,183 @@ export default function BlogLibrary() {
     }
   }, [selectedSocial]);
 
+  const openReaderOnSmallScreens = () => {
+    if (window.matchMedia('(max-width: 1279px)').matches) setMobileReaderOpen(true);
+  };
+
   const headerActions = (
-    <div className="flex items-center gap-2">
-      <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
-        <button type="button" onClick={() => { setMode('blogs'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${mode === 'blogs' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
-          <BookOpenText size={14} />
-          Blog
+    <>
+    <div className="flex w-full items-center justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="flex items-center gap-2 sm:hidden">
+        <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+          {mode === 'blogs' ? <BookOpenText size={14} /> : <MessageSquareText size={14} />}
+          {mode === 'blogs' ? 'Blog' : 'Social'}
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-2 sm:hidden">
+        <button
+          type="button"
+          onClick={load}
+          className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+          aria-label="Refresh content repository"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
-        <button type="button" onClick={() => { setMode('linkedin'); setQuery(''); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${mode === 'linkedin' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
-          <MessageSquareText size={14} />
-          Social Media Post
+        <button
+          type="button"
+          onClick={() => setMobileModeMenuOpen((value) => !value)}
+          className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+          aria-label="Open repository menu"
+        >
+          <MoreHorizontal size={16} />
         </button>
       </div>
-      <button type="button" onClick={load} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
-        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-        Refresh
-      </button>
+      <div className="hidden w-full min-w-0 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="relative min-w-0 max-w-xl flex-1 group">
+          <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10" />
+          <Search size={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-crimson" />
+          <input
+            className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-11 pr-4 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setMobileReaderOpen(false);
+            }}
+            placeholder={mode === 'linkedin' ? 'Search LinkedIn posts...' : 'Search articles...'}
+          />
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+            <button type="button" onClick={() => { setMode('blogs'); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${mode === 'blogs' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+              <BookOpenText size={14} />
+              Blog
+            </button>
+            <button type="button" onClick={() => { setMode('linkedin'); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${mode === 'linkedin' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+              <MessageSquareText size={14} />
+              <span className="sm:hidden">Social</span>
+              <span className="hidden sm:inline">Social Media Post</span>
+            </button>
+          </div>
+          <button type="button" onClick={load} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
     </div>
+    {mobileModeMenuOpen ? (
+      <>
+        <button
+          type="button"
+          aria-label="Close repository menu"
+          onClick={() => setMobileModeMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+        />
+        <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Content Repository</div>
+              <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileModeMenuOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+              aria-label="Close repository menu"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <div className="space-y-2 p-3">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('blogs');
+                setQuery('');
+                setMobileReaderOpen(false);
+                setMobileModeMenuOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${mode === 'blogs' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+            >
+              <span className="flex items-center gap-3 text-sm font-black">
+                <BookOpenText size={15} />
+                Blog
+              </span>
+              {mode === 'blogs' ? <Check size={15} /> : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('linkedin');
+                setQuery('');
+                setMobileReaderOpen(false);
+                setMobileModeMenuOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${mode === 'linkedin' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+            >
+              <span className="flex items-center gap-3 text-sm font-black">
+                <MessageSquareText size={15} />
+                Social
+              </span>
+              {mode === 'linkedin' ? <Check size={15} /> : null}
+            </button>
+          </div>
+        </div>
+      </>
+    ) : null}
+    </>
   );
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="flex h-full min-h-[calc(100vh-64px)] -m-6 flex-col gap-5 p-4 mesh-bg sm:p-6">
-        <div className="glass-panel flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">
-              Library Search
-            </div>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-gray-900">
-              {mode === 'linkedin' ? 'Find Saved Social Posts' : 'Find Published Content'}
-            </h2>
-            {mode === 'linkedin' && isAdmin && selectedSocialIds.length ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-black text-gray-800">{selectedSocialIds.length} selected</span>
-                <button type="button" onClick={toggleSelectAllSocial} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
-                  {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
-                </button>
-                <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
-                  {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                  Delete
-                </button>
-                <button type="button" onClick={() => setSelectedSocialIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
-                  <X size={14} />
-                </button>
-              </div>
-            ) : null}
-            {mode === 'blogs' && isAdmin && selectedIds.length ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
-                <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
-                  {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
-                </button>
-                <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
-                  {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                  Delete
-                </button>
-                <button type="button" onClick={() => setSelectedIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
-                  <X size={14} />
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <div className="relative min-w-0 w-full max-w-xl group z-10">
-            <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10"></div>
+      <div className="flex h-full min-h-[calc(100vh-64px)] -m-3 flex-col gap-4 p-3 mesh-bg sm:-m-5 sm:gap-5 sm:p-5 lg:-m-6 lg:p-6">
+        <div className="sm:hidden">
+          <div className="relative min-w-0 w-full group z-10">
+            <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10" />
             <Search size={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-crimson" />
-            <input 
-              className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white pl-11 pr-4 py-3 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30" 
-              value={query} 
-              onChange={(e) => setQuery(e.target.value)} 
-              placeholder={mode === 'linkedin' ? 'Search LinkedIn posts...' : 'Search articles...'} 
+            <input
+              className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setMobileReaderOpen(false);
+              }}
+              placeholder={mode === 'linkedin' ? 'Search LinkedIn posts...' : 'Search articles...'}
             />
           </div>
         </div>
+
+        {mode === 'linkedin' && isAdmin && selectedSocialIds.length ? (
+          <div className="glass-panel flex flex-wrap items-center gap-2 px-4 py-3">
+            <span className="text-sm font-black text-gray-800">{selectedSocialIds.length} selected</span>
+            <button type="button" onClick={toggleSelectAllSocial} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+              {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
+            </button>
+            <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Delete
+            </button>
+            <button type="button" onClick={() => setSelectedSocialIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
+              <X size={14} />
+            </button>
+          </div>
+        ) : null}
+
+        {mode === 'blogs' && isAdmin && selectedIds.length ? (
+          <div className="glass-panel flex flex-wrap items-center gap-2 px-4 py-3">
+            <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
+            <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+              {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
+            </button>
+            <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Delete
+            </button>
+            <button type="button" onClick={() => setSelectedIds([])} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-300 hover:text-gray-700" title="Clear selection">
+              <X size={14} />
+            </button>
+          </div>
+        ) : null}
 
         {error && (
           <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
@@ -386,7 +493,7 @@ export default function BlogLibrary() {
         )}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
-          <section className="min-h-0 overflow-y-auto glass-panel p-3 custom-scrollbar sm:p-4">
+          <section className={`${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto glass-panel p-3 custom-scrollbar sm:p-4`}>
             {loading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3 text-brand-crimson">
                 <Loader2 size={24} className="animate-spin" />
@@ -418,7 +525,10 @@ export default function BlogLibrary() {
                         ) : null}
                         <button
                           type="button"
-                          onClick={() => setSelectedSocial(post)}
+                          onClick={() => {
+                            setSelectedSocial(post);
+                            openReaderOnSmallScreens();
+                          }}
                           className="min-w-0 flex-1 text-left"
                         >
                           <div className="mb-2 flex items-center justify-between gap-2">
@@ -461,7 +571,14 @@ export default function BlogLibrary() {
                             {selectedIds.includes(blog._id) ? <CheckSquare size={16} /> : <Square size={16} />}
                           </button>
                         ) : null}
-                        <button type="button" onClick={() => setSelected(blog)} className="min-w-0 flex-1 text-left">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(blog);
+                            openReaderOnSmallScreens();
+                          }}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <div className={`mb-2 text-base font-black leading-snug ${isSelected ? 'text-gray-900' : 'text-gray-800 group-hover:text-gray-900'}`}>
                             {blog.title}
                           </div>
@@ -482,7 +599,14 @@ export default function BlogLibrary() {
             )}
           </section>
 
-          <article className="min-h-0 overflow-y-auto glass-panel p-6 sm:p-10 custom-scrollbar relative">
+          <article className={`${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto glass-panel p-4 custom-scrollbar relative sm:p-8 xl:p-10`}>
+            <button
+              type="button"
+              onClick={() => setMobileReaderOpen(false)}
+              className="mb-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
+            >
+              Back to posts
+            </button>
             {mode === 'linkedin' ? (
               selectedSocial ? (
                 <div className="max-w-3xl mx-auto animate-fade-in-up">

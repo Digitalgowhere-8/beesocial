@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
-import { BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare } from 'lucide-react';
+import { ArrowLeft, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -154,12 +154,14 @@ export default function BlogStudio() {
   const [loadingArticles, setLoadingArticles] = useState(false);
   const [loadingBlogs, setLoadingBlogs] = useState(false);
   const [loadingSocialPosts, setLoadingSocialPosts] = useState(false);
+  const [socialPreviewOpen, setSocialPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
   const [savingLinkedinPost, setSavingLinkedinPost] = useState(false);
   const [deletingBlogs, setDeletingBlogs] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
+  const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
   const [draftForm, setDraftForm] = useState({ title: '', excerpt: '', bodyMarkdown: '' });
   const [draftEditorOpen, setDraftEditorOpen] = useState(false);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
@@ -171,6 +173,7 @@ export default function BlogStudio() {
   const [linkedinForm, setLinkedinForm] = useState(DEFAULT_LINKEDIN_FORM);
   const [linkedinOutput, setLinkedinOutput] = useState(null);
   const selectedArticleRef = useRef(selectedArticle);
+  const focusComposerMode = Boolean(inboundState.focusComposer && inboundState.article?._id);
 
   const keywordList = useMemo(() => cleanList(keywords), [keywords]);
   const categoryTree = useMemo(() => {
@@ -508,31 +511,120 @@ export default function BlogStudio() {
     loadSocialPosts();
   }, [loadArticles, loadBlogs, loadSocialPosts, resetStudioComposer]);
 
-  const headerActions = (
-    <div className="flex items-center gap-2">
-      <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+  useEffect(() => {
+    setMobileHeaderMenuOpen(false);
+  }, [contentType, socialPreviewOpen]);
+
+  const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
+    <>
+    <div className="flex w-full items-center justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="flex items-center gap-2 sm:hidden">
+        <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+          {contentType === 'blog' ? <BookOpenText size={14} /> : <MessageSquareText size={14} />}
+          {contentType === 'blog' ? 'Blog' : 'Social'}
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-2 sm:hidden">
         <button
           type="button"
-          onClick={() => setContentType('blog')}
-          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          onClick={refreshStudio}
+          className="inline-flex h-[42px] min-w-[42px] items-center justify-center gap-2 rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+          aria-label="Refresh content studio"
         >
-          <BookOpenText size={14} />
-          Blog
+          <RefreshCw size={16} />
         </button>
         <button
           type="button"
-          onClick={() => setContentType('social')}
-          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          onClick={() => setMobileHeaderMenuOpen((value) => !value)}
+          className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+          aria-label="Open content menu"
         >
-          <MessageSquareText size={14} />
-          Social Media Post
+          <MoreHorizontal size={16} />
         </button>
       </div>
-      <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
-        <RefreshCw size={14} />
-        Refresh
-      </button>
+      <div className="hidden w-full sm:flex sm:flex-row sm:items-center sm:gap-2">
+        <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:w-auto sm:min-w-[360px]">
+          <button
+            type="button"
+            onClick={() => setContentType('blog')}
+            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <BookOpenText size={14} />
+            Blog
+          </button>
+          <button
+            type="button"
+            onClick={() => setContentType('social')}
+            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <MessageSquareText size={14} />
+            <span className="sm:hidden">Social</span>
+            <span className="hidden sm:inline">Social Media Post</span>
+          </button>
+        </div>
+        <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 sm:w-auto">
+          <RefreshCw size={14} />
+          Refresh
+        </button>
+      </div>
     </div>
+    {mobileHeaderMenuOpen ? (
+      <>
+        <button
+          type="button"
+          aria-label="Close content menu"
+          onClick={() => setMobileHeaderMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+        />
+        <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Content Studio</div>
+              <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileHeaderMenuOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+              aria-label="Close content menu"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <div className="space-y-2 p-3">
+            <button
+              type="button"
+              onClick={() => {
+                setContentType('blog');
+                setMobileHeaderMenuOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${contentType === 'blog' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+            >
+              <span className="flex items-center gap-3 text-sm font-black">
+                <BookOpenText size={15} />
+                Blog
+              </span>
+              {contentType === 'blog' ? <Check size={15} /> : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setContentType('social');
+                setMobileHeaderMenuOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${contentType === 'social' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+            >
+              <span className="flex items-center gap-3 text-sm font-black">
+                <MessageSquareText size={15} />
+                Social
+              </span>
+              {contentType === 'social' ? <Check size={15} /> : null}
+            </button>
+          </div>
+        </div>
+      </>
+    ) : null}
+    </>
   );
 
   return (
@@ -572,6 +664,8 @@ export default function BlogStudio() {
                 savingLinkedinPost={savingLinkedinPost}
                 socialPosts={socialPosts}
                 loadingSocialPosts={loadingSocialPosts}
+                focusComposerMode={focusComposerMode}
+                onPreviewOpenChange={setSocialPreviewOpen}
               />
             )}
           </div>
@@ -582,7 +676,7 @@ export default function BlogStudio() {
         <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-2 xl:grid-cols-2">
           
           {/* Panel 1: Topics */}
-          <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel xl:h-[calc(100vh-96px)]">
+          <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel xl:h-[calc(100vh-96px)]`}>
             <PanelHeader icon={Layers} title="Intelligence Topics" />
             <TopicFilterBar
               filters={topicFilters}
@@ -597,7 +691,7 @@ export default function BlogStudio() {
               {loadingArticles ? (
                 <LoadingRows label="Loading intelligence topics..." />
               ) : articles.length ? (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
                   {articles.map((item) => {
                     const isSelected = selectedArticle?._id === item._id;
                     return (
@@ -932,7 +1026,7 @@ function BlogDraftDrawer({
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
-            <aside className="flex min-h-[260px] flex-col border-b border-gray-100 bg-gray-50/60 lg:min-h-0 lg:border-b-0 lg:border-r">
+            <aside className={`${draftEditorOpen ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-b border-gray-100 bg-gray-50/60 lg:min-h-0 lg:border-b-0 lg:border-r`}>
               <div className="border-b border-gray-100 bg-white p-3">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -976,7 +1070,11 @@ function BlogDraftDrawer({
                           type="button"
                           onClick={() => {
                             setSelectedBlog(blog);
-                            setDraftEditorOpen(false);
+                            if (window.matchMedia('(max-width: 1023px)').matches) {
+                              setDraftEditorOpen(true);
+                            } else {
+                              setDraftEditorOpen(false);
+                            }
                           }}
                           onDoubleClick={() => {
                             setSelectedBlog(blog);
@@ -1005,9 +1103,16 @@ function BlogDraftDrawer({
               </div>
             </aside>
 
-            <div className="min-h-[560px] overflow-y-auto bg-white p-4 custom-scrollbar lg:min-h-0">
+            <div className={`${draftEditorOpen ? 'block' : 'hidden lg:block'} min-h-0 overflow-y-auto bg-white p-4 custom-scrollbar lg:min-h-0`}>
               {selectedBlog && draftEditorOpen ? (
                 <div className="animate-fade-in-up stagger-1">
+                  <button
+                    type="button"
+                    onClick={() => setDraftEditorOpen(false)}
+                    className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson lg:hidden"
+                  >
+                    Back to drafts
+                  </button>
                   <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -1189,7 +1294,12 @@ function CompactPlatformSelector({ value, onChange }) {
   );
 }
 
-function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, onSelectSaved, onSave, saving = false }) {
+function LinkedInOutputPreview({
+  output,
+  onSave,
+  saving = false,
+  onBackToList
+}) {
   const [copied, setCopied] = useState(false);
 
   const copyOutput = useCallback(async () => {
@@ -1204,97 +1314,132 @@ function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, 
     }
   }, [output]);
 
-  if (!output) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/50 p-4 custom-scrollbar">
-        <div className="mb-4 rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-pink/40 text-brand-crimson shadow-sm ring-1 ring-gray-100">
-            <MessageSquareText size={20} />
-          </div>
-          <div className="text-sm font-black text-gray-900">Output will appear here</div>
-          <p className="mt-2 max-w-xs text-xs font-semibold leading-relaxed text-gray-500">Select a topic, tune the settings, and generate a post.</p>
-        </div>
-        <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} />
+  const emptyPreview = (
+    <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
+        <MessageSquareText size={18} />
       </div>
-    );
-  }
+      <div className="max-w-sm text-sm font-black text-gray-900">No post selected</div>
+      <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
+        Generate a post or open one from the saved posts list.
+      </p>
+    </div>
+  );
+
+  const previewPanel = output ? (
+    <>
+      <button
+        type="button"
+        onClick={onBackToList}
+        className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson lg:hidden"
+      >
+        <ArrowLeft size={13} />
+        Back to saved posts
+      </button>
+      <div className="animate-fade-in-up stagger-1">
+        <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Platform</span>
+              <span className="rounded-full border border-brand-crimson/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                {output.framework || 'LinkedIn'}
+              </span>
+              {output.topicTier ? (
+                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  {output.topicTier}
+                </span>
+              ) : null}
+              {output.emotionalJob ? (
+                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  {output.emotionalJob}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {!output.saved ? (
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={saving}
+                  className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
+                >
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              ) : (
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
+              )}
+              <button
+                type="button"
+                onClick={copyOutput}
+                className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <div className="text-sm font-black leading-snug text-gray-900">
+            {output.selectedTopic || 'LinkedIn post preview'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
+              <div className="min-w-0">
+                <div className="text-sm font-black text-gray-900">Admin</div>
+                <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
+              </div>
+            </div>
+            <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
+              {output.postText}
+            </div>
+            {Array.isArray(output.hashtags) && output.hashtags.length ? (
+              <div className="mt-4 border-t border-gray-100 pt-4 text-sm font-bold leading-relaxed text-brand-crimson">
+                {output.hashtags.join(' ')}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </>
+  ) : emptyPreview;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/60 p-4 custom-scrollbar">
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-brand-crimson px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">{output.framework || 'LinkedIn'}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.topicTier || 'Tier'}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.emotionalJob || 'Job'}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!output.saved ? (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={saving}
-                className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
-              >
-                {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            ) : (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
-            )}
-            <button
-              type="button"
-              onClick={copyOutput}
-              className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-        </div>
-        <div className="mb-3 text-sm font-black leading-snug text-gray-900">{output.selectedTopic}</div>
-        <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-inner">
-          <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
-            <div className="min-w-0">
-              <div className="text-sm font-black text-gray-900">Admin</div>
-              <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
-            </div>
-          </div>
-          <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
-            {output.postText}
-          </div>
-        </div>
-        {Array.isArray(output.hashtags) && output.hashtags.length ? (
-          <div className="mt-3 break-words text-sm font-bold leading-relaxed text-brand-crimson">{output.hashtags.join(' ')}</div>
-        ) : null}
-      </div>
-      <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} activeId={output.saved ? output._id : ''} />
+      {previewPanel}
     </div>
   );
 }
 
-function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId }) {
+function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId, className = 'mt-4' }) {
   return (
-    <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-500">Saved Posts</div>
-        {loading ? <Loader2 size={14} className="animate-spin text-brand-crimson" /> : null}
-      </div>
+    <div className={className}>
       {posts.length ? (
         <div className="space-y-2">
           {posts.map((post) => (
-            <button
+            <div
               key={post._id}
-              type="button"
-              onClick={() => onSelect?.(post)}
-              className={`w-full rounded-xl border p-3 text-left transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/10 ${
-                activeId === post._id ? 'border-brand-crimson bg-brand-pink/20' : 'border-gray-100 bg-white'
+              className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${
+                activeId === post._id ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'
               }`}
             >
-              <div className="line-clamp-2 text-xs font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
-              <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-relaxed text-gray-500">{post.postText}</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelect?.(post)}
+                className="w-full text-left"
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <span className="line-clamp-2 text-sm font-black leading-tight text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</span>
+                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                    Published
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
+              </button>
+            </div>
           ))}
         </div>
       ) : (
@@ -1430,25 +1575,37 @@ function LinkedInStudio({
   setLinkedinOutput,
   savingLinkedinPost,
   socialPosts,
-  loadingSocialPosts
+  loadingSocialPosts,
+  focusComposerMode = false,
+  onPreviewOpenChange
 }) {
   const update = (key, value) => setLinkedinForm({ ...linkedinForm, [key]: value });
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
+  const hasMountedOutputEffect = useRef(false);
   const selectArticleById = (articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
   };
 
   useEffect(() => {
-    if (linkedinOutput) setOutputDrawerOpen(true);
-  }, [linkedinOutput]);
+    if (!hasMountedOutputEffect.current) {
+      hasMountedOutputEffect.current = true;
+      return;
+    }
+    if (linkedinOutput?.postText) setOutputDrawerOpen(true);
+  }, [linkedinOutput?._id, linkedinOutput?.postText]);
+
+  useEffect(() => {
+    onPreviewOpenChange?.(outputDrawerOpen);
+    return () => onPreviewOpenChange?.(false);
+  }, [onPreviewOpenChange, outputDrawerOpen]);
 
   return (
     <>
     <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 xl:grid-cols-2">
-      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+      <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]`}>
         <PanelHeader icon={Layers} title="Intelligence Topics" />
         <TopicFilterBar
           filters={topicFilters}
@@ -1462,7 +1619,7 @@ function LinkedInStudio({
           {loadingArticles ? (
             <LoadingRows label="Loading intelligence topics..." />
           ) : articles.length ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
               {articles.map((item) => {
                 const isSelected = selectedArticle?._id === item._id;
                 return (
@@ -1515,7 +1672,7 @@ function LinkedInStudio({
         </div>
       </section>
 
-      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
         <PanelHeader icon={Settings2} title="Post Builder" subtitle="Customize before generation" />
 
@@ -1687,7 +1844,7 @@ function LinkedInStudio({
         </div>
 
         <div className="border-t border-gray-200/50 bg-white/70 p-5 backdrop-blur">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid grid-cols-1 gap-3">
             <button
               type="button"
               disabled={generatingLinkedin || !canUseBlogStudio}
@@ -1697,17 +1854,9 @@ function LinkedInStudio({
               {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
               {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
             </button>
-            <button
-              type="button"
-              onClick={() => setOutputDrawerOpen(true)}
-              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-            >
-              <MessageSquareText size={16} />
-              Saved Posts & Preview
-            </button>
           </div>
           <div className="mt-3 text-xs font-semibold text-gray-500">
-            After generation, the post preview will open in the right-side drawer. You can also reopen saved posts from there anytime.
+            After generation, the post preview will open in the right-side drawer.
           </div>
         </div>
       </section>
@@ -1733,6 +1882,51 @@ function LinkedInStudio({
 }
 
 function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, onSelectSaved, onSave, saving }) {
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [savedPostsQuery, setSavedPostsQuery] = useState('');
+  const drawerRef = useRef(null);
+  const listPaneRef = useRef(null);
+  const previewPaneRef = useRef(null);
+  const filteredSavedPosts = useMemo(() => {
+    const query = savedPostsQuery.trim().toLowerCase();
+    if (!query) return savedPosts;
+    return savedPosts.filter((post) => (
+      [post?.selectedTopic, post?.postText, post?.framework]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    ));
+  }, [savedPosts, savedPostsQuery]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSavedPostsQuery('');
+    setMobilePreviewOpen(Boolean(output));
+  }, [open, output?._id, output?.postText]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const resetScroll = () => {
+      drawerRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      if (mobilePreviewOpen) {
+        previewPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      } else {
+        listPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      }
+    };
+    resetScroll();
+    const frameId = window.requestAnimationFrame(resetScroll);
+    const timeoutId = window.setTimeout(resetScroll, 40);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [open, mobilePreviewOpen, output?._id]);
+
+  const selectSavedPost = useCallback((post) => {
+    onSelectSaved?.(post);
+    setMobilePreviewOpen(true);
+  }, [onSelectSaved]);
+
   return (
     <>
       <div
@@ -1740,12 +1934,13 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
         className={`fixed inset-0 z-40 bg-gray-950/30 backdrop-blur-[2px] transition-opacity duration-300 ${open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
       />
       <aside
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[620px] border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        ref={drawerRef}
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[620px] overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div className="min-w-0">
-              <div className="text-base font-black text-gray-900">Output Preview</div>
+              <div className="text-base font-black text-gray-900">Saved Posts & Preview</div>
               <div className="text-xs font-semibold text-gray-500">Review the generated post and reopen saved posts from here.</div>
             </div>
             <button
@@ -1756,14 +1951,42 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
               Close
             </button>
           </div>
-          <LinkedInOutputPreview
-            output={output}
-            savedPosts={savedPosts}
-            loadingSaved={loadingSaved}
-            onSelectSaved={onSelectSaved}
-            onSave={onSave}
-            saving={saving}
-          />
+          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(250px,290px)_minmax(0,1fr)]">
+            <aside
+              ref={listPaneRef}
+              className={`${mobilePreviewOpen ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col overflow-y-auto border-b border-gray-100 bg-gray-50/60 p-4 custom-scrollbar lg:border-b-0 lg:border-r`}
+            >
+              <div className="border-b border-gray-100 bg-white p-3 -mx-4 -mt-4 mb-3 lg:mb-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson"
+                    value={savedPostsQuery}
+                    onChange={(e) => setSavedPostsQuery(e.target.value)}
+                    placeholder="Search saved posts..."
+                  />
+                </div>
+              </div>
+              <SavedSocialPostsList
+                posts={filteredSavedPosts}
+                loading={loadingSaved}
+                onSelect={selectSavedPost}
+                activeId={output?.saved ? output._id : ''}
+                className="mt-0"
+              />
+            </aside>
+            <div
+              ref={previewPaneRef}
+              className={`${mobilePreviewOpen ? 'block' : 'hidden lg:block'} min-h-0 overflow-y-auto bg-white custom-scrollbar`}
+            >
+              <LinkedInOutputPreview
+                output={output}
+                onSave={onSave}
+                saving={saving}
+                onBackToList={() => setMobilePreviewOpen(false)}
+              />
+            </div>
+          </div>
         </div>
       </aside>
     </>

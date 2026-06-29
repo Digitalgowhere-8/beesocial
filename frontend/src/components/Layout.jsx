@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import GuidedOnboarding from './GuidedOnboarding';
 import {
-  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound
+  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -60,6 +60,32 @@ const roleLabel = (role) => {
 };
 
 const NOTIFICATION_LIMIT = 20;
+const ONBOARDING_NEW_USER_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+
+const readOnboardingSession = (userId) => {
+  try {
+    const raw = sessionStorage.getItem(`app_onboarding_session_${userId || 'guest'}`);
+    if (!raw) return { active: false, stepIndex: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      active: parsed?.active === true,
+      stepIndex: Number.isInteger(parsed?.stepIndex) ? parsed.stepIndex : 0
+    };
+  } catch {
+    return { active: false, stepIndex: 0 };
+  }
+};
+
+const writeOnboardingSession = (userId, payload) => {
+  try {
+    sessionStorage.setItem(`app_onboarding_session_${userId || 'guest'}`, JSON.stringify({
+      active: payload?.active === true,
+      stepIndex: Number.isInteger(payload?.stepIndex) ? payload.stepIndex : 0
+    }));
+  } catch {
+    // Ignore session storage failures.
+  }
+};
 
 const notificationStorageKey = (userId) => `app_notifications_${userId || 'guest'}`;
 
@@ -160,24 +186,36 @@ const normalizeNotificationFeed = ({ articles = [], blogs = [], socialPosts = []
     .slice(0, NOTIFICATION_LIMIT);
 };
 
-function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll }) {
+function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll, onClose, mobile = false }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-white border border-gray-100 shadow-xl overflow-hidden">
+    <div className={`${mobile ? 'fixed right-3 top-[76px] z-50 w-[min(340px,calc(100vw-24px))] rounded-[24px] shadow-[0_24px_48px_rgba(15,23,42,0.18)]' : 'absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl shadow-xl'} overflow-hidden border border-gray-100 bg-white`}>
       <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-brand-pink/20 to-white">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-bold text-gray-800">Notifications</div>
             <div className="text-[11px] text-gray-400">Latest activity and alerts</div>
           </div>
-          {items.length > 0 ? (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="text-[11px] font-bold text-gray-500 hover:text-brand-crimson transition-colors"
-            >
-              Clear all
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {items.length > 0 ? (
+              <button
+                type="button"
+                onClick={onClearAll}
+                className="text-[11px] font-bold text-gray-500 hover:text-brand-crimson transition-colors"
+              >
+                Clear all
+              </button>
+            ) : null}
+            {mobile ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close notifications"
+              >
+                <X size={15} />
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="text-[12px] font-bold text-gray-600">Recent updates</div>
@@ -195,7 +233,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
           </button>
         </div>
       </div>
-      <div className="max-h-[420px] overflow-y-auto p-2">
+      <div className={`${mobile ? 'max-h-[min(60vh,480px)]' : 'max-h-[420px]'} overflow-y-auto p-2`}>
         {items.length ? items.map((item) => {
           const unread = item.unread === true;
           return (
@@ -272,6 +310,7 @@ export default function Layout({ children, headerActions = null }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
   const [tourOpen, setTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
@@ -280,6 +319,12 @@ export default function Layout({ children, headerActions = null }) {
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
   const unreadCount = notifications.unreadKeys.length;
   const onboardingSeenKey = `app_onboarding_seen_${user?._id || 'guest'}`;
+  const onboardingAutoShownKey = `app_onboarding_auto_shown_${user?._id || 'guest'}`;
+  const onboardingSessionKey = `app_onboarding_session_${user?._id || 'guest'}`;
+  const userCreatedTime = user?.createdAt ? new Date(user.createdAt).getTime() : 0;
+  const isNewUser = Number.isFinite(userCreatedTime) && userCreatedTime > 0
+    ? (Date.now() - userCreatedTime) <= ONBOARDING_NEW_USER_WINDOW_MS
+    : false;
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
@@ -408,33 +453,58 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     if (!user?._id) return;
     try {
+      const activeSession = readOnboardingSession(user?._id);
+      if (activeSession.active) {
+        setTourStepIndex(activeSession.stepIndex || 0);
+        setTourOpen(true);
+        return;
+      }
       const seen = localStorage.getItem(onboardingSeenKey) === 'true';
-      if (!seen) setTourOpen(true);
+      const autoShown = localStorage.getItem(onboardingAutoShownKey) === 'true';
+      if (!seen && !autoShown && isNewUser) {
+        localStorage.setItem(onboardingAutoShownKey, 'true');
+        writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
+        setTourStepIndex(0);
+        setTourOpen(true);
+      }
     } catch {
-      setTourOpen(true);
+      if (isNewUser) setTourOpen(true);
     }
-  }, [onboardingSeenKey, user?._id]);
+  }, [isNewUser, onboardingAutoShownKey, onboardingSeenKey, onboardingSessionKey, user?._id]);
 
   useEffect(() => {
-    const handleStartTour = () => setTourOpen(true);
+    const handleStartTour = () => {
+      setTourStepIndex(0);
+      writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
+      setTourOpen(true);
+    };
     window.addEventListener('app:start-tour', handleStartTour);
     return () => window.removeEventListener('app:start-tour', handleStartTour);
-  }, []);
+  }, [user?._id]);
 
   const closeTour = useCallback(() => {
     setTourOpen(false);
+    setTourStepIndex(0);
     try {
       localStorage.setItem(onboardingSeenKey, 'true');
     } catch {
       // Ignore storage failures.
     }
-  }, [onboardingSeenKey]);
+    writeOnboardingSession(user?._id, { active: false, stepIndex: 0 });
+  }, [onboardingSeenKey, user?._id]);
 
   const startTour = useCallback(() => {
     setShowProfileMenu(false);
     setShowNotifications(false);
+    setTourStepIndex(0);
+    writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
     setTourOpen(true);
-  }, []);
+  }, [user?._id]);
+
+  const handleTourStepChange = useCallback((stepIndex) => {
+    setTourStepIndex(stepIndex);
+    writeOnboardingSession(user?._id, { active: true, stepIndex });
+  }, [user?._id]);
 
   useEffect(() => {
     const handleAvatarUpdate = (e) => {
@@ -530,14 +600,31 @@ export default function Layout({ children, headerActions = null }) {
   const initials = user?.name 
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'U';
+  const mobileNavItems = isSuperAdmin
+    ? []
+    : [
+        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, onClick: () => navigate('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
+        { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigate('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
+        ...(canUseContentRepository ? [
+          { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigate('/blogs'), active: location.pathname.startsWith('/blogs') }
+        ] : []),
+        { key: 'profile', label: 'Profile', icon: UserIcon, onClick: () => navigate('/profile'), active: location.pathname.startsWith('/profile'), dataTour: 'nav-profile' }
+      ];
 
   return (
     <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3">
+      <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur md:hidden">
+        <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <img src="/logo.png" className="h-7 object-contain shrink-0" alt="OpportunityOS AI Logo" />
-            <span className="text-sm font-bold text-gray-800 truncate">{getPageTitle()}</span>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(253,242,246,0.98)_100%)] shadow-[0_8px_18px_rgba(209,18,67,0.10)] ring-1 ring-gray-200">
+              <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.14),transparent_55%)]" />
+              <img src="/logo.png" className="relative h-6 object-contain" alt="OpportunityOS AI Logo" />
+            </div>
+            <div className="min-w-0">
+              <span className="block truncate text-[14px] font-black leading-tight text-gray-900">{getPageTitle()}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative" ref={mobileNotificationsRef}>
@@ -550,7 +637,7 @@ export default function Layout({ children, headerActions = null }) {
                 });
                 setShowProfileMenu(false);
               }}
-              className="relative w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
+              className="relative flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-brand-crimson/10 hover:bg-gray-50 hover:text-gray-600"
             >
               <Bell size={15} />
               {!isSuperAdmin && unreadCount > 0 ? (
@@ -560,25 +647,36 @@ export default function Layout({ children, headerActions = null }) {
               ) : null}
             </button>
             {showNotifications && !isSuperAdmin && (
+              <>
+              <button
+                type="button"
+                aria-label="Close notifications"
+                onClick={() => setShowNotifications(false)}
+                className="fixed inset-0 z-40 bg-gray-950/10 backdrop-blur-[1px] md:hidden"
+              />
               <NotificationsMenu
                 items={notifications.items}
                 unreadCount={unreadCount}
                 onItemClick={openNotificationItem}
                 onMarkAllRead={markAllNotificationsRead}
                 onClearAll={clearAllNotifications}
+                onClose={() => setShowNotifications(false)}
+                mobile
               />
+              </>
             )}
             </div>
-            <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
+            <button onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500">
               <LogOut size={15} />
             </button>
           </div>
         </div>
         {headerActions ? (
-          <div className="mt-3 min-w-0 overflow-hidden">
+          <div className="mt-3 min-w-0 overflow-visible border-t border-gray-100/80 pt-3">
             {headerActions}
           </div>
         ) : null}
+        </div>
       </header>
 
       {/* Sidebar */}
@@ -706,13 +804,13 @@ export default function Layout({ children, headerActions = null }) {
                 <Newspaper size={16} />
               </button>
               {canUseContentRepository && (
-                <button onClick={() => navigate('/blogs')} title="Content Repository"
+                <button onClick={() => navigate('/blogs')} title="Content Repository" data-tour="nav-content-repository"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
               {canUseBlogStudio && (
-                <button onClick={() => navigate('/social-media-studio')} title="Content Studio Beta"
+                <button onClick={() => navigate('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
@@ -726,9 +824,9 @@ export default function Layout({ children, headerActions = null }) {
             <>
               <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" />
               <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" />}
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" />
+                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" />
               )}
               <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" />
             </>
@@ -794,6 +892,7 @@ export default function Layout({ children, headerActions = null }) {
                 onItemClick={openNotificationItem}
                 onMarkAllRead={markAllNotificationsRead}
                 onClearAll={clearAllNotifications}
+                onClose={() => setShowNotifications(false)}
               />
             )}
             </div>
@@ -858,35 +957,33 @@ export default function Layout({ children, headerActions = null }) {
           </button>
         </nav>
       ) : (
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-4 gap-1">
-        <button onClick={() => navigate('/dashboard')} data-tour="nav-dashboard" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/dashboard') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <LayoutDashboard size={16} />
-          Dashboard
-        </button>
-        <button onClick={() => navigate('/intel-desk')} data-tour="nav-intel" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/intel-desk') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <Newspaper size={16} />
-          Intel
-        </button>
-        {canUseContentRepository ? (
-          <button onClick={() => navigate('/blogs')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/blogs') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <BookOpenText size={16} />
-            Posts
-          </button>
-        ) : canUseBlogStudio ? (
-          <button onClick={() => navigate('/social-media-studio')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${(location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio')) ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <BookOpenText size={16} />
-            Studio
-          </button>
-        ) : (
-          <div className="rounded-lg py-2" />
-        )}
-        <button onClick={() => navigate('/profile')} data-tour="nav-profile" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/profile') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <UserIcon size={16} />
-          Profile
-        </button>
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
+        style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}
+      >
+        {mobileNavItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              onClick={item.onClick}
+              {...(item.dataTour ? { 'data-tour': item.dataTour } : {})}
+              className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${item.active ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}
+            >
+              <Icon size={16} />
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
       )}
-      <GuidedOnboarding user={user} open={tourOpen} onClose={closeTour} />
+      <GuidedOnboarding
+        user={user}
+        open={tourOpen}
+        onClose={closeTour}
+        initialStepIndex={tourStepIndex}
+        onStepChange={handleTourStepChange}
+      />
     </div>
   );
 }

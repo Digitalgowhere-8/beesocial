@@ -6,6 +6,10 @@ const OVERLAY_COLOR = 'rgba(15, 23, 42, 0.62)';
 const SPOTLIGHT_PADDING = 12;
 const TOOLTIP_GAP = 18;
 const MAX_TOOLTIP_WIDTH = 430;
+const DESKTOP_PANEL_HEIGHT = 460;
+const MOBILE_PANEL_HEIGHT = 430;
+const SELECTOR_RETRY_LIMIT = 80;
+const SELECTOR_RETRY_DELAY = 120;
 
 function getVisibleElement(selector) {
   if (!selector || typeof document === 'undefined') return null;
@@ -26,15 +30,44 @@ function clamp(value, min, max) {
 
 function getPanelMetrics(rect) {
   const isMobile = window.innerWidth < 768;
-  const width = Math.min(MAX_TOOLTIP_WIDTH, window.innerWidth - 24);
+  const isCompact = window.innerHeight < 760;
+  const width = Math.min(isMobile ? 520 : MAX_TOOLTIP_WIDTH, window.innerWidth - 24);
+  const desktopMaxHeight = Math.min(isCompact ? 388 : DESKTOP_PANEL_HEIGHT, window.innerHeight - 32);
+  const compactLift = isCompact ? 30 : 0;
 
-  if (!rect || isMobile) {
+  if (!rect) {
+    if (isMobile) {
+      return {
+        isMobile,
+        isCompact,
+        width,
+        left: Math.max(12, (window.innerWidth - width) / 2),
+        top: Math.max(12, window.innerHeight - Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 20) - compactLift),
+        arrow: null,
+        maxHeight: 'calc(100vh - 12px)'
+      };
+    }
+
     return {
-      isMobile,
+      isMobile: false,
+      isCompact,
       width,
       left: Math.max(12, (window.innerWidth - width) / 2),
-      top: Math.max(12, window.innerHeight - 336),
-      arrow: null
+      top: Math.max(16, ((window.innerHeight - desktopMaxHeight) / 2) - compactLift),
+      arrow: null,
+      maxHeight: `${desktopMaxHeight}px`
+    };
+  }
+
+  if (isMobile) {
+    return {
+      isMobile,
+      isCompact,
+      width,
+      left: Math.max(12, (window.innerWidth - width) / 2),
+      top: Math.max(12, window.innerHeight - Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 20) - compactLift),
+      arrow: null,
+      maxHeight: 'calc(100vh - 12px)'
     };
   }
 
@@ -45,17 +78,19 @@ function getPanelMetrics(rect) {
   );
 
   const belowTop = rect.bottom + TOOLTIP_GAP;
-  const aboveTop = rect.top - 286;
+  const aboveTop = rect.top - (desktopMaxHeight - 110);
   const preferTop = belowTop > window.innerHeight - 36 && aboveTop >= 16;
   const top = preferTop
-    ? clamp(aboveTop, 16, window.innerHeight - 320)
-    : clamp(belowTop, 16, window.innerHeight - 320);
+    ? clamp(aboveTop - compactLift, 16, window.innerHeight - desktopMaxHeight - 16)
+    : clamp(belowTop - compactLift, 16, window.innerHeight - desktopMaxHeight - 16);
 
   return {
     isMobile: false,
+    isCompact,
     width,
     left,
     top,
+    maxHeight: `${desktopMaxHeight}px`,
     arrow: {
       side: preferTop ? 'bottom' : 'top',
       left: clamp(rect.left + (rect.width / 2) - left - 8, 24, width - 24)
@@ -70,6 +105,11 @@ function stepListForUser(user) {
     || user?.access?.canFetch === true
     || (user?.role === 'admin' && user?.access?.canFetch !== false)
     || user?.access?.canUseScheduler === true;
+  const canUseContentRepository = user?.role === 'super_admin'
+    || user?.access?.canUseContentRepository !== false;
+  const canUseBlogStudio = user?.role === 'super_admin'
+    || user?.access?.canUseBlogStudio === true
+    || (user?.role === 'admin' && user?.access?.canUseBlogStudio !== false);
 
   const steps = [
     {
@@ -111,8 +151,22 @@ function stepListForUser(user) {
       route: '/intel-desk',
       selector: '[data-tour="intel-feed"]',
       title: 'Signal cards',
-      description: 'Each card is a usable signal. Review the summary, open the source, save important items, or move a signal into your content workflow.'
+      description: 'Each card is a usable signal. Review the summary, open the source, save important items, or drag a signal into the Blog or LinkedIn action area to start generating content from Intel Desk.'
     },
+    ...(canUseContentRepository ? [{
+      id: 'nav-content-repository',
+      route: '/blogs',
+      selector: '[data-tour="nav-content-repository"]',
+      title: 'Content Repository',
+      description: 'This is your library for published content and saved outputs. Use it to search, review, and reopen blog or social content when you need it again.'
+    }] : []),
+    ...(canUseBlogStudio ? [{
+      id: 'nav-content-studio',
+      route: '/social-media-studio',
+      selector: '[data-tour="nav-content-studio"]',
+      title: 'Content Studio',
+      description: 'Open Content Studio to turn signals into blogs or LinkedIn posts. You can build content directly here or use Intel Desk signals to start faster.'
+    }] : []),
     {
       id: 'nav-profile',
       route: '/profile',
@@ -175,16 +229,18 @@ function stepListForUser(user) {
   return steps;
 }
 
-export default function GuidedOnboarding({ user, open, onClose }) {
+export default function GuidedOnboarding({ user, open, onClose, initialStepIndex = 0, onStepChange }) {
   const navigate = useNavigate();
   const location = useLocation();
   const steps = useMemo(() => stepListForUser(user), [user]);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(() => clamp(initialStepIndex, 0, Math.max(steps.length - 1, 0)));
   const [targetRect, setTargetRect] = useState(null);
 
   const step = steps[stepIndex];
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
+  const progressPercent = ((stepIndex + 1) / steps.length) * 100;
+  const showAnimatedFlow = step?.id === 'intel-feed';
 
   useEffect(() => {
     if (!open) {
@@ -192,6 +248,11 @@ export default function GuidedOnboarding({ user, open, onClose }) {
       setTargetRect(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setStepIndex(clamp(initialStepIndex, 0, Math.max(steps.length - 1, 0)));
+  }, [initialStepIndex, open, steps.length]);
 
   useEffect(() => {
     if (!open || !step?.route) return;
@@ -202,8 +263,8 @@ export default function GuidedOnboarding({ user, open, onClose }) {
 
   useEffect(() => {
     if (!open) return undefined;
+    setTargetRect(null);
     if (!step?.selector) {
-      setTargetRect(null);
       return undefined;
     }
 
@@ -214,8 +275,10 @@ export default function GuidedOnboarding({ user, open, onClose }) {
       const element = getVisibleElement(step.selector);
       if (!element) {
         attempts += 1;
-        if (!cancelled && attempts < 40) window.requestAnimationFrame(update);
-        if (!cancelled && attempts >= 40) setTargetRect(null);
+        if (!cancelled && attempts < SELECTOR_RETRY_LIMIT) {
+          window.setTimeout(update, SELECTOR_RETRY_DELAY);
+        }
+        if (!cancelled && attempts >= SELECTOR_RETRY_LIMIT) setTargetRect(null);
         return;
       }
 
@@ -261,11 +324,23 @@ export default function GuidedOnboarding({ user, open, onClose }) {
       onClose?.(true);
       return;
     }
-    setStepIndex((value) => Math.min(value + 1, steps.length - 1));
+    setStepIndex((value) => {
+      const nextValue = Math.min(value + 1, steps.length - 1);
+      onStepChange?.(nextValue);
+      return nextValue;
+    });
   };
 
   const prevStep = () => {
-    setStepIndex((value) => Math.max(value - 1, 0));
+    setStepIndex((value) => {
+      const nextValue = Math.max(value - 1, 0);
+      onStepChange?.(nextValue);
+      return nextValue;
+    });
+  };
+
+  const skipTour = () => {
+    onClose?.(false);
   };
 
   return (
@@ -286,17 +361,23 @@ export default function GuidedOnboarding({ user, open, onClose }) {
       ) : null}
 
       <div
-        className="fixed rounded-[24px] border border-white/30 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
+        className={`fixed overflow-hidden border bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)] ${
+          panel.isMobile
+            ? 'rounded-t-[30px] rounded-b-none border-white/80 shadow-[0_-16px_50px_rgba(15,23,42,0.22)]'
+            : 'rounded-[28px] border-white/30'
+        }`}
         style={{
           top: panel.top,
           left: panel.left,
           width: panel.width,
-          maxHeight: panel.isMobile ? 'calc(100vh - 24px)' : 'min(360px, calc(100vh - 32px))'
+          maxHeight: panel.maxHeight
         }}
       >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,_rgba(225,29,72,0.16),_transparent_58%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_54%)]" />
+
         {panel.arrow && !panel.isMobile ? (
           <span
-            className="absolute h-4 w-4 rotate-45 border border-white/30 bg-white"
+            className="absolute h-4 w-4 rotate-45 border border-white/30 bg-white shadow-sm"
             style={{
               left: panel.arrow.left,
               [panel.arrow.side]: -8
@@ -304,39 +385,123 @@ export default function GuidedOnboarding({ user, open, onClose }) {
           />
         ) : null}
 
-        <div className="relative flex max-h-full flex-col overflow-hidden p-5 sm:p-6">
+        <div className={`relative flex max-h-full flex-col overflow-hidden ${panel.isMobile ? 'p-4 pb-5' : panel.isCompact ? 'p-4 pb-4' : 'p-5 sm:p-6'}`}>
+          {panel.isMobile ? (
+            <div className="mb-3 flex justify-center">
+              <span className="h-1.5 w-14 rounded-full bg-slate-200" />
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={() => onClose?.(false)}
-            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+            className={`absolute inline-flex items-center justify-center rounded-full border border-white/80 bg-white/90 text-gray-400 shadow-sm backdrop-blur transition hover:bg-gray-100 hover:text-gray-700 ${
+              panel.isMobile ? 'right-4 top-4 h-10 w-10' : 'right-4 top-4 h-8 w-8'
+            }`}
           >
             <X size={15} />
           </button>
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-brand-pink/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">
-            <Sparkles size={12} />
-            Product tour
-          </div>
-
-          <div className="mt-4 flex-1 overflow-y-auto pr-1">
-            <h2 className="pr-10 text-[clamp(1.45rem,2vw,2rem)] font-black tracking-tight text-slate-900">
-              {step.title}
-            </h2>
-            <p className="mt-3 text-[15px] leading-7 text-slate-600">
-              {step.description}
-            </p>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Step {stepIndex + 1} of {steps.length}
+          <div className="pr-12">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-brand-pink/50 bg-brand-pink/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson shadow-[0_8px_20px_rgba(225,29,72,0.08)]">
+              <Sparkles size={12} />
+              Guided tour
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+
+            <div className={`flex items-start justify-between gap-3 ${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'}`}>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+                  Step {stepIndex + 1} of {steps.length}
+                </div>
+                <h2 className={`font-black leading-tight tracking-tight text-slate-900 ${panel.isCompact && !panel.isMobile ? 'mt-1 text-[clamp(1.2rem,1.8vw,1.75rem)]' : 'mt-2 text-[clamp(1.35rem,2vw,2rem)]'}`}>
+                  {step.title}
+                </h2>
+              </div>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(225,29,72,0.14),rgba(255,255,255,0.96))] text-brand-crimson shadow-[0_10px_24px_rgba(225,29,72,0.12)]">
+                <Sparkles size={18} />
+              </div>
+            </div>
+          </div>
+
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'}`}>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#e11d48_0%,#fb7185_55%,#fecdd3_100%)] transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <div className={`flex gap-1.5 ${panel.isCompact && !panel.isMobile ? 'mt-2' : 'mt-3'}`}>
+              {steps.map((item, index) => (
+                <span
+                  key={item.id}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    index === stepIndex
+                      ? 'w-8 bg-brand-crimson'
+                      : index < stepIndex
+                        ? 'w-3 bg-brand-pink/80'
+                        : 'w-3 bg-slate-200'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'} flex-1 overflow-y-auto pr-1`}>
+            <div className={`rounded-[24px] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${panel.isCompact && !panel.isMobile ? 'p-3.5' : 'p-4 sm:p-5'}`}>
+              <p className={`text-slate-600 ${panel.isCompact && !panel.isMobile ? 'text-[13px] leading-6' : 'text-[14px] leading-7 sm:text-[15px]'}`}>
+                {step.description}
+              </p>
+              {showAnimatedFlow ? (
+                <div className={`mt-4 rounded-[20px] border border-brand-pink/20 bg-[linear-gradient(135deg,rgba(255,241,245,0.95),rgba(248,250,252,0.96))] shadow-[0_14px_34px_rgba(225,29,72,0.08)] ${panel.isCompact && !panel.isMobile ? 'p-3' : 'p-3.5'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={`rounded-2xl border border-emerald-100 bg-white shadow-sm ${panel.isCompact && !panel.isMobile ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Intel signal</div>
+                      <div className={`mt-1 font-black text-slate-800 ${panel.isCompact && !panel.isMobile ? 'text-[13px]' : 'text-sm'}`}>Drag this card</div>
+                    </div>
+                    <div className="flex items-center gap-2 text-brand-crimson">
+                      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-crimson/80" />
+                      <span className="text-xs font-black uppercase tracking-[0.16em]">Drop to generate</span>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-between gap-3 ${panel.isCompact && !panel.isMobile ? 'mt-2.5' : 'mt-3'}`}>
+                    <div className="relative flex flex-1 justify-center">
+                      <div className="h-0.5 w-full max-w-[92px] rounded-full bg-gradient-to-r from-brand-crimson/10 via-brand-crimson/60 to-brand-crimson/10" />
+                      <div className="absolute -top-1.5 left-[12%] h-3 w-3 animate-[ping_1.8s_ease-in-out_infinite] rounded-full bg-brand-crimson/30" />
+                      <div className="absolute -top-1 left-[12%] h-2 w-2 animate-bounce rounded-full bg-brand-crimson" />
+                    </div>
+                    <div className={`rounded-2xl border border-brand-crimson/15 bg-white text-center shadow-sm ${panel.isCompact && !panel.isMobile ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Blog</div>
+                      <div className={`mt-1 font-bold text-slate-500 ${panel.isCompact && !panel.isMobile ? 'text-[11px]' : 'text-xs'}`}>or LinkedIn</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3 pt-3' : 'mt-5 pt-4'} shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                {isLast ? 'Tour complete' : 'Keep exploring'}
+              </div>
+              {!isLast ? (
+                <button
+                  type="button"
+                  onClick={skipTour}
+                  className="text-[12px] font-black uppercase tracking-[0.16em] text-slate-400 transition hover:text-slate-700"
+                >
+                  Skip tour
+                </button>
+              ) : null}
+            </div>
+            <div className={`flex items-center gap-2 ${panel.isMobile ? 'flex-col' : 'flex-wrap justify-end'}`}>
               {!isFirst ? (
                 <button
                   type="button"
                   onClick={prevStep}
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
+                  className={`rounded-2xl border border-gray-200 bg-white text-sm font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 ${
+                    panel.isMobile ? 'w-full px-4 py-3' : 'px-4 py-2.5'
+                  }`}
                 >
                   Back
                 </button>
@@ -344,10 +509,12 @@ export default function GuidedOnboarding({ user, open, onClose }) {
               <button
                 type="button"
                 onClick={nextStep}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-brand-hoverred"
+                className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#e11d48_0%,#f43f5e_100%)] text-sm font-black text-white shadow-[0_14px_28px_rgba(225,29,72,0.24)] transition hover:brightness-105 ${
+                  panel.isMobile ? 'w-full px-4 py-3.5' : 'px-4 py-2.5'
+                }`}
               >
                 {isLast ? <Check size={15} /> : <ArrowRight size={15} />}
-                {step.cta || (isLast ? 'Finish' : 'Next')}
+                {step.cta || (isLast ? 'Finish' : 'Next step')}
               </button>
             </div>
           </div>

@@ -8,7 +8,7 @@ import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
-  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
+  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
   Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles, Mail, Send,
   MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
 } from 'lucide-react';
@@ -147,6 +147,7 @@ export default function AdminPanel() {
   const [subTab, setSubTab] = useState(() => SUPER_ADMIN_SUBTABS.platform[0].key);
   const [dbPlans, setDbPlans] = useState([]);
   const [superAdminRefreshKey, setSuperAdminRefreshKey] = useState(0);
+  const [mobileAdminMenuOpen, setMobileAdminMenuOpen] = useState(false);
 
   const loadDbPlans = useCallback(async () => {
     try {
@@ -190,44 +191,131 @@ export default function AdminPanel() {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  useEffect(() => {
+    setMobileAdminMenuOpen(false);
+  }, [tab, subTab, isSuperAdmin]);
+
   const headerActions = (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-      <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
-        {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
-          const active = isSuperAdmin ? item.key === subTab : item.key === tab;
-          return (
+    <>
+      <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2 sm:hidden">
+          <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+            {(() => {
+              const currentItem = isSuperAdmin
+                ? (SUPER_ADMIN_SUBTABS[tab] || []).find((item) => item.key === subTab)
+                : tabs.find((item) => item.key === tab);
+              return currentItem?.label || 'Admin';
+            })()}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2 sm:hidden">
+          {isSuperAdmin ? (
             <button
-              key={item.key}
               type="button"
-              onClick={() => {
-                if (isSuperAdmin) {
-                  setSubTab(item.key);
-                  return;
-                }
-                setTab(item.key);
-              }}
-              className={[
-                'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
-                active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
-              ].join(' ')}
+              onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+              className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+              aria-label="Refresh admin panel"
             >
-              {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
-              <span className="truncate">{item.label}</span>
+              <RefreshCw size={16} />
             </button>
-          );
-        })}
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setMobileAdminMenuOpen((value) => !value)}
+            className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+            aria-label="Open admin menu"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+        </div>
+        <div className="hidden min-w-0 flex-1 gap-2 sm:flex sm:flex-row sm:items-center">
+          <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
+            {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
+              const active = isSuperAdmin ? item.key === subTab : item.key === tab;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (isSuperAdmin) {
+                      setSubTab(item.key);
+                      return;
+                    }
+                    setTab(item.key);
+                  }}
+                  className={[
+                    'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
+                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                  ].join(' ')}
+                >
+                  {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+              className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          ) : null}
+        </div>
       </div>
-      {isSuperAdmin ? (
-        <button
-          type="button"
-          onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
-          className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+      {mobileAdminMenuOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close admin menu"
+            onClick={() => setMobileAdminMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          />
+          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{isSuperAdmin ? 'Owner Console' : 'Admin Panel'}</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileAdminMenuOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close admin menu"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2 p-3">
+              {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
+                const active = isSuperAdmin ? item.key === subTab : item.key === tab;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      if (isSuperAdmin) setSubTab(item.key);
+                      else setTab(item.key);
+                      setMobileAdminMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                  >
+                    <span className="flex items-center gap-3 text-sm font-black">
+                      {!isSuperAdmin && item.icon ? <item.icon size={15} /> : null}
+                      {item.label}
+                    </span>
+                    {active ? <Check size={15} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
       ) : null}
-    </div>
+    </>
   );
 
   return (

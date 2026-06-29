@@ -9,7 +9,7 @@ import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -138,7 +138,7 @@ function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
 }
 
 export default function Dashboard({ initialTab = 'analytics' }) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
   const [analyticsData, setAnalyticsData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
@@ -148,6 +148,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const isIntelDesk = dashTab === 'feed';
   const [intelDeskTab, setIntelDeskTab] = useState('intel');
   const [analyticsViewMode, setAnalyticsViewMode] = useState('today');
+  const [mobileIntelMenuOpen, setMobileIntelMenuOpen] = useState(false);
+  const [mobileAnalyticsMenuOpen, setMobileAnalyticsMenuOpen] = useState(false);
   const [filters, setFilters] = useState(() => {
     if (!user?._id) return {};
     try {
@@ -160,6 +162,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [savingArticleIds, setSavingArticleIds] = useState(new Set());
   const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
+  const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
 
   useEffect(() => {
     if (user?._id)
@@ -254,16 +257,21 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     }, 180);
   };
 
-  const openStudioWithArticle = (mode) => {
-    if (!draggedArticle?._id) return;
+  const openStudioForArticle = (item, mode, options = {}) => {
+    if (!item?._id) return;
     navigate('/social-media-studio', {
       state: {
-        articleId: draggedArticle._id,
-        article: draggedArticle,
+        articleId: item._id,
+        article: item,
         contentType: mode,
-        socialPlatform: 'linkedin'
+        socialPlatform: 'linkedin',
+        ...options
       }
     });
+  };
+
+  const openStudioWithArticle = (mode) => {
+    openStudioForArticle(draggedArticle, mode);
   };
 
   const patchArticleSavedState = (articleId, isSaved) => {
@@ -370,17 +378,71 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </button>
         ) : null}
       />
+      {canUseBlogStudio ? (
+        <div className="mt-2 grid grid-cols-2 gap-2 xl:hidden">
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openStudioForArticle(item, 'blog', { focusComposer: true });
+            }}
+            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-brand-crimson/10 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/50"
+          >
+            <BookOpenText size={14} /> Blog
+          </button>
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openStudioForArticle(item, 'social', { focusComposer: true });
+            }}
+            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-blue-600 shadow-sm transition-all hover:bg-blue-50"
+          >
+            <MessageSquareText size={14} /> LinkedIn
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
       {isIntelDesk && (
-        <div className="grid grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+        <>
+        <div className="flex items-center justify-between gap-3 sm:hidden">
+          <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+            {intelDeskTab === 'intel' ? <Sparkles size={14} /> : intelDeskTab === 'tailored' ? <Newspaper size={14} /> : <Bookmark size={14} />}
+            {intelDeskTab === 'intel' ? 'Intelligence Library' : intelDeskTab === 'tailored' ? 'Personalized Feed' : 'Saved Briefs'}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              data-tour="dashboard-refresh"
+              className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+              aria-label="Refresh intel desk"
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileIntelMenuOpen((value) => !value)}
+              className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+              aria-label="Open intel desk menu"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="hidden w-full grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:grid sm:w-auto">
           {[
-            { key: 'intel', label: 'Intelligence Library', icon: Sparkles },
-            { key: 'tailored', label: 'Personalized Feed', icon: Newspaper },
-            { key: 'saved', label: 'Saved Briefs', icon: Bookmark },
+            { key: 'intel', label: 'Intelligence Library', mobileLabel: 'Intelligence Library', icon: Sparkles },
+            { key: 'tailored', label: 'Personalized Feed', mobileLabel: 'Personalized Feed', icon: Newspaper },
+            { key: 'saved', label: 'Saved Briefs', mobileLabel: 'Saved Briefs', icon: Bookmark },
           ].map((item) => {
             const Icon = item.icon;
             const active = intelDeskTab === item.key;
@@ -390,20 +452,57 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 type="button"
                 onClick={() => setIntelDeskTab(item.key)}
                 className={[
-                  'flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all',
+                  'flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl px-2 text-center text-[10px] font-black leading-[1.1] transition-all sm:min-h-[40px] sm:gap-2 sm:px-5 sm:text-[13px]',
                   active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
                 ].join(' ')}
               >
-                <Icon size={14} />
-                {item.label}
+                <Icon size={13} className="shrink-0 sm:block" />
+                <span className="line-clamp-2 sm:hidden">{item.mobileLabel}</span>
+                <span className="hidden sm:inline">{item.label}</span>
               </button>
             );
           })}
         </div>
+        </>
       )}
       {dashTab === 'analytics' && (
         <>
-          <div className="inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileAnalyticsMenuOpen((value) => !value)}
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/15 hover:bg-gray-50"
+              >
+                <Sparkles size={14} />
+                <span className="truncate">{analyticsViewMode === 'today' ? 'Today' : 'Full Hive'}</span>
+              </button>
+              <div className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[linear-gradient(180deg,#fff8fa_0%,#fff3f6_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72] shadow-[0_0_0_4px_rgba(109,223,114,0.14)]" />
+                <span className="truncate">{Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRefreshKey((k) => k + 1)}
+                data-tour="dashboard-refresh"
+                className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-[linear-gradient(180deg,#fff8fa_0%,#fff1f5_100%)] text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+                aria-label="Refresh dashboard"
+              >
+                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileAnalyticsMenuOpen((value) => !value)}
+                className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+                aria-label="Open analytics menu"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="hidden sm:inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
             {[
               { key: 'today', label: 'Today' },
               ...(isAdmin ? [{ key: 'all', label: 'Full Hive' }] : []),
@@ -422,7 +521,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </button>
             ))}
           </div>
-          <div className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+          <div className="hidden sm:inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
             <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72]" />
             {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}
           </div>
@@ -432,11 +531,102 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         type="button"
         onClick={() => setRefreshKey((k) => k + 1)}
         data-tour="dashboard-refresh"
-        className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white"
+        className={`hidden min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white sm:w-auto ${(dashTab === 'analytics' || isIntelDesk) ? 'sm:inline-flex' : ''}`}
       >
         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         Refresh
       </button>
+      {isIntelDesk && mobileIntelMenuOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close intel desk menu"
+            onClick={() => setMobileIntelMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          />
+          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Intel Desk</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileIntelMenuOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close intel desk menu"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2 p-3">
+              {[
+                { key: 'intel', label: 'Intelligence Library' },
+                { key: 'tailored', label: 'Personalized Feed' },
+                { key: 'saved', label: 'Saved Briefs' },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setIntelDeskTab(item.key);
+                    setMobileIntelMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${intelDeskTab === item.key ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                >
+                  <span className="text-sm font-black">{item.label}</span>
+                  {intelDeskTab === item.key ? <Check size={15} /> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
+      {dashTab === 'analytics' && mobileAnalyticsMenuOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close analytics menu"
+            onClick={() => setMobileAnalyticsMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          />
+          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Analytics</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileAnalyticsMenuOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close analytics menu"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2 p-3">
+              {[
+                { key: 'today', label: 'Today' },
+                ...(isAdmin ? [{ key: 'all', label: 'Full Hive' }] : []),
+              ].map((mode) => (
+                <button
+                  key={mode.key}
+                  type="button"
+                  onClick={() => {
+                    setAnalyticsViewMode(mode.key);
+                    setMobileAnalyticsMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${analyticsViewMode === mode.key ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                >
+                  <span className="text-sm font-black">{mode.label}</span>
+                  {analyticsViewMode === mode.key ? <Check size={15} /> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 
@@ -525,12 +715,18 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </div>
             ) : (
               <>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
-                {loading
-                  ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-                  : mobileFeedItems.length
-                    ? mobileFeedItems.map(item => renderDraggableArticle(item))
-                    : <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />}
+              <div className="min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
+                {loading ? (
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                  </div>
+                ) : mobileFeedItems.length ? (
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {mobileFeedItems.map(item => renderDraggableArticle(item))}
+                  </div>
+                ) : (
+                  <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />
+                )}
               </div>
               <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5" data-tour="intel-feed">
                 {visibleColumns.map(col => (
