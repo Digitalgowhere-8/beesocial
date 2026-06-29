@@ -1,7 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+  // All backend routes are mounted under /api (e.g. /api/auth, /api/articles).
+  // Appending /api here means every call like api.post('/auth/login') resolves
+  // correctly in both dev (via Vite proxy) and production (direct to backend).
+  baseURL: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api`,
   timeout: 120000
 });
 
