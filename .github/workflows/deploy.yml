@@ -19,7 +19,6 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      # Log into Docker Hub to avoid rate limits and connection drops
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -33,17 +32,15 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      # Create a production env file directly before running docker build
-      # This guarantees Vite compiles with the live backend endpoint
+      # Write .env.production so Vite bakes the correct backend URL at build time.
+      # VITE_API_BASE_URL must match what axios.js reads (VITE_API_BASE_URL).
       - name: Create Production Environment File
         run: |
           echo "VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io" > ./frontend/.env.production
 
-      # Pass the URL directly into the docker build command
       - name: Build and Push Frontend Image
         run: |
           docker build \
-            --build-arg VITE_API_BASE_URL=https://beesocial-backend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io \
             -t beesocial.azurecr.io/beesocial-frontend:latest ./frontend
           docker push beesocial.azurecr.io/beesocial-frontend:latest
 
@@ -95,9 +92,17 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Set all backend env vars here so they are authoritative (not just in ACR metadata).
+      # CORS_ORIGINS ensures the backend whitelist includes the real frontend FQDN.
       - name: Update Azure Container App Backend
         run: |
           az containerapp update \
             --name beesocial-backend \
             --resource-group DGW-RG-BS \
-            --image beesocial.azurecr.io/beesocial-backend:latest
+            --image beesocial.azurecr.io/beesocial-backend:latest \
+            --set-env-vars \
+              PORT=5000 \
+              MONGO_URI="${{ secrets.MONGO_URI }}" \
+              JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              NODE_ENV=production \
+              CORS_ORIGINS="https://beesocial-frontend.wonderfulmoss-11cf811e.centralindia.azurecontainerapps.io"

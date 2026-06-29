@@ -4,16 +4,12 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 
-# 1. Accept the argument from GitHub Actions
-ARG VITE_API_BASE_URL
-
-# 2. Write it directly to the environment file inside the container filesystem
-RUN echo "VITE_API_BASE_URL=${VITE_API_BASE_URL}" > .env.production
-
-# 3. Run the compile step (Vite will now 100% find and bake it)
+# Vite bakes VITE_* vars at build time from .env.production (written by CI)
 RUN npm run build
 
 FROM nginx:1.25-alpine
+# Custom nginx config: SPA routing + caching headers
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
