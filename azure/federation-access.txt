@@ -1,0 +1,88 @@
+az identity create \
+  --name beesocial-github-identity \
+  --resource-group DGW-RG-BS
+  
+  {
+  "clientId": "b06069e0-3ab8-4381-a504-f55f148acd24",
+  "id": "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/resourcegroups/DGW-RG-BS/providers/Microsoft.ManagedIdentity/userAssignedIdentities/beesocial-github-identity",
+  "isolationScope": "None",
+  "location": "centralindia",
+  "name": "beesocial-github-identity",
+  "principalId": "67e00fde-ed40-48fe-afa6-e7b955619872",
+  "resourceGroup": "DGW-RG-BS",
+  "systemData": null,
+  "tags": {},
+  "tenantId": "344e8310-ae6b-4d02-a4e5-e550603b43dc",
+  "type": "Microsoft.ManagedIdentity/userAssignedIdentities"
+}
+
+___________________________________________________________________________________________________
+
+
+az role assignment create \
+  --assignee "b06069e0-3ab8-4381-a504-f55f148acd24" \
+  --role "Contributor" \
+  --scope "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/resourceGroups/DGW-RG-BS"
+  
+  {
+  "condition": null,
+  "conditionVersion": null,
+  "createdBy": null,
+  "createdOn": "2026-06-28T15:38:46.256490+00:00",
+  "delegatedManagedIdentityResourceId": null,
+  "description": null,
+  "id": "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/resourceGroups/DGW-RG-BS/providers/Microsoft.Authorization/roleAssignments/ee533810-23bc-4f88-82ef-8fb9f8cecc51",
+  "name": "ee533810-23bc-4f88-82ef-8fb9f8cecc51",
+  "principalId": "67e00fde-ed40-48fe-afa6-e7b955619872",
+  "principalType": "ServicePrincipal",
+  "resourceGroup": "DGW-RG-BS",
+  "roleDefinitionId": "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+  "scope": "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/resourceGroups/DGW-RG-BS",
+  "type": "Microsoft.Authorization/roleAssignments",
+  "updatedBy": "5090acd3-28d3-46ba-8c19-da82d0683c97",
+  "updatedOn": "2026-06-28T15:38:46.928152+00:00"
+}
+
+____________________________________________________________________________________________________
+
+
+az identity federated-credential create \
+  --name beesocial-gh-federation \
+  --identity-name beesocial-github-identity \
+  --resource-group DGW-RG-BS \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:alokkdgw/beesocial:ref:refs/heads/azuredeploy" \
+  --audiences "api://AzureADTokenExchange"
+  
+  {
+  "audiences": [
+    "api://AzureADTokenExchange"
+  ],
+  "id": "/subscriptions/eb648b7f-3672-4269-a9c7-1e5a76d45a11/resourcegroups/DGW-RG-BS/providers/Microsoft.ManagedIdentity/userAssignedIdentities/beesocial-github-identity/federatedIdentityCredentials/beesocial-gh-federation",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "name": "beesocial-gh-federation",
+  "resourceGroup": "DGW-RG-BS",
+  "subject": "repo:alokkdgw/beesocial:ref:refs/heads/azuredeploy",
+  "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials"
+  
+  
+}
+
+
+___________________________________________________________________________________________________
+
+# Delete the old mismatched credential
+az identity federated-credential delete \
+  --name beesocial-gh-federation \
+  --identity-name beesocial-github-identity \
+  --resource-group DGW-RG-BS \
+  --yes
+
+# Recreate it with the exact matching uppercase character
+az identity federated-credential create \
+  --name beesocial-gh-federation \
+  --identity-name beesocial-github-identity \
+  --resource-group DGW-RG-BS \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:Digitalgowhere-8/beesocial:ref:refs/heads/azuredeploy" \
+  --audiences "api://AzureADTokenExchange"
