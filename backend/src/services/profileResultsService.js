@@ -4,6 +4,7 @@ const Article = require('../models/Article');
 const UserResult = require('../models/UserResult');
 const { hashUrl } = require('../utils/hash');
 const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
+const { CATEGORIES } = require('../config/categories');
 
 function cleanLogId(value) {
   const id = String(value || '').trim().replace(/^=+/, '');
@@ -24,6 +25,48 @@ function dedupeResultItems(items = []) {
   }
 
   return deduped;
+}
+
+function cleanText(value) {
+  return String(value || '').trim();
+}
+
+function validSubcategoriesForCategory(category) {
+  return Object.keys(CATEGORIES[cleanText(category)]?.subcategories || {});
+}
+
+function normalizeCategory(value, fallback = '') {
+  const current = cleanText(value);
+  if (CATEGORIES[current]) return current;
+  const fallbackCategory = cleanText(fallback);
+  if (CATEGORIES[fallbackCategory]) return fallbackCategory;
+  return Object.keys(CATEGORIES)[0] || 'Corporate Services';
+}
+
+function normalizeSubcategory(category, value, fallback = '') {
+  const allowed = validSubcategoriesForCategory(category);
+  if (!allowed.length) return '';
+
+  const candidates = [value, fallback]
+    .map(cleanText)
+    .filter(Boolean)
+    .filter((candidate) => !/^all( sub[- ]?categor(?:y|ies))?$/i.test(candidate));
+
+  for (const candidate of candidates) {
+    const exact = allowed.find((item) => item.toLowerCase() === candidate.toLowerCase());
+    if (exact) return exact;
+  }
+
+  for (const candidate of candidates) {
+    const normalized = candidate.toLowerCase();
+    const partial = allowed.find((item) => {
+      const allowedValue = item.toLowerCase();
+      return normalized.includes(allowedValue) || allowedValue.includes(normalized);
+    });
+    if (partial) return partial;
+  }
+
+  return '';
 }
 
 function normalizePerSource(perSource) {
@@ -95,6 +138,8 @@ async function persistProfileResults(body = {}, options = {}) {
     const articleType = normalizeArticleType(item);
     const blogContext = String(item.blog_context || item.blogContext || item.raw?.blogContext || item.raw_content || '').slice(0, 3000);
     const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 1200);
+    const category = normalizeCategory(item.category, body.category);
+    const subcategory = normalizeSubcategory(category, item.sub_category || item.subcategory, body.subcategory || body.sub_category);
     return {
       updateOne: {
         filter: { urlHash: storedHash },
@@ -107,8 +152,8 @@ async function persistProfileResults(body = {}, options = {}) {
             source: item.source || item.sourceName || 'profile-search',
             sourceId: item.sourceId || item.source || 'profile-search',
             sourceType: item.sourceType || '',
-            category: item.category || 'General',
-            subcategory: item.sub_category || item.subcategory || '',
+            category,
+            subcategory,
             country: item.country || body.country || defaultCountry(),
             region: item.region || '',
             sector: item.sector || '',
@@ -131,15 +176,18 @@ async function persistProfileResults(body = {}, options = {}) {
               sourceQuery: item.source_query || item.sourceQuery || body.query || '',
               queryCategory: item.queryCategory || '',
               tavilyScore: item.tavilyScore || item.tavily_score || null,
+              allowedDomains: item.allowedDomains || item.includeDomains || item.include_domains || [],
               blogContext,
               tavilyAnswer
             },
             urlHash: storedHash,
-            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
             userId: userObjectId || undefined,
             savedSearchId: savedSearchObjectId || undefined,
             sourceQuery: String(item.source_query || item.sourceQuery || body.query || '').slice(0, 300)
+          },
+          $setOnInsert: {
+            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date()
           }
         },
         upsert: true

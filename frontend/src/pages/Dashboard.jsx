@@ -77,7 +77,7 @@ function EmptyState({ icon: Icon, isAdmin }) {
 }
 
 function getEffectiveTime(item) {
-  return new Date(item.publishedAt || item.fetchedAt || 0).getTime();
+  return new Date(item.fetchedAt || item.publishedAt || 0).getTime();
 }
 
 function getEffectiveDateKey(item) {
@@ -95,13 +95,13 @@ function getEffectiveDateKey(item) {
 
 function dateScoreRanked(items = []) {
   return [...items].sort((a, b) => {
-    const dateDiff = getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
-    if (dateDiff) return dateDiff;
+    const timeDiff = getEffectiveTime(b) - getEffectiveTime(a);
+    if (timeDiff) return timeDiff;
 
     const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
     if (scoreDiff) return scoreDiff;
 
-    return getEffectiveTime(b) - getEffectiveTime(a);
+    return getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
   });
 }
 
@@ -228,12 +228,12 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const mobileFeedItems = visibleColumns
     .flatMap((col) => rankedData[col.key] || [])
     .sort((a, b) => {
-      const dateDiff = getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
-      if (dateDiff) return dateDiff;
+      const timeDiff = getEffectiveTime(b) - getEffectiveTime(a);
+      if (timeDiff) return timeDiff;
 
       const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
       if (scoreDiff) return scoreDiff;
-      return getEffectiveTime(b) - getEffectiveTime(a);
+      return getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
     });
   const visibleFeedItems = activeType ? (rankedData[activeType] || []) : mobileFeedItems;
   useEffect(() => {

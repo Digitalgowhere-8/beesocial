@@ -18,10 +18,15 @@ function cleanDomain(value) {
 
 const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
   Singapore: [
+    'mas.gov.sg',
     'acra.gov.sg',
     'iras.gov.sg',
     'mom.gov.sg',
-    'edb.gov.sg'
+    'edb.gov.sg',
+    'mti.gov.sg',
+    'businesstimes.com.sg',
+    'straitstimes.com',
+    'channelnewsasia.com'
   ],
   India: [
     'economictimes.indiatimes.com',
@@ -42,6 +47,8 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'scmp.com'
   ],
   China: [
+    'csrc.gov.cn',
+    'mofcom.gov.cn',
     'caixinglobal.com',
     'chinaeconomicreview.com',
     'yicaiglobal.com',
@@ -142,10 +149,12 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
 
 const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
   Singapore: [
+    'mas.gov.sg',
     'acra.gov.sg',
     'iras.gov.sg',
     'mom.gov.sg',
     'edb.gov.sg',
+    'mti.gov.sg',
     'gov.sg',
     'mfa.gov.sg'
   ],
@@ -166,6 +175,8 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'vietnam.gov.vn'
   ],
   'Hong Kong': [
+    'sfc.hk',
+    'hkma.gov.hk',
     'cr.gov.hk',
     'ird.gov.hk',
     'labour.gov.hk',
@@ -176,6 +187,8 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
   China: [
     'mofcom.gov.cn',
     'samr.gov.cn',
+    'csrc.gov.cn',
+    'pboc.gov.cn',
     'chinatax.gov.cn',
     'mohrss.gov.cn'
   ],
@@ -423,8 +436,8 @@ function canonicalCountry(country) {
 function defaultSourceDomainsForCountry(country, type = 'news') {
   const selected = canonicalCountry(country);
   if (type === 'govt') return GOVT_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
-  if (type === 'competitor') return COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY[selected] || DEFAULT_COMPETITOR_SOURCE_DOMAINS;
-  return NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || GLOBAL_NEWS_SOURCE_DOMAINS;
+  if (type === 'competitor') return DEFAULT_COMPETITOR_SOURCE_DOMAINS;
+  return [...new Set([...(NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || []), ...GLOBAL_NEWS_SOURCE_DOMAINS])];
 }
 
 function configuredFetchCountries() {
@@ -435,12 +448,15 @@ function mergeSourceDomains({ country, type = 'news', userSources = [], strictSo
   const defaults = defaultSourceDomainsForCountry(country, type);
   const defaultDomains = [...new Set(defaults.map(cleanDomain).filter(Boolean))];
   const userDomains = cleanList(userSources).map(cleanDomain).filter(Boolean);
-  const includeDomains = [...new Set([...defaultDomains, ...userDomains])];
+  const lockedToDefaultSources = type === 'govt' || type === 'competitor';
+  const includeDomains = lockedToDefaultSources
+    ? defaultDomains
+    : [...new Set([...defaultDomains, ...userDomains])];
 
   return {
     includeDomains,
     strictSources: true,
-    defaultDomains: defaults,
+    defaultDomains: defaultDomains,
     userDomains
   };
 }

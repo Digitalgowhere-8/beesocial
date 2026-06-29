@@ -2,6 +2,7 @@ const tavilyService = require('./tavilyService');
 const aiService = require('./aiService');
 const { hashUrl } = require('../utils/hash');
 const { CATEGORIES } = require('../config/categories');
+const { canonicalCountry, defaultSourceDomainsForCountry } = require('../config/fetchSources');
 
 const ALLOWED_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergreen')
   .split(',')
@@ -13,14 +14,14 @@ const OPPORTUNITY_TYPE = {
   competitor: 'competitor',
   evergreen: 'evergreen'
 };
-const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(30, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 10) || 10));
+const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(10, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 5) || 5));
 const DEFAULT_TARGET_PER_CATEGORY = 10;
 const DEFAULT_TARGET_PER_TOPIC = 100;
 const MAX_TARGET_PER_TOPIC = 100;
-const DEFAULT_TAVILY_MAX_RESULTS = 10;
-const MAX_TAVILY_MAX_RESULTS = 10;
+const DEFAULT_TAVILY_MAX_RESULTS = 5;
+const MAX_TAVILY_MAX_RESULTS = 5;
 const MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
-const BROAD_DISCOVERY_MAX_RESULTS = Math.max(1, Math.min(10, Number(process.env.BROAD_DISCOVERY_MAX_RESULTS || 6) || 6));
+const BROAD_DISCOVERY_MAX_RESULTS = Math.max(1, Math.min(5, Number(process.env.BROAD_DISCOVERY_MAX_RESULTS || 3) || 3));
 
 function text(value, fallback = '') {
   return String(value ?? fallback).trim();
@@ -69,6 +70,43 @@ function isAllPlaceholder(value) {
 function cleanSubcategory(value) {
   const current = text(value);
   return isAllPlaceholder(current) ? '' : current;
+}
+
+function validSubcategoriesForCategory(category) {
+  return Object.keys(CATEGORIES[text(category)]?.subcategories || {});
+}
+
+function normalizeCategory(value, fallback = '') {
+  const current = text(value);
+  if (CATEGORIES[current]) return current;
+  const fallbackCategory = text(fallback);
+  if (CATEGORIES[fallbackCategory]) return fallbackCategory;
+  return Object.keys(CATEGORIES)[0] || 'General';
+}
+
+function normalizeSubcategory(category, value, fallback = '') {
+  const allowed = validSubcategoriesForCategory(category);
+  if (!allowed.length) return '';
+
+  const candidates = [value, fallback]
+    .map((candidate) => cleanSubcategory(candidate))
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const exact = allowed.find((item) => item.toLowerCase() === candidate.toLowerCase());
+    if (exact) return exact;
+  }
+
+  for (const candidate of candidates) {
+    const normalized = candidate.toLowerCase();
+    const partial = allowed.find((item) => {
+      const allowedValue = item.toLowerCase();
+      return normalized.includes(allowedValue) || allowedValue.includes(normalized);
+    });
+    if (partial) return partial;
+  }
+
+  return '';
 }
 
 function daysToTimeRange(value) {
@@ -130,7 +168,7 @@ function extractTextDates(value = '') {
 }
 
 function inferResultDate(row = {}) {
-  const explicitDate = parseDateCandidate(row?.publishedAt);
+  const explicitDate = parseDateCandidate(row?.publishedAt || row?.published_date || row?.publishedDate || row?.date);
   if (explicitDate) return explicitDate;
 
   const candidates = [
@@ -145,9 +183,12 @@ function inferResultDate(row = {}) {
   return candidates.sort((a, b) => b.getTime() - a.getTime())[0];
 }
 
+function resultArticleDate(row = {}) {
+  return inferResultDate(row) || new Date();
+}
+
 function resultMatchesDayWindow(row, maxAgeDays = 30) {
-  const publishedAt = inferResultDate(row);
-  if (!publishedAt) return maxAgeDays > 30;
+  const publishedAt = resultArticleDate(row);
   const ageMs = Date.now() - publishedAt.getTime();
   return ageMs <= Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
 }
@@ -194,6 +235,17 @@ function isAllowedGovtResult(url, includeDomains = []) {
   const host = hostFromUrl(url);
   const allowedDomains = list(includeDomains).map(cleanDomain).filter(Boolean);
   return allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function isAllowedSourceResult(url, includeDomains = []) {
+  const host = hostFromUrl(url);
+  const allowedDomains = list(includeDomains).map(cleanDomain).filter(Boolean);
+  if (!allowedDomains.length) return false;
+  return allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function shouldEnforcePostSourceFilter(topic) {
+  return topic === 'news' || topic === 'govt' || topic === 'competitor';
 }
 
 function isEvergreenResult({ title, url, summary }) {
@@ -267,6 +319,39 @@ function articleIdentityHash({ url, title }) {
   ].join('|'));
 }
 
+function articleUrlHash(url) {
+  return hashUrl(normalizedUrl(url));
+}
+
+function sourceIdFromHost(host) {
+  return text(host).split('.')[0].toLowerCase() || 'dynamic-search';
+}
+
+function sourceNameFromHost(host) {
+  return sourceIdFromHost(host)
+    .split('-')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ') || 'Dynamic Search';
+}
+
+function filterStats() {
+  return {
+    missing: 0,
+    date: 0,
+    source: 0,
+    type: 0,
+    score: 0
+  };
+}
+
+function rejectCandidate(stats, reason) {
+  if (stats && Object.prototype.hasOwnProperty.call(stats, reason)) {
+    stats[reason] += 1;
+  }
+  return null;
+}
+
 function normalizeProfileInput(incoming = {}) {
   const now = new Date().toISOString();
   const topics = unique(list(incoming.topics))
@@ -278,7 +363,15 @@ function normalizeProfileInput(incoming = {}) {
     ? Object.fromEntries(
       Object.entries(incoming.sourceDomainsByTopic).map(([topic, domains]) => [
         String(topic || '').toLowerCase(),
-        unique(list(domains))
+        unique(list(domains).map(cleanDomain).filter(Boolean))
+      ])
+    )
+    : {};
+  const defaultDomainsByTopic = incoming.defaultDomainsByTopic && typeof incoming.defaultDomainsByTopic === 'object'
+    ? Object.fromEntries(
+      Object.entries(incoming.defaultDomainsByTopic).map(([topic, domains]) => [
+        String(topic || '').toLowerCase(),
+        unique(list(domains).map(cleanDomain).filter(Boolean))
       ])
     )
     : {};
@@ -301,9 +394,10 @@ function normalizeProfileInput(incoming = {}) {
     queries: incoming.queries && typeof incoming.queries === 'object' ? incoming.queries : {},
     queryVariants: incoming.queryVariants && typeof incoming.queryVariants === 'object' ? incoming.queryVariants : {},
     queryCategories: incoming.queryCategories && typeof incoming.queryCategories === 'object' ? incoming.queryCategories : {},
-    preferredDomains: unique(list(incoming.preferredDomains || incoming.includeDomains || incoming.sources)),
-    userDomains: unique(list(incoming.userDomains || incoming.user_domains)),
+    preferredDomains: unique(list(incoming.preferredDomains || incoming.includeDomains || incoming.sources).map(cleanDomain).filter(Boolean)),
+    userDomains: unique(list(incoming.userDomains || incoming.user_domains).map(cleanDomain).filter(Boolean)),
     sourceDomainsByTopic,
+    defaultDomainsByTopic,
     strictSources: Boolean(incoming.strictSources || incoming.strict_sources),
     competitors: unique(list(incoming.competitors)),
     days: Math.max(1, Math.min(365, Number(incoming.days || 30) || 30)),
@@ -323,16 +417,34 @@ function normalizeProfileInput(incoming = {}) {
 
 function domainsForTopic(profile, topic) {
   const topicDomains = unique(list(profile.sourceDomainsByTopic?.[topic]));
+  const configuredDefaults = unique(list(profile.defaultDomainsByTopic?.[topic]));
+  const fallbackDefaults = unique(
+    defaultSourceDomainsForCountry(
+      canonicalCountry(profile.country || defaultCountry()),
+      topic === 'govt' ? 'govt' : topic === 'competitor' ? 'competitor' : 'news'
+    ).map(cleanDomain).filter(Boolean)
+  );
+  const defaultDomains = configuredDefaults.length ? configuredDefaults : fallbackDefaults;
+  if (topic === 'govt' || topic === 'competitor') {
+    return defaultDomains.length ? defaultDomains : topicDomains;
+  }
+
   const preferredDomains = unique(list(profile.preferredDomains));
   const userDomains = unique(list(profile.userDomains));
   if (profile.strictSources) return topicDomains.length ? topicDomains : (preferredDomains.length ? preferredDomains : userDomains);
   return unique([...(topicDomains.length ? topicDomains : preferredDomains), ...userDomains]);
 }
 
+function tavilyTopicForProfileTopic(topic) {
+  return topic === 'news' ? 'news' : 'general';
+}
+
 function sourceFallbackQuery(profile, topic) {
   return [
     profile.country,
     profile.region,
+    profile.category,
+    profile.subcategory,
     topic === 'evergreen' ? 'guide checklist requirements' : 'latest update announcement news policy compliance tax business economy',
     topic === 'competitor' ? list(profile.competitors).join(' ') : '',
     'professional services'
@@ -351,6 +463,36 @@ function broadDiscoveryQuery(profile, topic, category) {
   ].map((part) => text(part)).filter(Boolean).join(' ');
 }
 
+function selectQueryEntries(variants = [], categories = [], maxQueries = MAX_TOPIC_QUERY_LIMIT, profile = {}) {
+  const entries = variants.map((query, index) => ({
+    query: text(query),
+    category: text(categories[index]) || profile.categories?.[index] || profile.category,
+    index
+  })).filter((entry) => entry.query);
+
+  const selected = [];
+  const selectedIndexes = new Set();
+  const usedCategories = new Set();
+
+  for (const entry of entries) {
+    if (selected.length >= maxQueries) break;
+    const categoryKey = text(entry.category).toLowerCase();
+    if (categoryKey && usedCategories.has(categoryKey)) continue;
+    selected.push(entry);
+    selectedIndexes.add(entry.index);
+    if (categoryKey) usedCategories.add(categoryKey);
+  }
+
+  for (const entry of entries) {
+    if (selected.length >= maxQueries) break;
+    if (selectedIndexes.has(entry.index)) continue;
+    selected.push(entry);
+    selectedIndexes.add(entry.index);
+  }
+
+  return selected;
+}
+
 function buildTopicQueries(profile, topic) {
   const variants = Array.isArray(profile.queryVariants?.[topic])
     ? profile.queryVariants[topic].map((v) => text(v)).filter(Boolean)
@@ -360,13 +502,16 @@ function buildTopicQueries(profile, topic) {
     1,
     Math.min(MAX_TOPIC_QUERY_LIMIT, variants.length ? variants.length : (profile.categories.length || 1))
   );
-  const queries = (variants.length ? variants : [fallback].filter(Boolean)).slice(0, maxQueries);
-  if (!queries.length) return [];
+  const queryEntries = variants.length
+    ? selectQueryEntries(variants, profile.queryCategories?.[topic] || [], maxQueries, profile)
+    : selectQueryEntries([fallback].filter(Boolean), [], maxQueries, profile);
+  if (!queryEntries.length) return [];
 
   const includeDomains = domainsForTopic(profile, topic);
+  if (profile.strictSources && !includeDomains.length) return [];
 
   const maxResults = Math.max(1, Math.min(MAX_TAVILY_MAX_RESULTS, Number(process.env.TAVILY_MAX_RESULTS || DEFAULT_TAVILY_MAX_RESULTS) || DEFAULT_TAVILY_MAX_RESULTS));
-  const requestForQuery = ({ query, category, variantIndex, includeDomainsOverride, searchDepth = 'advanced', maxResultsOverride }) => ({
+  const requestForQuery = ({ query, category, variantIndex, includeDomainsOverride, searchDepth = 'basic', maxResultsOverride }) => ({
     profile: {
       ...profile,
       category
@@ -378,7 +523,7 @@ function buildTopicQueries(profile, topic) {
     sourceQuery: query,
     minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 0) || 0)),
     tavilyOptions: {
-      topic: topic === 'evergreen' ? 'general' : 'news',
+      topic: tavilyTopicForProfileTopic(topic),
       searchDepth,
       maxResults: maxResultsOverride || maxResults,
       timeRange: daysToTimeRange(profile.days),
@@ -388,9 +533,9 @@ function buildTopicQueries(profile, topic) {
     }
   });
 
-  const baseRequests = queries.map((query, variantIndex) => requestForQuery({
-    query,
-    category: text(profile.queryCategories?.[topic]?.[variantIndex]) || profile.categories[variantIndex] || profile.category,
+  const baseRequests = queryEntries.map((entry, variantIndex) => requestForQuery({
+    query: entry.query,
+    category: entry.category || profile.categories[variantIndex] || profile.category,
     variantIndex,
     includeDomainsOverride: includeDomains.length ? includeDomains : []
   }));
@@ -406,10 +551,10 @@ function buildTopicQueries(profile, topic) {
         type: topic,
         opportunityType: OPPORTUNITY_TYPE[topic] || 'market_news',
         sourceQuery: sourceFallbackQuery(profile, topic),
-        minTavilyScore: 0,
+        minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 0) || 0)),
         tavilyOptions: {
-          topic: topic === 'evergreen' ? 'general' : 'news',
-          searchDepth: 'advanced',
+          topic: tavilyTopicForProfileTopic(topic),
+          searchDepth: 'basic',
           maxResults,
           timeRange: daysToTimeRange(profile.days),
           includeRawContent: false,
@@ -419,29 +564,7 @@ function buildTopicQueries(profile, topic) {
       }]
     : [];
 
-  const broadDiscoveryRequests = profile.strictSources
-    ? []
-    : profile.categories.map((category, index) => ({
-        profile: {
-          ...profile,
-          category
-        },
-        topic,
-        variantIndex: baseRequests.length + sourceFallbackRequests.length + index,
-        type: topic,
-        opportunityType: OPPORTUNITY_TYPE[topic] || 'market_news',
-        sourceQuery: broadDiscoveryQuery(profile, topic, category),
-        minTavilyScore: 0,
-        tavilyOptions: {
-          topic: topic === 'evergreen' ? 'general' : 'news',
-          searchDepth: 'basic',
-          maxResults: BROAD_DISCOVERY_MAX_RESULTS,
-          timeRange: daysToTimeRange(profile.days),
-          includeRawContent: false,
-          timeoutMs: 30000,
-          includeDomains: topic === 'govt' ? includeDomains : []
-        }
-      })).filter((request) => topic !== 'govt' || request.tavilyOptions.includeDomains.length);
+  const broadDiscoveryRequests = [];
 
   const interleaved = [];
   const broadByCategory = new Map(broadDiscoveryRequests.map((request) => [request.profile.category, request]));
@@ -462,27 +585,36 @@ function buildTopicQueries(profile, topic) {
   return [...interleaved.slice(0, MAX_TOPIC_QUERY_LIMIT), ...sourceFallbackRequests];
 }
 
-function articleFromResult(row, request) {
+function articleFromResult(row, request, stats) {
   const title = text(row.title);
   const url = text(row.url);
   const snippet = text(row.snippet || row.content || row.summary);
   const rawContent = text(row.rawContent || row.raw_content);
   const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
-  const inferredPublishedAt = inferResultDate(row);
-  if (!title || !url) return null;
-  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) return null;
+  const articleDate = resultArticleDate(row);
+  if (!title || !url) return rejectCandidate(stats, 'missing');
+  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) return rejectCandidate(stats, 'date');
+  if (
+    shouldEnforcePostSourceFilter(request.topic) &&
+    !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])
+  ) {
+    return rejectCandidate(stats, 'source');
+  }
   if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
-    return null;
+    return rejectCandidate(stats, 'source');
   }
   if (request.topic === 'evergreen' && !isEvergreenResult({ title, url, summary })) {
-    return null;
+    return rejectCandidate(stats, 'type');
   }
 
   const tavilyScore = typeof row.score === 'number' ? row.score : 50;
-  if (tavilyScore < (request.minTavilyScore || 0)) return null;
+  if (request.topic !== 'news' && tavilyScore < (request.minTavilyScore || 0)) {
+    return rejectCandidate(stats, 'score');
+  }
 
   const profile = request.profile || {};
   const sourceType = hostFromUrl(url);
+  const sourceId = sourceIdFromHost(sourceType);
   const identityHash = articleIdentityHash({ url, title });
   return {
     profile,
@@ -511,13 +643,15 @@ function articleFromResult(row, request) {
     relevanceReason: `Tavily relevance score ${tavilyScore} for ${request.topic} query variant ${request.variantIndex}.`,
     relevance_reason: `Tavily relevance score ${tavilyScore} for ${request.topic} query variant ${request.variantIndex}.`,
     url,
-    urlHash: identityHash,
-    source: sourceType,
-    sourceId: sourceType,
+    hash: identityHash,
+    urlHash: articleUrlHash(url),
+    source: sourceNameFromHost(sourceType),
+    sourceId,
     sourceType,
+    allowedDomains: request.tavilyOptions?.includeDomains || [],
     sourceQuery: request.sourceQuery,
     fetched_at: new Date().toISOString(),
-    publishedAt: inferredPublishedAt?.toISOString?.() || row.publishedAt || ''
+    publishedAt: articleDate.toISOString()
   };
 }
 
@@ -561,23 +695,20 @@ function workflowProfile(profile = {}) {
   };
 }
 
-function bestSubcategory(articleSubcategory, ai) {
-  const existing = text(articleSubcategory);
-  const fromAi = text(ai?.subcategory || ai?.sub_category || ai?.subCategory || ai?.['sub-category'] || ai?.['sub category']);
-  return isAllPlaceholder(existing) ? fromAi : (existing || fromAi);
-}
-
 function bestCategory(articleCategory, ai) {
-  const fromAi = text(ai?.category);
-  if (CATEGORIES[fromAi]) return fromAi;
-  const existing = text(articleCategory);
-  return CATEGORIES[existing] ? existing : 'General';
+  return normalizeCategory(ai?.category, articleCategory);
 }
 
 function resultFromArticle(article, topic, ai = {}) {
   const score = Math.max(
     0,
     Math.min(100, parseInt(ai.relevance_score ?? article.relevanceScore ?? article.tavilyScore, 10) || 0)
+  );
+  const category = bestCategory(article.category || article.profile?.category, ai);
+  const subcategory = normalizeSubcategory(
+    category,
+    ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+    article.subcategory
   );
 
   return {
@@ -587,8 +718,8 @@ function resultFromArticle(article, topic, ai = {}) {
     url: article.url,
     urlHash: article.urlHash,
     type: topic,
-    category: bestCategory(article.category || article.profile?.category, ai),
-    subcategory: bestSubcategory(article.subcategory, ai),
+    category,
+    subcategory,
     source: article.source || 'dynamic-search',
     sourceId: article.sourceId || article.source || 'dynamic-search',
     sourceType: article.sourceType || '',
@@ -603,6 +734,11 @@ function resultFromArticle(article, topic, ai = {}) {
     relevance_reason: ai.relevance_reason || '',
     aiSummary: ai.summary || article.aiSummary || '',
     sourceQuery: article.sourceQuery || '',
+    rawData: article.rawData || {
+      sourceQuery: article.sourceQuery || '',
+      allowedDomains: article.allowedDomains || [],
+      tavilyScore: article.tavilyScore || null
+    },
     fetched_at: article.fetched_at || new Date().toISOString(),
     publishedAt: article.publishedAt || ''
   };
@@ -618,6 +754,8 @@ async function runTopic(profile, topic, onProgress) {
   });
   const articles = [];
   let searchErrors = 0;
+  let rawCandidates = 0;
+  const rejected = filterStats();
   for (let i = 0; i < requests.length; i += 1) {
     const request = requests[i];
     onProgress?.({
@@ -639,11 +777,17 @@ async function runTopic(profile, topic, onProgress) {
       step: `topic:${topic}:search`,
       message: `${topic} topic: Tavily returned ${rows.length} result${rows.length === 1 ? '' : 's'} for variant ${i + 1}`
     });
+    rawCandidates += rows.length;
     for (const row of rows) {
-      const article = articleFromResult(row, request);
+      const article = articleFromResult(row, request, rejected);
       if (article) articles.push(article);
     }
   }
+
+  onProgress?.({
+    step: `topic:${topic}:process`,
+    message: `${topic} topic: processed ${rawCandidates} Tavily candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed filters; rejected missing:${rejected.missing}, date:${rejected.date}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}`
+  });
 
   const deduped = dedupeArticlesForAi(articles);
   if (deduped.duplicates) {
@@ -726,6 +870,11 @@ function buildBackendCallback(profile, topicItems) {
       relevance_reason: d.relevance_reason || d.relevanceReason || '',
       aiSummary: d.aiSummary || d.summary || '',
       sourceQuery: d.sourceQuery || '',
+      rawData: d.rawData || d.raw || {
+        sourceQuery: d.sourceQuery || '',
+        allowedDomains: d.allowedDomains || [],
+        tavilyScore: d.tavilyScore || d.tavily_score || null
+      },
       fetched_at: d.fetched_at || new Date().toISOString(),
       publishedAt: d.publishedAt || ''
     };

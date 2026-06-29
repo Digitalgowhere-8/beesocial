@@ -12,8 +12,10 @@ const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-const DEFAULT_ARTICLE_SORT = { effectiveDay: -1, relevanceScore: -1, effectiveDate: -1 };
+const DEFAULT_ARTICLE_SORT = { fetchedDate: -1, relevanceScore: -1, effectiveDate: -1 };
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
+const DASHBOARD_TIMEZONE_OFFSET_MINUTES = 330;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function tenantOwnerIds(user) {
   if (!user?._id) return [];
@@ -45,23 +47,50 @@ function formatDashboardDate(date) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
-function parseFilterDateStart(value) {
+function parseDateInputParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utcDate.getUTCFullYear() !== year ||
+    utcDate.getUTCMonth() !== month - 1 ||
+    utcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day };
+}
+
+function parseDashboardDateBoundary(value, endOfDay = false) {
   if (!value) return null;
+
+  const parts = parseDateInputParts(value);
+  if (parts) {
+    const startUtc = Date.UTC(parts.year, parts.month - 1, parts.day) -
+      DASHBOARD_TIMEZONE_OFFSET_MINUTES * 60 * 1000;
+    return new Date(endOfDay ? startUtc + DAY_MS - 1 : startUtc);
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
+  date.setHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
   return date;
+}
+
+function parseFilterDateStart(value) {
+  return parseDashboardDateBoundary(value, false);
 }
 
 function parseFilterDateEnd(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date;
+  return parseDashboardDateBoundary(value, true);
 }
 
-function effectiveDateRangeMatch(from, to) {
+function dashboardDateRangeMatch(from, to) {
   const start = parseFilterDateStart(from);
   const end = parseFilterDateEnd(to);
   if (!start && !end) return null;
@@ -77,6 +106,14 @@ function withEffectiveDateSort(match, extraStages = []) {
     { $match: match },
     {
       $addFields: {
+        fetchedDate: {
+          $convert: {
+            input: '$fetchedAt',
+            to: 'date',
+            onError: new Date(0),
+            onNull: new Date(0)
+          }
+        },
         effectiveDate: {
           $convert: {
             input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
@@ -89,6 +126,13 @@ function withEffectiveDateSort(match, extraStages = []) {
     },
     {
       $addFields: {
+        fetchedDay: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$fetchedDate',
+            timezone: DASHBOARD_TIMEZONE
+          }
+        },
         effectiveDay: {
           $dateToString: {
             format: '%Y-%m-%d',
@@ -149,7 +193,7 @@ const asyncHandler = (fn) => (req, res, next) => {
  *  subcategory - sub-category
  *  source      - sourceId
  *  q           - full-text search keyword (title)
- *  from / to   - ISO date strings; filters by publishedAt, fallback fetchedAt
+ *  from / to   - ISO date strings; filters by fetchedAt in the dashboard timezone
  */
 function buildQuery(req, opts = {}) {
   const q = {};
@@ -327,14 +371,14 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     buildQuery(req)
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
-  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const types = ['news', 'govt', 'competitor', 'evergreen'];
   const results = await Promise.all(
     types.map((t) => {
       const pipeline = withEffectiveDateSort({ ...baseQuery, type: t });
       if (dateRange) {
-        pipeline.push({ $match: { effectiveDate: dateRange } });
+        pipeline.push({ $match: { fetchedDate: dateRange } });
       }
       if (limit && limit > 0) {
         pipeline.push({ $limit: limit });
@@ -354,23 +398,22 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
 }));
 
 // GET /api/articles/velocity
-// Returns real signal counts for the last 7 days using publishedAt when present, otherwise fetchedAt.
+// Returns real signal counts for the last 7 days using fetchedAt.
 router.get('/velocity', protect, asyncHandler(async (req, res) => {
   const baseQuery = buildQuery(req);
   const datasetScope = req.query.scope === 'dataset';
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - 6);
-  const explicitDateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const todayStart = parseFilterDateStart(formatDashboardDate(now)) || now;
+  const start = new Date(todayStart.getTime() - 6 * DAY_MS);
+  const explicitDateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const pipeline = [
     { $match: baseQuery },
     {
       $addFields: {
-        effectiveDate: {
+        fetchedDate: {
           $convert: {
-            input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
+            input: '$fetchedAt',
             to: 'date',
             onError: new Date(0),
             onNull: new Date(0)
@@ -381,9 +424,9 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
   ];
 
   if (explicitDateRange) {
-    pipeline.push({ $match: { effectiveDate: explicitDateRange } });
+    pipeline.push({ $match: { fetchedDate: explicitDateRange } });
   } else if (!datasetScope) {
-    pipeline.push({ $match: { effectiveDate: { $gte: start, $lte: now } } });
+    pipeline.push({ $match: { fetchedDate: { $gte: start, $lte: now } } });
   }
 
   pipeline.push(
@@ -392,7 +435,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
         _id: {
           $dateToString: {
             format: '%Y-%m-%d',
-            date: '$effectiveDate',
+            date: '$fetchedDate',
             timezone: DASHBOARD_TIMEZONE
           }
         },
@@ -418,12 +461,14 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 
   const counts = Object.fromEntries(rows.map((row) => [row._id, row.count]));
   const days = Array.from({ length: 7 }).map((_, i) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + i);
+    const date = new Date(start.getTime() + i * DAY_MS);
     const key = formatDashboardDate(date);
     return {
       date: key,
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+      day: date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        timeZone: DASHBOARD_TIMEZONE
+      }).toUpperCase(),
       count: counts[key] || 0
     };
   });
@@ -435,7 +480,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 // GET /api/articles?type=news&category=...&page=1&limit=20
 router.get('/', protect, asyncHandler(async (req, res) => {
   const q = await applySavedFilter(req, buildQuery(req));
-  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
@@ -454,18 +499,18 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   const [items, total] = await Promise.all([
     sort
       ? Article.aggregate(withEffectiveDateSort(q, [
-        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
         { $sort: sortObj },
         { $skip: skip },
         { $limit: limit }
       ]))
       : Article.aggregate(withEffectiveDateSort(q, [
-        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
         { $skip: skip },
         { $limit: limit }
       ])),
     Article.aggregate(withEffectiveDateSort(q, [
-      ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+      ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
       { $count: 'total' }
     ]))
   ]);

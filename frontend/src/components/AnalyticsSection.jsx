@@ -288,6 +288,16 @@ function getArticleDay(item) {
   return time ? formatDashboardDateKey(new Date(time)) : '';
 }
 
+function getInsertedTime(item) {
+  const time = new Date(item?.fetchedAt || item?.createdAt || 0).getTime();
+  return Number.isFinite(time) && time > 0 ? time : 0;
+}
+
+function getInsertedDay(item) {
+  const time = getInsertedTime(item);
+  return time ? formatDashboardDateKey(new Date(time)) : '';
+}
+
 function dateFromKey(key) {
   const [year, month, day] = String(key || '').split('-').map(Number);
   if (!year || !month || !day) return new Date();
@@ -466,8 +476,7 @@ function buildCategoryMomentum(items) {
 
   return Object.entries(buckets)
     .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    .sort((a, b) => b.count - a.count);
 }
 
 function sortBySignal(items) {
@@ -781,6 +790,14 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
     [data]
   );
   const todayKey = formatDashboardDateKey(new Date());
+  const latestInsertedDayKey = useMemo(() => {
+    const latest = Math.max(0, ...allArticles.map(getInsertedTime));
+    return latest ? formatDashboardDateKey(new Date(latest)) : todayKey;
+  }, [allArticles, todayKey]);
+  const todayViewDayKey = useMemo(
+    () => allArticles.some((item) => getInsertedDay(item) === todayKey) ? todayKey : latestInsertedDayKey,
+    [allArticles, latestInsertedDayKey, todayKey]
+  );
 
   useEffect(() => {
     if (!isAdmin && viewMode !== 'today') onViewModeChange?.('today');
@@ -788,9 +805,9 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
 
   const visibleArticles = useMemo(
     () => viewMode === 'today'
-      ? allArticles.filter((item) => getArticleDay(item) === todayKey)
+      ? allArticles.filter((item) => getInsertedDay(item) === todayViewDayKey)
       : allArticles,
-    [allArticles, todayKey, viewMode]
+    [allArticles, todayViewDayKey, viewMode]
   );
 
   const articlesByType = useMemo(() => ({
@@ -823,8 +840,8 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
   );
 
   const trendingUpdates = useMemo(
-    () => allArticles,
-    [allArticles]
+    () => visibleArticles,
+    [visibleArticles]
   );
 
   const categoryMomentum = useMemo(

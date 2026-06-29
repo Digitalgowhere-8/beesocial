@@ -426,12 +426,38 @@ function profileCompanyName(profile = {}, article = {}) {
 }
 
 function profileMarkets(profile = {}, article = {}) {
+  const explicitMarkets = [
+    ...listPromptValues(profile.markets),
+    ...listPromptValues(article.markets),
+    ...listPromptValues(profile.countries),
+    ...listPromptValues(article.countries)
+  ];
   const country = cleanPromptText(profile.country || article.country);
   const region = cleanPromptText(profile.region || article.region);
   const location = cleanPromptText(article.location || profile.location);
-  const markets = [country, region ? `${country || location} (${region})` : '', location]
+  const market = cleanPromptText(profile.market || article.market);
+  const markets = [...explicitMarkets, country, market, region ? `${country || market || location} (${region})` : '', location]
     .filter(Boolean);
   return [...new Set(markets)].slice(0, 4);
+}
+
+function profileSourceDomains(profile = {}, article = {}, topic = 'news') {
+  return [
+    ...listPromptValues(profile.sourceDomainsByTopic?.[topic]),
+    ...listPromptValues(article.sourceDomainsByTopic?.[topic]),
+    ...listPromptValues(profile.preferredDomains),
+    ...listPromptValues(article.preferredDomains),
+    ...listPromptValues(profile.includeDomains),
+    ...listPromptValues(article.includeDomains),
+    ...listPromptValues(profile.sources),
+    ...listPromptValues(article.sources),
+    ...listPromptValues(profile.userDomains),
+    ...listPromptValues(article.userDomains)
+  ]
+    .map((value) => cleanPromptText(value).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .slice(0, 12);
 }
 
 function taxonomyPromptText() {
@@ -459,6 +485,80 @@ function topicFilterInstructions(topic) {
   return map[topic] || map.news;
 }
 
+function govtCategoryPromptText() {
+  return [
+    '1. Government Policy',
+    '   - New Policy',
+    '   - Policy Amendment',
+    '   - Consultation Paper',
+    '   - Budget Announcement',
+    '   - Government Statement',
+    '',
+    '2. Regulatory Update',
+    '   - Central bank / financial regulator guidance',
+    '   - Company registry / corporate regulator update',
+    '   - Tax authority update',
+    '   - Labour / employment regulator update',
+    '   - Investment promotion / economic development update',
+    '   - Securities / competition / trade regulator update',
+    '',
+    '3. Tax & Budget',
+    '   - Tax Rate Change',
+    '   - Budget Measure',
+    '   - GST/VAT Update',
+    '   - Tax Incentive',
+    '   - Tax Treaty',
+    '',
+    '4. Immigration & Labour',
+    '   - Work Pass / Visa',
+    '   - Employment Pass',
+    '   - Labour Law',
+    '   - Minimum Wage',
+    '   - Foreign Worker Quota',
+    '',
+    '5. Trade & FDI',
+    '   - FDI Policy',
+    '   - Trade Agreement',
+    '   - Import/Export Rule',
+    '   - Investment Incentive',
+    '   - Free Trade Zone'
+  ].join('\n');
+}
+
+function competitorCategoryPromptText() {
+  return [
+    '1. Competitor Intelligence',
+    '   - Office Expansion',
+    '   - Acquisition',
+    '   - New Service Launch',
+    '   - Leadership Change',
+    '   - Partnership',
+    '   - Pricing / Market Strategy',
+    '   - Investment Increase',
+    '   - Regulatory Win / Loss'
+  ].join('\n');
+}
+
+function evergreenCategoryPromptText() {
+  return [
+    '1. Compliance & Filing Guides',
+    '   - Filing deadlines and recurring obligations',
+    '   - Statutory registers, annual returns, beneficial ownership, AML/KYC, licensing, payroll, tax, or company-secretarial requirements',
+    '',
+    '2. Tax, Accounting & Advisory References',
+    '   - Tax guides, GST/VAT explainers, withholding tax, transfer pricing, audit/accounting rules, bookkeeping, payroll, or practical business compliance references',
+    '',
+    '3. Market Entry & Business Setup',
+    '   - Incorporation, branch registration, foreign investment, visa/work-pass setup, employment onboarding, cross-border setup, or operating requirements',
+    '',
+    '4. Official Guidance & Practical Handbooks',
+    '   - Regulator FAQs, official manuals, compliance checklists, procedural explainers, reference pages, or evergreen requirements pages',
+    '',
+    '5. Professional Services Reference Content',
+    '   - Practical resources useful for advisory, accounting, payroll, tax, governance, funds, private clients, corporate services, or operating teams'
+  ].join('\n');
+}
+
 function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
   const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
   return {
@@ -484,12 +584,275 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   const companyName = profileCompanyName(profile, article);
   const markets = profileMarkets(profile, article);
   const marketText = markets.join(', ') || 'the selected market';
+  const sourceDomains = profileSourceDomains(profile, article, topic);
   const competitors = listPromptValues(profile.competitors || article.competitors);
   const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || article.days || 30) || 30));
   const selectedCategory = profile.category || article.category || 'General';
   const selectedCategories = listPromptValues(profile.categories || article.categories || selectedCategory);
   const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
   const mainCategories = Object.keys(CATEGORIES || {});
+  const isGovtTopic = topic === 'govt';
+  const isCompetitorTopic = topic === 'competitor';
+  const isEvergreenTopic = topic === 'evergreen';
+  const promptLines = isGovtTopic
+    ? [
+        `You are a government intelligence AI for ${companyName}.`,
+        'Analyze this article and decide whether it should be stored for the current fetch profile.',
+        'Return ONLY valid JSON.',
+        '',
+        'MARKETS COVERED',
+        marketText,
+        '',
+        'GOVERNMENT UPDATE FOCUS AREAS',
+        govtCategoryPromptText(),
+        '',
+        'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+        taxonomyPromptText(),
+        '',
+        'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
+        `- Any article NOT about ${marketText}.`,
+        '- Non-governmental corporate news, earnings, fundraising, M&A without regulation, real estate, property, construction, entertainment, sports, tourism, CSR, military, defence, conflict, geopolitical news, scam alerts, or social welfare.',
+        '- Generic opinion pieces with no regulatory announcement or no clear business/compliance impact.',
+        '- Static government portal pages, directories, e-service tool listings, or reference pages with no fresh update.',
+        `- Any regulatory change older than ${maxAgeDays} days.`,
+        '',
+        'STEP 2: SCORING',
+        `HIGH (70-100): NEW government announcement, circular, consultation, law, tax change, budget measure, incentive scheme, immigration/labour rule change, or named regulator guidance affecting ${marketText}.`,
+        `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): Government policy update with a named regulator and clear business impact in ${marketText}, or budget/tax proposal under consultation.`,
+        'Score 0: matches any reject rule or is older than the allowed window.',
+        `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
+        '',
+        'STEP 3: CATEGORY AND SUB-CATEGORY SELECTION',
+        `For STORE decisions, map the article into ONE exact storage category from this taxonomy only: ${mainCategories.join(', ')}.`,
+        'Use the government focus areas above only as interpretation guidance, not as output categories.',
+        'Never invent a new category or sub-category. If no existing taxonomy category fits, return IGNORE.',
+        '',
+        'STEP 4: OUTPUT',
+        `summary must explain in 2 short sentences what was announced and why it matters to businesses or compliance teams in ${marketText}.`,
+        'relevance_reason must mention the exact regulation, law, policy, consultation, circular, or named regulator guidance and which market it affects.',
+        '',
+        'Return JSON shape:',
+        '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}',
+        '',
+        'PROFILE CONTEXT',
+        `Company/client: ${companyName}`,
+        `Country: ${profile.country || article.country || ''}`,
+        `Region/state: ${profile.region || article.region || 'All regions'}`,
+        `Category selected by user: ${selectedCategory}`,
+        `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
+        `Sub-category selected by user: ${selectedSubcategory}`,
+        `Topic/type: ${topic}`,
+        `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
+        `Maximum age preference: ${maxAgeDays} days`,
+        `Current year: ${currentYear}`,
+        '',
+        'ARTICLE',
+        `Title: ${article.title || ''}`,
+        `URL: ${article.url || ''}`,
+        `Source: ${article.sourceType || article.source || ''}`,
+        `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+      ]
+    : isCompetitorTopic
+      ? [
+          `You are a competitor intelligence AI for ${companyName}.`,
+          'Analyze this article and decide whether it should be stored for the current fetch profile.',
+          'Return ONLY valid JSON.',
+          '',
+          'MARKETS COVERED',
+          marketText,
+          '',
+          'COMPETITOR INTELLIGENCE FOCUS AREAS',
+          competitorCategoryPromptText(),
+          '',
+          'TRACKED COMPETITORS (ONLY these qualify - verify by exact name)',
+          competitors.join(', ') || 'No tracked competitors provided',
+          '',
+          'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+          taxonomyPromptText(),
+          '',
+          'STEP 1: REJECT IMMEDIATELY (score 0)',
+          `- Article does NOT mention any tracked competitor by exact name: ${competitors.join(', ') || 'None provided'}.`,
+          `- Named competitor activity is NOT in ${marketText}.`,
+          '- Generic industry news with no specific named competitor action.',
+          '- Real estate, property, construction companies.',
+          '- Banks, insurance companies, fintech, tech companies, e-commerce, or consumer brands unless they are in the tracked competitor list.',
+          '- Awards, rankings, conference recaps, CSR, human-interest, charity.',
+          `- Any jurisdiction outside ${marketText}.`,
+          `- Any update older than ${maxAgeDays} days.`,
+          '',
+          'STEP 2: SCORING',
+          `HIGH (70-100): Named tracked competitor opening a NEW office, completing an acquisition, launching a NEW service, or winning a major mandate in ${marketText}.`,
+          `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): Named competitor announcing an expansion plan, leadership hire, partnership, investment increase, pricing/market strategy, or regulatory approval in ${marketText}.`,
+          'Score 0: no named tracked competitor or activity outside the selected markets.',
+          `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
+          '',
+          'STEP 3: CATEGORY AND SUB-CATEGORY SELECTION',
+          'For STORE decisions, use category "Competitor Intelligence" only if that exact category exists in the storage taxonomy.',
+          'Choose the best exact storage sub-category from the existing taxonomy only. Never invent a new category or sub-category.',
+          'If the competitor event is relevant but no exact existing taxonomy fit is available, use the closest valid existing Competitor Intelligence sub-category from the taxonomy. If there is no valid fit, return IGNORE.',
+          '',
+          'STEP 4: OUTPUT',
+          `summary must explain in 2 short sentences what the competitor did and why it matters to ${companyName} in ${marketText}.`,
+          'relevance_reason must mention the exact competitor name, specific action, and which market is affected.',
+          '',
+          'Return JSON shape:',
+          '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>","competitor_name":"<exact competitor name or empty>"}',
+          '',
+          'PROFILE CONTEXT',
+          `Company/client: ${companyName}`,
+          `Country: ${profile.country || article.country || ''}`,
+          `Region/state: ${profile.region || article.region || 'All regions'}`,
+          `Category selected by user: ${selectedCategory}`,
+          `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
+          `Sub-category selected by user: ${selectedSubcategory}`,
+          `Topic/type: ${topic}`,
+          `Tracked competitors: ${competitors.join(', ') || 'None'}`,
+          `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
+          `Maximum age preference: ${maxAgeDays} days`,
+          `Current year: ${currentYear}`,
+          '',
+          'ARTICLE',
+          `Title: ${article.title || ''}`,
+          `URL: ${article.url || ''}`,
+          `Source: ${article.sourceType || article.source || ''}`,
+          `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+        ]
+    : isEvergreenTopic
+      ? [
+          `You are an evergreen intelligence AI for ${companyName}.`,
+          'Analyze this article and decide whether it should be stored for the current fetch profile.',
+          'Return ONLY valid JSON.',
+          '',
+          'MARKETS COVERED',
+          marketText,
+          '',
+          'EVERGREEN CONTENT FOCUS AREAS',
+          evergreenCategoryPromptText(),
+          '',
+          'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+          taxonomyPromptText(),
+          '',
+          'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
+          `- Any article with no clear connection to ${marketText}.`,
+          `- Any jurisdiction outside ${marketText}, unless the content is directly useful for doing business, compliance, tax, payroll, employment, governance, licensing, market entry, or advisory work in ${marketText}.`,
+          '- Ordinary news articles, breaking updates, press releases, event/webinar pages, rankings, awards, CSR, generic blogs, opinion pieces, promotional thought-leadership, or time-sensitive announcements.',
+          '- Pages that are mainly homepage listings, directories, login pages, search pages, broken pages, or thin promotional landing pages.',
+          `- Any page older than ${maxAgeDays} days when the content is clearly outdated, replaced, no longer applicable, or tied to a past news event rather than an evergreen requirement or guide.`,
+          '- Pages that do not fit at least one existing storage taxonomy category/sub-category.',
+          '',
+          'STEP 2: SCORING',
+          `HIGH (70-100): A practical evergreen guide, official explainer, FAQ, checklist, filing/compliance guide, market-entry guide, tax/accounting reference, employment/work-pass guide, AML/KYC requirement page, or regulator guidance that is directly useful in ${marketText}.`,
+          `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): A useful reference page for ${marketText} with practical business or compliance value, but with less direct actionability or weaker category fit.`,
+          'Score 0: ordinary news, outdated time-sensitive content, unrelated geography, weak business relevance, or no exact taxonomy fit.',
+          `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
+          '',
+          'STEP 3: TOPIC RULE',
+          topicFilterInstructions(topic),
+          '',
+          'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
+          `For STORE decisions, the content only needs to match ONE relevant category from the taxonomy: ${mainCategories.join(', ')}.`,
+          'The selected/profile category is only a hint. Do not force the page into that category if another existing taxonomy category fits better.',
+          'Use the best exact category and sub-category from the existing taxonomy only.',
+          `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
+          'Never invent a new category or sub-category. If no existing taxonomy fit is available, return IGNORE.',
+          '',
+          'STEP 5: OUTPUT',
+          `summary must explain in 2 short sentences what the guide/reference covers and why it is practically useful for businesses, operators, or compliance teams in ${marketText}.`,
+          'relevance_reason must mention the exact filing rule, compliance requirement, tax rule, official guidance, or practical business obligation when available, plus the market and the taxonomy fit.',
+          '',
+          'If not relevant return category IGNORE, subcategory IGNORE, score 0, and a short reason.',
+          '',
+          'Return JSON shape:',
+          '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}',
+          '',
+          'PROFILE CONTEXT',
+          `Company/client: ${companyName}`,
+          `Country: ${profile.country || article.country || ''}`,
+          `Region/state: ${profile.region || article.region || 'All regions'}`,
+          `Category selected by user: ${selectedCategory}`,
+          `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
+          `Sub-category selected by user: ${selectedSubcategory}`,
+          `Topic/type: ${topic}`,
+          `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
+          `Maximum age preference: ${maxAgeDays} days`,
+          `Current year: ${currentYear}`,
+          '',
+          'ARTICLE',
+          `Title: ${article.title || ''}`,
+          `URL: ${article.url || ''}`,
+          `Source: ${article.sourceType || article.source || ''}`,
+          `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+        ]
+    : [
+        `You are a news intelligence AI for ${companyName}.`,
+        'Analyze this article and decide whether it should be stored for the current fetch profile.',
+        'Return ONLY valid JSON.',
+        '',
+        'MARKETS COVERED',
+        ...markets.length ? markets.map((market, index) => `${index + 1}. ${market}`) : ['1. the selected market'],
+        '',
+        'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES',
+        taxonomyPromptText(),
+        '',
+        'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
+        `- News with no clear connection to ${marketText}.`,
+        `- Any jurisdiction outside ${marketText}, unless the article explicitly affects businesses, compliance, tax, investment, employment, governance, market entry, trade, economy, or professional services in ${marketText}.`,
+        '- Conference recaps, event summaries, webinars, podcasts, awards, rankings, earnings-only reports, generic fundraising, human-interest stories, CSR, charity, tourism, sports, or entertainment.',
+        '- Opinion/editorial pieces with no factual regulatory, policy, market, or business update.',
+        '- Real estate, property market, construction, housing, consumer retail, food and beverage, infrastructure, transport, logistics, energy, mining, manufacturing, or insurance news without a direct business, compliance, market-entry, tax, employment, investment, or professional-services angle.',
+        '- Technology, AI, cybersecurity, fraud, scam alerts, litigation, arbitration, defence, geopolitical, child protection, social welfare, or patent/IP stories without a direct advisory, regulatory, or compliance angle.',
+        '- Static government pages, directory listings, portal homepages, resource hubs, e-service pages, search pages, login pages, or tool pages.',
+        `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
+        `- Any article that does not fit at least one existing taxonomy category from: ${mainCategories.join(', ')}.`,
+        '- Do not reject solely because it is not a government update. News can be market, economy, tax, employment, corporate-services, investment, trade, compliance, or professional-services intelligence.',
+        `- Competitor intelligence should be kept only when a tracked competitor is explicitly named (${competitors.join(', ') || 'no tracked competitors provided'}) and the article shows expansion, acquisition, partnership, new office, service launch, leadership move, senior hire, thought leadership, or another real market signal in ${marketText}.`,
+        '',
+        'STEP 2: SCORING',
+        `Give HIGH (70-100) when the article has a concrete NEW business, market, economy, investment, tax, compliance, employment, company registry, FDI, trade, professional-services, or competitor signal affecting ${marketText}.`,
+        `Give MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69) when the article has a clear business impact in ${marketText} and fits at least one taxonomy category, even if it is not a formal government/regulatory announcement.`,
+        'Give 0 when it is unrelated to the market, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
+        `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}. If the article is not strong enough for ${PROFILE_RELEVANCE_MIN_SCORE}, return IGNORE with score 0.`,
+        '',
+        'STEP 3: TOPIC RULE',
+        topicFilterInstructions(topic),
+        '',
+        'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
+        `For STORE decisions, the article only needs to match ONE relevant category from the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
+        'The selected/profile category is only a hint. Do not force the article into that category.',
+        'Do not reject an article only because it does not match the first/profile category. If it is about the selected market and fits any taxonomy category, STORE it.',
+        'Use the best exact category name from the existing taxonomy only.',
+        'Choose the best exact sub-category under that category from the existing taxonomy only.',
+        `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
+        'Never invent a new category or sub-category. If no existing taxonomy category fits, return IGNORE.',
+        '',
+        'STEP 5: OUTPUT',
+        `summary must explain in 2 short sentences what happened and why it matters for businesses, investors, operators, or compliance teams in ${marketText}.`,
+        'relevance_reason must mention the specific announcement, market signal, business impact, affected market, and why it fits the chosen taxonomy category/sub-category.',
+        '',
+        'If not relevant return category IGNORE, subcategory IGNORE, score 0, and a short reason.',
+        '',
+        'Return JSON shape:',
+        '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}',
+        '',
+        'PROFILE CONTEXT',
+        `Company/client: ${companyName}`,
+        `Country: ${profile.country || article.country || ''}`,
+        `Region/state: ${profile.region || article.region || 'All regions'}`,
+        `Category selected by user: ${selectedCategory}`,
+        `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
+        `Sub-category selected by user: ${selectedSubcategory}`,
+        `Topic/type: ${topic}`,
+        `Tracked competitors: ${competitors.join(', ') || 'None'}`,
+        `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
+        `Maximum age preference: ${maxAgeDays} days`,
+        `Current year: ${currentYear}`,
+        '',
+        'ARTICLE',
+        `Title: ${article.title || ''}`,
+        `URL: ${article.url || ''}`,
+        `Source: ${article.sourceType || article.source || ''}`,
+        `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+      ];
 
   try {
     const resp = await cli.chat.completions.create({
@@ -504,80 +867,25 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         },
         {
           role: 'user',
-          content: [
-            `You are a news intelligence AI for ${companyName}.`,
-            'Analyze this article and decide whether it should be stored for the current fetch profile.',
-            'Return ONLY valid JSON.',
-            '',
-            'MARKETS COVERED',
-            marketText,
-            '',
-            'PROFILE CONTEXT',
-            `Company/client: ${companyName}`,
-            `Country: ${profile.country || article.country || ''}`,
-            `Region/state: ${profile.region || article.region || 'All regions'}`,
-            `Category selected by user: ${selectedCategory}`,
-            `All selected categories: ${selectedCategories.join(', ') || selectedCategory}`,
-            `Sub-category selected by user: ${selectedSubcategory}`,
-            `Topic/type: ${topic}`,
-            `Tracked competitors: ${competitors.join(', ') || 'None'}`,
-            `Maximum age preference: ${maxAgeDays} days`,
-            `Current year: ${currentYear}`,
-            '',
-            'AVAILABLE CATEGORIES AND SUB-CATEGORIES',
-            taxonomyPromptText(),
-            '',
-            'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
-            `- Any article with no clear connection to ${marketText}.`,
-            `- Any jurisdiction outside ${marketText}, unless it mentions or clearly affects businesses, compliance, tax, investment, employment, governance, market entry, trade, economy, or professional services in ${marketText}.`,
-            `- Any article that does not fit at least one of the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
-            '- Broken pages, directory pages, homepage/listing pages, login/e-service pages, job-only posts, stock-price-only pages, pure product promotions, sports, entertainment, human-interest stories, or generic opinion pieces with no factual update.',
-            `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
-            '- Competitor intelligence should be kept when a tracked competitor is explicitly named or the source/article describes expansion, acquisition, partnership, new office, hiring, senior appointment, service launch, thought leadership, or another market signal in the selected market.',
-            '',
-            'STEP 2: TOPIC RULE',
-            topicFilterInstructions(topic),
-            '',
-            'STEP 3: SCORING',
-            `Give 70-100 when the article has a concrete announcement, policy, regulation, law, compliance requirement, tax change, budget measure, employment/immigration change, AML/KYC/governance change, company registry update, fund/family-office/trust/private-client rule, FDI/market-entry policy, economy/trade update, or competitor signal affecting ${marketText}.`,
-            `Give ${PROFILE_RELEVANCE_MIN_SCORE}-69 when it is a useful ${marketText} business, economy, regulatory, tax, employment, market-entry, professional-services, or competitor update that fits any taxonomy category.`,
-            'Give 0 when it is unrelated to the country, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
-            `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}. If the article is not strong enough for ${PROFILE_RELEVANCE_MIN_SCORE}, return IGNORE with score 0.`,
-            '',
-            'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
-            `For STORE decisions, the article only needs to match ONE relevant category from the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
-            'Do not reject an article only because it does not match the first/profile category. If it is about the selected country and fits any taxonomy category, STORE it.',
-            'Use the best exact category name from AVAILABLE CATEGORIES AND SUB-CATEGORIES.',
-            `Valid sub-categories for the selected category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
-            'Use the best exact sub-category under the chosen category. If valid sub-categories are provided for the profile category, prefer them only when they fit; otherwise use the taxonomy list above.',
-            '',
-            'STEP 5: OUTPUT',
-            `summary must explain in 2 short sentences what happened and why it matters for businesses, investors, operators, or compliance teams in ${marketText}.`,
-            'relevance_reason must mention the specific law/regulation/policy/announcement/source signal when available, the affected market, and the sub-category fit.',
-            '',
-            'If not relevant return category IGNORE, subcategory IGNORE, score 0, and a short reason.',
-            '',
-            'Return JSON shape:',
-            '{"decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}',
-            '',
-            'ARTICLE',
-            `Title: ${article.title || ''}`,
-            `URL: ${article.url || ''}`,
-            `Source: ${article.sourceType || article.source || ''}`,
-            `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
-          ].join('\n')
+          content: promptLines.join('\n')
         }
       ]
     });
 
     const raw = resp.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw);
+    const relevanceScore = Math.max(0, Math.min(100, parseInt(parsed.relevance_score, 10) || 0));
+    const category = parsed.category || 'IGNORE';
+    const explicitDecision = String(parsed.decision || '').toUpperCase();
+    const inferredDecision = String(category).toUpperCase() !== 'IGNORE' && relevanceScore >= PROFILE_RELEVANCE_MIN_SCORE
+      ? 'STORE'
+      : 'IGNORE';
     return {
-      decision: String(parsed.decision || '').toUpperCase() === 'STORE' ? 'STORE' : 'IGNORE',
-      category: parsed.category || 'IGNORE',
+      decision: explicitDecision || inferredDecision,
+      category,
       subcategory: parsed.subcategory || parsed.sub_category || '',
-      summary: parsed.summary || '',
-      relevance_score: Math.max(0, Math.min(100, parseInt(parsed.relevance_score, 10) || 0)),
+      summary: parsed.summary || parsed.ai_summary || parsed.aiSummary || '',
+      relevance_score: relevanceScore,
       relevance_reason: parsed.relevance_reason || parsed.relevanceReason || ''
     };
   } catch (err) {
@@ -610,7 +918,6 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
   const outlineMode = style.outlineMode || 'auto';
   const customOutline = style.customOutline || '';
   const focusPage = style.focusPage || '';
-  const internalLinkPages = style.internalLinkPages || '';
   const ctaTitle = style.ctaTitle || '';
   const ctaButtonText = style.ctaButtonText || '';
   const ctaUrl = style.ctaUrl || '';
