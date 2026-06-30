@@ -1,8 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 const AnalyticsEvent = require('../models/AnalyticsEvent');
+const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -18,21 +17,7 @@ function hashIp(value) {
   return crypto.createHash('sha256').update(`${salt}:${value || ''}`).digest('hex').slice(0, 48);
 }
 
-function optionalUser(req) {
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ') || !process.env.JWT_SECRET) return {};
-  try {
-    const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
-    return {
-      userId: mongoose.Types.ObjectId.isValid(decoded.id) ? decoded.id : undefined,
-      role: cleanText(decoded.role, 40)
-    };
-  } catch {
-    return {};
-  }
-}
-
-function normalizeEvent(raw, req, authUser) {
+function normalizeEvent(raw, req) {
   const type = cleanText(raw.type, 40);
   if (!ALLOWED_TYPES.has(type)) return null;
 
@@ -49,8 +34,8 @@ function normalizeEvent(raw, req, authUser) {
     type,
     sessionId,
     visitorId,
-    userId: authUser.userId,
-    role: authUser.role || cleanText(raw.role, 40),
+    userId: req.user?._id,
+    role: cleanText(req.user?.role, 40),
     path: cleanText(raw.path, 240),
     title: cleanText(raw.title, 180),
     section: cleanText(raw.section, 140),
@@ -65,12 +50,11 @@ function normalizeEvent(raw, req, authUser) {
   };
 }
 
-router.post('/events', async (req, res, next) => {
+router.post('/events', protect, async (req, res, next) => {
   try {
-    const authUser = optionalUser(req);
     const incoming = Array.isArray(req.body?.events) ? req.body.events : [req.body];
     const docs = incoming.slice(0, MAX_BATCH)
-      .map((event) => normalizeEvent(event || {}, req, authUser))
+      .map((event) => normalizeEvent(event || {}, req))
       .filter(Boolean);
 
     if (docs.length) await AnalyticsEvent.insertMany(docs, { ordered: false });

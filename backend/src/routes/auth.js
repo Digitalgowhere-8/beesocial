@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Plan = require('../models/Plan');
 const UserSession = require('../models/UserSession');
-const { protect, signToken } = require('../middleware/auth');
+const { protect, signToken, signRealtimeToken } = require('../middleware/auth');
 const { buildPasswordResetEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
 
 const router = express.Router();
@@ -360,6 +360,12 @@ function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata'
 router.get('/plans', protect, asyncHandler(async (_req, res) => {
   const items = await Plan.find({}).sort({ planId: 1 }).lean();
   res.json({ items });
+}));
+
+// POST /api/auth/realtime-token
+router.post('/realtime-token', protect, asyncHandler(async (req, res) => {
+  const token = signRealtimeToken(req.user, req.session.sessionId);
+  res.json({ token });
 }));
 
 // POST /api/auth/logout

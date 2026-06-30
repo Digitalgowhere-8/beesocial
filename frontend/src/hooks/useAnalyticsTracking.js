@@ -82,6 +82,7 @@ export default function useAnalyticsTracking() {
   if (!idsRef.current) idsRef.current = ensureIds();
 
   const send = (event) => {
+    if (!user?._id) return;
     const payload = {
       ...idsRef.current,
       path: window.location.pathname,

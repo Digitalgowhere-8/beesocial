@@ -10,8 +10,23 @@ const cron = require('node-cron');
 const orchestrator = require('../services/orchestrator');
 const { runDueSchedules } = require('./userSchedule');
 const { runDuePlatformFetch } = require('../services/platformFetchService');
+const { cleanupAnalyticsRetention } = require('../services/storageMaintenance');
 
 let task = null;
+let maintenanceTask = null;
+
+async function runStorageMaintenance(reason = 'scheduled') {
+  try {
+    const result = await cleanupAnalyticsRetention();
+    if (result.deleted) {
+      console.log(`[maintenance] ${reason} analytics cleanup removed ${result.deleted} events older than ${result.cutoff.toISOString()}`);
+    } else {
+      console.log(`[maintenance] ${reason} analytics cleanup found nothing to remove`);
+    }
+  } catch (err) {
+    console.error('[maintenance] analytics cleanup failed', err);
+  }
+}
 
 function startUserScheduleScan() {
   // Always scan every minute so the time saved from the UI is the source of truth.
@@ -46,6 +61,7 @@ function startUserScheduleScan() {
 
 function start() {
   startUserScheduleScan();
+  runStorageMaintenance('startup');
 
   if (process.env.ENABLE_CRON === 'false') {
     console.log('[cron] disabled by ENABLE_CRON=false');
@@ -53,6 +69,7 @@ function start() {
   }
   const schedule = process.env.CRON_SCHEDULE || '0 7 * * *';
   const timezone = process.env.CRON_TIMEZONE || 'Asia/Kolkata';
+  const maintenanceSchedule = '15 0 * * *';
 
   if (!cron.validate(schedule)) {
     console.error(`[cron] invalid CRON_SCHEDULE: ${schedule}`);
@@ -74,12 +91,24 @@ function start() {
   );
 
   console.log(`[cron] scheduled "${schedule}" (${timezone})`);
+
+  maintenanceTask = cron.schedule(
+    maintenanceSchedule,
+    () => runStorageMaintenance('daily'),
+    { timezone, scheduled: true }
+  );
+
+  console.log(`[maintenance] scheduled "${maintenanceSchedule}" (${timezone})`);
 }
 
 function stop() {
   if (task) {
     task.stop();
     task = null;
+  }
+  if (maintenanceTask) {
+    maintenanceTask.stop();
+    maintenanceTask = null;
   }
 }
 

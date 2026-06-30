@@ -4,16 +4,31 @@ const UserSession = require('../models/UserSession');
 
 const PRESENCE_TOUCH_INTERVAL_MS = 30 * 1000;
 const SESSION_TOUCH_INTERVAL_MS = 30 * 1000;
+const REALTIME_TOKEN_EXPIRES_IN = process.env.REALTIME_TOKEN_EXPIRES_IN || '2m';
+
+function extractToken(req) {
+  const header = req.headers.authorization || '';
+  if (header.startsWith('Bearer ')) {
+    return { token: header.slice(7), source: 'header' };
+  }
+  if (req.query?.token) {
+    return { token: String(req.query.token), source: 'query' };
+  }
+  return { token: '', source: '' };
+}
+
+function verifyRealtimeRequestToken(decoded, req) {
+  return decoded?.purpose === 'realtime'
+    && req.baseUrl === '/api/realtime'
+    && req.path === '/stream';
+}
 
 /**
  * `protect` - verifies the JWT in `Authorization: Bearer <token>`
  *  and attaches `req.user`.
  */
 async function protect(req, res, next) {
-  let token;
-  const header = req.headers.authorization || '';
-  if (header.startsWith('Bearer ')) token = header.slice(7);
-  if (!token && req.query?.token) token = String(req.query.token);
+  const { token, source } = extractToken(req);
 
   if (!token) {
     return res.status(401).json({ message: 'Not authorized, no token' });
@@ -21,6 +36,9 @@ async function protect(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (source === 'query' && !verifyRealtimeRequestToken(decoded, req)) {
+      return res.status(401).json({ message: 'Query token is not allowed for this endpoint' });
+    }
     if (!decoded.sid) {
       return res.status(401).json({ message: 'Session missing. Please log in again.' });
     }
@@ -93,4 +111,12 @@ function signToken(user, sessionId) {
   );
 }
 
-module.exports = { protect, requireRole, signToken };
+function signRealtimeToken(user, sessionId) {
+  return jwt.sign(
+    { id: user._id, role: user.role, sid: sessionId, purpose: 'realtime' },
+    process.env.JWT_SECRET,
+    { expiresIn: REALTIME_TOKEN_EXPIRES_IN }
+  );
+}
+
+module.exports = { protect, requireRole, signToken, signRealtimeToken };

@@ -305,7 +305,8 @@ export default function Layout({ children, headerActions = null }) {
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
-  const profileMenuRef = useRef(null);
+  const mobileProfileMenuRef = useRef(null);
+  const desktopProfileMenuRef = useRef(null);
   const canUseContentRepository = isSuperAdmin || user?.access?.canUseContentRepository !== false;
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
@@ -564,7 +565,9 @@ export default function Layout({ children, headerActions = null }) {
     const handleOutsideClick = (event) => {
       const target = event.target;
       const clickedNotifications = notificationsRef.current?.contains(target) || mobileNotificationsRef.current?.contains(target);
-      const clickedProfile = profileMenuRef.current?.contains(target);
+      const clickedProfile =
+        mobileProfileMenuRef.current?.contains(target) ||
+        desktopProfileMenuRef.current?.contains(target);
 
       if (!clickedNotifications) setShowNotifications(false);
       if (!clickedProfile) setShowProfileMenu(false);
@@ -604,8 +607,8 @@ export default function Layout({ children, headerActions = null }) {
       ];
 
   return (
-    <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur md:hidden">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-hidden xl:h-screen xl:flex-row" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
+      <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur xl:hidden">
         <div className="overflow-visible rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
         <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
@@ -644,7 +647,7 @@ export default function Layout({ children, headerActions = null }) {
                 type="button"
                 aria-label="Close notifications"
                 onClick={() => setShowNotifications(false)}
-                className="fixed inset-0 z-40 bg-gray-950/10 backdrop-blur-[1px] md:hidden"
+                className="fixed inset-0 z-40 bg-gray-950/10 backdrop-blur-[1px] xl:hidden"
               />
               <NotificationsMenu
                 items={notifications.items}
@@ -658,7 +661,7 @@ export default function Layout({ children, headerActions = null }) {
               </>
             )}
             </div>
-            <div className="relative" ref={profileMenuRef}>
+            <div className="relative" ref={mobileProfileMenuRef}>
               <button
                 data-tour="header-profile-menu"
                 onClick={() => {
@@ -699,7 +702,7 @@ export default function Layout({ children, headerActions = null }) {
       {/* Sidebar */}
       <aside
         data-tour="layout-sidebar"
-        className="hidden md:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
+        className="hidden xl:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
         style={{ width: collapsed ? '60px' : '232px', minWidth: collapsed ? '60px' : '232px' }}
       >
         {/* Collapse toggle / logo */}
@@ -872,7 +875,7 @@ export default function Layout({ children, headerActions = null }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header */}
-        <header className="hidden md:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 lg:px-6"
+        <header className="hidden xl:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 xl:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
           <div className="min-w-0 flex items-center gap-3">
             <span className="truncate text-base font-bold text-gray-800">{getPageTitle()}</span>
@@ -914,7 +917,7 @@ export default function Layout({ children, headerActions = null }) {
             )}
             </div>
 
-            <div className="relative" ref={profileMenuRef}>
+            <div className="relative" ref={desktopProfileMenuRef}>
             <button
               data-tour="header-profile-menu"
               className="flex items-center gap-2.5 pl-2 border-l border-gray-100 cursor-pointer hover:opacity-85"
@@ -944,7 +947,7 @@ export default function Layout({ children, headerActions = null }) {
         </header>
 
         {/* Content Body: added padding so it doesn't touch the screen edges */}
-        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 md:pb-5 lg:px-6 lg:pt-4 transition-all duration-300 relative">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 xl:px-6 xl:pt-4 xl:pb-5 transition-all duration-300 relative">
           <div className="w-full h-full relative">
             {children}
             
@@ -967,7 +970,7 @@ export default function Layout({ children, headerActions = null }) {
       </div>
 
       {isSuperAdmin ? (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
+        <nav className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
           <button onClick={() => navigate('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
             <Shield size={16} />
             Owner Console
@@ -975,7 +978,7 @@ export default function Layout({ children, headerActions = null }) {
         </nav>
       ) : (
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
+        className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
         style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}
       >
         {mobileNavItems.map((item) => {

@@ -525,8 +525,8 @@ export default function BlogStudio() {
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
     <>
-    <div className="flex w-full items-center justify-between gap-3 sm:flex-row sm:items-center">
-      <div className="flex items-center gap-2 sm:hidden">
+    <div className="flex w-full items-center justify-between gap-3 xl:flex-row xl:items-center">
+      <div className="flex items-center gap-2 xl:hidden">
         <button
           type="button"
           onClick={() => setMobileHeaderMenuOpen((value) => !value)}
@@ -536,7 +536,7 @@ export default function BlogStudio() {
           {activeContentTab.label}
         </button>
       </div>
-      <div className="ml-auto flex items-center gap-2 sm:hidden">
+      <div className="ml-auto flex items-center gap-2 xl:hidden">
         <button
           type="button"
           onClick={refreshStudio}
@@ -554,8 +554,8 @@ export default function BlogStudio() {
           <MoreHorizontal size={16} />
         </button>
       </div>
-      <div className="hidden w-full sm:flex sm:flex-row sm:items-center sm:gap-2">
-        <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:w-auto sm:min-w-[360px]">
+      <div className="hidden w-full xl:flex xl:flex-row xl:items-center xl:gap-2">
+        <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm xl:w-auto xl:min-w-[360px]">
           {CONTENT_TYPE_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = contentType === tab.key;
@@ -564,16 +564,16 @@ export default function BlogStudio() {
                 key={tab.key}
                 type="button"
                 onClick={() => setContentType(tab.key)}
-                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
               >
                 <Icon size={14} />
-                <span className="sm:hidden">{tab.label}</span>
-                <span className="hidden sm:inline">{tab.desktopLabel}</span>
+                <span className="xl:hidden">{tab.label}</span>
+                <span className="hidden xl:inline">{tab.desktopLabel}</span>
               </button>
             );
           })}
         </div>
-        <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 sm:w-auto">
+        <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 xl:w-auto">
           <RefreshCw size={14} />
           Refresh
         </button>
@@ -585,9 +585,9 @@ export default function BlogStudio() {
           type="button"
           aria-label="Close content menu"
           onClick={() => setMobileHeaderMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] xl:hidden"
         />
-        <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+        <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] xl:hidden">
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
             <div>
               <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Content Studio</div>
@@ -839,7 +839,7 @@ export default function BlogStudio() {
                   <SelectField label="Content Outline (TOC)" value={style.outlineMode} onChange={(value) => setStyle({ ...style, outlineMode: value })} options={STYLE_OPTIONS.outlineMode} />
                   {style.outlineMode === 'custom' && (
                     <Field label="Custom Outline">
-                      <textarea className="input rounded-xl min-h-[100px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customOutline} onChange={(e) => setStyle({ ...style, customOutline: e.target.value })} placeholder="Add headings or bullet outline..." />
+                    <textarea className="input rounded-xl min-h-[100px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customOutline} onChange={(e) => setStyle({ ...style, customOutline: e.target.value })} placeholder="Add headings or bullet outline..." />
                     </Field>
                   )}
                 </SettingsGroup>
@@ -858,7 +858,7 @@ export default function BlogStudio() {
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaButtonText} onChange={(e) => setStyle({ ...style, ctaButtonText: e.target.value })} />
                   </Field>
                   <Field label="CTA Description">
-                    <textarea className="input rounded-xl min-h-[72px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
+                    <textarea className="input rounded-xl min-h-[72px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
                   </Field>
                   <Field label="CTA URL (optional)">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaUrl} onChange={(e) => setStyle({ ...style, ctaUrl: e.target.value })} />
@@ -867,7 +867,7 @@ export default function BlogStudio() {
 
                 <SettingsGroup title="Additional Context">
                   <Field label="Key Points to Cover">
-                    <textarea className="input rounded-xl min-h-[90px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
+                    <textarea className="input rounded-xl min-h-[90px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
                   </Field>
                   <Field label="Competitor URLs (optional)">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.competitorUrls} onChange={(e) => setStyle({ ...style, competitorUrls: e.target.value })} placeholder="Comma separated" />
@@ -880,7 +880,7 @@ export default function BlogStudio() {
                 </SettingsGroup>
               </div>
               {false && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 <SelectField label="Tone" value={style.tone} onChange={(value) => setStyle({ ...style, tone: value })} options={STYLE_OPTIONS.tone} />
                 <SelectField label="Format" value={style.format} onChange={(value) => setStyle({ ...style, format: value })} options={STYLE_OPTIONS.format} />
                 <SelectField label="Length" value={style.length} onChange={(value) => setStyle({ ...style, length: value })} options={STYLE_OPTIONS.length} />
@@ -892,14 +892,14 @@ export default function BlogStudio() {
                   <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. startup funding, AI regulation" />
                 </Field>
                 <Field label="Call to Action (CTA)">
-                  <textarea className="input rounded-xl min-h-[64px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.cta} onChange={(e) => setStyle({ ...style, cta: e.target.value })} />
+                  <textarea className="input rounded-xl min-h-[64px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.cta} onChange={(e) => setStyle({ ...style, cta: e.target.value })} />
                 </Field>
               </div>
               )}
             </div>
             
             <div className="border-t border-gray-200/50 bg-white/70 p-4 backdrop-blur">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
                 <button 
                   type="button" 
                   onClick={generate} 
@@ -1029,8 +1029,8 @@ function BlogDraftDrawer({
             </button>
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
-            <aside className={`${draftEditorOpen ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-b border-gray-100 bg-gray-50/60 lg:min-h-0 lg:border-b-0 lg:border-r`}>
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+            <aside className={`${draftEditorOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col border-b border-gray-100 bg-gray-50/60 xl:min-h-0 xl:border-b-0 xl:border-r`}>
               <div className="border-b border-gray-100 bg-white p-3">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1074,15 +1074,11 @@ function BlogDraftDrawer({
                           type="button"
                           onClick={() => {
                             setSelectedBlog(blog);
-                            if (window.matchMedia('(max-width: 1023px)').matches) {
+                            if (window.matchMedia('(max-width: 1279px)').matches) {
                               setDraftEditorOpen(true);
                             } else {
-                              setDraftEditorOpen(false);
+                              setDraftEditorOpen(true);
                             }
-                          }}
-                          onDoubleClick={() => {
-                            setSelectedBlog(blog);
-                            setDraftEditorOpen(true);
                           }}
                           className="min-w-0 flex-1 text-left"
                         >
@@ -1107,13 +1103,13 @@ function BlogDraftDrawer({
               </div>
             </aside>
 
-            <div className={`${draftEditorOpen ? 'block' : 'hidden lg:block'} min-h-0 overflow-y-auto bg-white p-4 custom-scrollbar lg:min-h-0`}>
+            <div className={`${draftEditorOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto bg-white p-4 custom-scrollbar xl:min-h-0`}>
               {selectedBlog && draftEditorOpen ? (
                 <div className="animate-fade-in-up stagger-1">
                   <button
                     type="button"
                     onClick={() => setDraftEditorOpen(false)}
-                    className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson lg:hidden"
+                    className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
                   >
                     Back to drafts
                   </button>
@@ -1159,7 +1155,7 @@ function BlogDraftDrawer({
                   </div>
                   <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
                   <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
-                    Double-click this draft in the list to open edit mode.
+                    Click this draft in the list to open edit mode.
                   </p>
                   <button
                     type="button"
@@ -1170,7 +1166,7 @@ function BlogDraftDrawer({
                   </button>
                 </div>
               ) : (
-                <Empty icon={Settings2} label="Double-click a draft to open" />
+                <Empty icon={Settings2} label="Click a draft to open" />
               )}
             </div>
           </div>
@@ -1335,7 +1331,7 @@ function LinkedInOutputPreview({
       <button
         type="button"
         onClick={onBackToList}
-        className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson lg:hidden"
+        className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
       >
         <ArrowLeft size={13} />
         Back to saved posts
@@ -1683,7 +1679,7 @@ function LinkedInStudio({
         <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
           <div className="space-y-4">
             <SettingsGroup title="Platform & Source">
-              <div className="md:col-span-2">
+                <div className="xl:col-span-2">
                 <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
               </div>
               <div
@@ -1697,7 +1693,7 @@ function LinkedInStudio({
                   setDropActive(false);
                   selectArticleById(event.dataTransfer.getData('text/plain'));
                 }}
-                className={`md:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
+                className={`xl:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
               >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
@@ -1955,12 +1951,12 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
               Close
             </button>
           </div>
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(250px,290px)_minmax(0,1fr)]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(250px,290px)_minmax(0,1fr)]">
             <aside
               ref={listPaneRef}
-              className={`${mobilePreviewOpen ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col overflow-y-auto border-b border-gray-100 bg-gray-50/60 p-4 custom-scrollbar lg:border-b-0 lg:border-r`}
+              className={`${mobilePreviewOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col overflow-y-auto border-b border-gray-100 bg-gray-50/60 p-4 custom-scrollbar xl:border-b-0 xl:border-r`}
             >
-              <div className="border-b border-gray-100 bg-white p-3 -mx-4 -mt-4 mb-3 lg:mb-0">
+              <div className="border-b border-gray-100 bg-white p-3 -mx-4 -mt-4 mb-3 xl:mb-0">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
@@ -1981,7 +1977,7 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
             </aside>
             <div
               ref={previewPaneRef}
-              className={`${mobilePreviewOpen ? 'block' : 'hidden lg:block'} min-h-0 overflow-y-auto bg-white custom-scrollbar`}
+              className={`${mobilePreviewOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto bg-white custom-scrollbar`}
             >
               <LinkedInOutputPreview
                 output={output}
@@ -2024,7 +2020,7 @@ function SettingsGroup({ title, children }) {
   return (
     <section className="rounded-xl border border-gray-100 bg-white/70 p-4 shadow-sm">
       <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-gray-500">{title}</h3>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{children}</div>
     </section>
   );
 }

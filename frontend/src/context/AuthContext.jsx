@@ -255,33 +255,45 @@ export function AuthProvider({ children }) {
   }, [user, refreshMe]);
 
   useEffect(() => {
-    const token = readToken();
-    if (!token || !user?._id) return undefined;
+    if (!user?._id) return undefined;
 
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-    const streamUrl = `${baseUrl}/realtime/stream?token=${encodeURIComponent(token)}`;
-    const stream = new EventSource(streamUrl);
+    let stream = null;
+    let closed = false;
 
-    const handleContent = (event) => {
+    const connect = async () => {
       try {
-        const detail = JSON.parse(event.data || '{}');
-        emitAppEvent(APP_EVENT_CONTENT_CHANGED, detail);
+        const { data } = await api.post('/auth/realtime-token');
+        if (closed || !data?.token) return;
+
+        const streamUrl = `${baseUrl}/realtime/stream?token=${encodeURIComponent(data.token)}`;
+        stream = new EventSource(streamUrl);
+
+        const handleContent = (event) => {
+          try {
+            const detail = JSON.parse(event.data || '{}');
+            emitAppEvent(APP_EVENT_CONTENT_CHANGED, detail);
+          } catch {
+            emitAppEvent(APP_EVENT_CONTENT_CHANGED);
+          }
+        };
+
+        const handleAuth = () => {
+          refreshMe().catch(() => {});
+        };
+
+        stream.addEventListener('content', handleContent);
+        stream.addEventListener('auth', handleAuth);
       } catch {
-        emitAppEvent(APP_EVENT_CONTENT_CHANGED);
+        // Ignore realtime bootstrap failures; polling/refresh paths still work.
       }
     };
 
-    const handleAuth = () => {
-      refreshMe().catch(() => {});
-    };
-
-    stream.addEventListener('content', handleContent);
-    stream.addEventListener('auth', handleAuth);
+    connect();
 
     return () => {
-      stream.removeEventListener('content', handleContent);
-      stream.removeEventListener('auth', handleAuth);
-      stream.close();
+      closed = true;
+      stream?.close();
     };
   }, [refreshMe, user?._id]);
 

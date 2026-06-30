@@ -19,6 +19,7 @@ const {
   triggerPlatformFetch,
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
+const { cleanupAnalyticsRetention, getDatabaseHealthSummary } = require('../services/storageMaintenance');
 const { buildAdminBroadcastEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
@@ -832,9 +833,8 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
   });
 }));
 
-router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (req, res) => {
-  const days = Math.max(1, Math.min(90, Number(req.query.days || 30) || 30));
-  const since = startOfDay(days);
+router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const since = startOfMonth();
   const match = { occurredAt: { $gte: since } };
 
   const [
@@ -948,6 +948,8 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (r
   const avgEventDurationMs = Math.round(Number(engagementRows[0]?.avgDurationMs || 0));
   const sessionStats = sessionRows[0] || {};
   const dailyMap = new Map();
+  const today = new Date();
+  const days = Math.max(1, Math.floor((today - since) / (24 * 60 * 60 * 1000)) + 1);
   for (let i = 0; i < days; i += 1) {
     const date = new Date(since);
     date.setDate(since.getDate() + i);
@@ -999,6 +1001,25 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (r
     pages: pageRows,
     roles: roleRows,
     trend: Array.from(dailyMap.values())
+  });
+}));
+
+router.get('/super/database-health', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const summary = await getDatabaseHealthSummary();
+  res.json(summary);
+}));
+
+router.delete('/super/analytics/cleanup', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const result = await cleanupAnalyticsRetention();
+  const summary = await getDatabaseHealthSummary();
+  res.json({
+    success: true,
+    deleted: result.deleted,
+    cutoff: result.cutoff,
+    message: result.deleted
+      ? `${result.deleted} old analytics events deleted.`
+      : 'No old analytics events needed cleanup.',
+    health: summary
   });
 }));
 

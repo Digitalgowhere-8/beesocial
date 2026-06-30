@@ -469,14 +469,12 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         <>
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-2">
-              <button
-                type="button"
-                onClick={() => setMobileAnalyticsMenuOpen((value) => !value)}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/15 hover:bg-gray-50"
+              <div
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm"
               >
                 <Sparkles size={14} />
                 <span className="truncate">{analyticsViewMode === 'today' ? 'Today' : 'Full Hive'}</span>
-              </button>
+              </div>
               <div className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[linear-gradient(180deg,#fff8fa_0%,#fff3f6_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72] shadow-[0_0_0_4px_rgba(109,223,114,0.14)]" />
                 <span className="truncate">{Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}</span>

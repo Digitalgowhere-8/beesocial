@@ -50,7 +50,7 @@ const ADMIN_TABS = [
 ];
 
 const SUPER_ADMIN_TABS = [
-  { key: 'platform', label: 'Overview', icon: Crown, hint: 'Global health and activity' },
+  { key: 'platform', label: 'Platform', icon: Crown, hint: 'Global health and activity' },
   { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review and moderate content' },
   { key: 'fetch',    label: 'Fetch',    icon: Globe2, hint: 'Shared intelligence workflows' },
   { key: 'users',    label: 'Users',    icon: ShieldCheck, hint: 'Companies, members and access' },
@@ -185,6 +185,10 @@ export default function AdminPanel() {
     }
   }, [isSuperAdmin, tab, subTab]);
 
+  useEffect(() => {
+    setMobileAdminMenuOpen(false);
+  }, [tab, subTab, isSuperAdmin]);
+
   const handleSuperAdminTabChange = useCallback((nextTab) => {
     setTab(nextTab);
     const nextParams = new URLSearchParams(searchParams);
@@ -192,13 +196,9 @@ export default function AdminPanel() {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  useEffect(() => {
-    setMobileAdminMenuOpen(false);
-  }, [tab, subTab, isSuperAdmin]);
-
   const headerActions = (
     <>
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+      <div className={`min-w-0 flex-col gap-3 sm:flex-row sm:items-center ${isSuperAdmin ? 'hidden xl:flex' : 'flex'}`}>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
           {isSuperAdmin ? (
             <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
@@ -373,7 +373,16 @@ export default function AdminPanel() {
       <div data-tour="admin-shell" className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full space-y-5 pb-10">
           {isSuperAdmin ? (
-            <SuperAdminWorkspace tabs={tabs} activeTab={tab} onTabChange={handleSuperAdminTabChange} subTabs={SUPER_ADMIN_SUBTABS[tab] || []} activeSubTab={subTab} onSubTabChange={setSubTab} user={user}>
+            <SuperAdminWorkspace
+              tabs={tabs}
+              activeTab={tab}
+              onTabChange={handleSuperAdminTabChange}
+              subTabs={SUPER_ADMIN_SUBTABS[tab] || []}
+              activeSubTab={subTab}
+              onSubTabChange={setSubTab}
+              onRefresh={() => setSuperAdminRefreshKey((value) => value + 1)}
+              onOpenMenu={() => setMobileAdminMenuOpen((value) => !value)}
+            >
               {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
               {tab === 'articles' && <ArticlesTab key={`articles-${superAdminRefreshKey}`} />}
               {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} />}
@@ -415,9 +424,120 @@ export default function AdminPanel() {
   );
 }
 
-function SuperAdminWorkspace({ children }) {
+function SuperAdminWorkspace({
+  children,
+  tabs = [],
+  activeTab = 'platform',
+  onTabChange,
+  subTabs = [],
+  activeSubTab = 'overview',
+  onSubTabChange,
+  onRefresh,
+  onOpenMenu
+}) {
+  const activeTabMeta = tabs.find((item) => item.key === activeTab);
+  const activeSubTabMeta = subTabs.find((item) => item.key === activeSubTab);
+  const showSubTabBadge = activeSubTabMeta && activeSubTabMeta.label !== activeTabMeta?.label;
+  const subTabGridClass = subTabs.length >= 3 ? 'grid-cols-3' : subTabs.length === 2 ? 'grid-cols-2' : 'grid-cols-1';
+
   return (
-    <section className="min-w-0 space-y-5">
+    <section className="min-w-0">
+      <div className="xl:hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.97),rgba(255,246,248,0.93)_45%,rgba(243,248,255,0.94))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl mb-5 overflow-hidden">
+        <div className="h-1.5 bg-gradient-to-r from-brand-crimson via-rose-500 to-sky-400" />
+        <div className="px-4 py-5 sm:px-5">
+          <div className="min-w-0">
+            <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson ring-1 ring-brand-crimson/10 shadow-sm">
+              <Crown size={12} />
+              Owner Console
+            </div>
+            <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-gray-950 sm:text-[32px]">Super Admin</h1>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-gray-500">
+              {activeTabMeta?.hint || 'Platform-wide controls, analytics and system operations.'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-gray-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm">
+                {activeTabMeta?.label || 'Platform'}
+              </span>
+              {showSubTabBadge ? (
+                <span className="inline-flex items-center rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gray-500 ring-1 ring-gray-200 shadow-sm">
+                  {activeSubTabMeta?.label}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/80 px-3 py-4 sm:px-4">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            {tabs.map((item) => {
+              const active = item.key === activeTab;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => onTabChange?.(item.key)}
+                  className={[
+                    'inline-flex min-h-[54px] min-w-0 items-center justify-start gap-2.5 rounded-2xl px-3.5 text-left text-[11px] font-black transition-all',
+                    active
+                      ? 'bg-gradient-to-br from-brand-crimson via-rose-600 to-rose-900 text-white shadow-[0_16px_28px_rgba(209,18,67,0.24)]'
+                      : 'border border-white/90 bg-white/80 text-gray-600 shadow-sm hover:border-brand-crimson/15 hover:bg-white hover:text-brand-crimson'
+                  ].join(' ')}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/16 text-white' : 'bg-brand-pink/25 text-brand-crimson'}`}>
+                    {item.icon ? <item.icon size={14} /> : null}
+                  </span>
+                  <span className="min-w-0 truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {subTabs.length ? (
+            <div className="mt-3 rounded-[24px] border border-white/90 bg-white/75 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+              <div className={`grid gap-2 ${subTabGridClass}`}>
+                {subTabs.map((item) => {
+                  const active = item.key === activeSubTab;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => onSubTabChange?.(item.key)}
+                      className={[
+                        'inline-flex min-h-[40px] min-w-0 items-center justify-center rounded-2xl px-3 text-[10px] font-black uppercase tracking-[0.14em] transition-all md:text-[11px]',
+                        active
+                          ? 'bg-gray-950 text-white shadow-[0_12px_24px_rgba(15,23,42,0.16)]'
+                          : 'bg-transparent text-gray-500 hover:bg-white hover:text-gray-800'
+                      ].join(' ')}
+                    >
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_44px] gap-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white/90 px-4 text-[12px] font-black uppercase tracking-[0.14em] text-gray-700 ring-1 ring-gray-200 shadow-sm transition hover:bg-white"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onOpenMenu}
+              className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl bg-white/90 text-gray-600 ring-1 ring-gray-200 shadow-sm transition hover:bg-white hover:text-brand-crimson"
+              aria-label="Open admin menu"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="min-w-0">
         {children}
       </div>
@@ -435,24 +555,48 @@ function parsePlanPrice(value) {
 function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [overview, setOverview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
-  const [analyticsDays, setAnalyticsDays] = useState(30);
+  const [dbHealth, setDbHealth] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshingHealth, setRefreshingHealth] = useState(false);
+  const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
+  const [cleanupNotice, setCleanupNotice] = useState('');
+
+  const loadDatabaseHealth = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setRefreshingHealth(true);
+    try {
+      const { data } = await api.get('/admin/super/database-health');
+      setDbHealth(data);
+      return data;
+    } finally {
+      if (!silent) setRefreshingHealth(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewRes, analyticsRes] = await Promise.all([
+      const [overviewRes, analyticsRes, dbHealthRes] = await Promise.all([
         api.get('/admin/super/overview'),
-        api.get('/admin/super/analytics', { params: { days: analyticsDays } })
+        api.get('/admin/super/analytics'),
+        api.get('/admin/super/database-health')
       ]);
       setOverview(overviewRes.data);
       setAnalytics(analyticsRes.data);
+      setDbHealth(dbHealthRes.data);
     } finally {
       setLoading(false);
     }
-  }, [analyticsDays]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (activeSubTab !== 'analytics') return undefined;
+    const id = window.setInterval(() => {
+      loadDatabaseHealth({ silent: true }).catch(() => {});
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [activeSubTab, loadDatabaseHealth]);
 
   if (loading || !overview || !analytics) return <Loader />;
 
@@ -465,6 +609,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const failedPct = Number(usage.failureRateThisMonth || 0);
   const successfulRunsThisMonth = Math.max(0, Number(usage.monthRuns || 0) - Number(usage.monthFailedRuns || 0));
   const traffic = analytics.totals || {};
+  const analyticsSince = analytics.since ? new Date(analytics.since) : null;
   const companyCount = Number(users.admins || 0);
   const premiumCompanies = Number(users.premium || 0);
   const planPriceMap = dbPlans.reduce((acc, plan) => {
@@ -476,6 +621,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     return sum + (Number(count || 0) * Number(planPriceMap[planId] || 0));
   }, 0);
   const apiCalls = Number(traffic.pageViews || 0) + Number(traffic.clicks || 0) + Number(traffic.visitors || 0);
+  const mobileTopUsers = topUsers.slice(0, 5);
   const ownerStats = [
     { label: 'Total Companies', value: compactNumber(companyCount), icon: Building2, accent: 'bg-brand-crimson', note: `${users.active || 0} active operators`, tint: 'bg-brand-pink/40 text-brand-crimson' },
     { label: 'Total Users', value: compactNumber(users.total || 0), icon: Users, accent: 'bg-violet-500', note: `${activePct}% active this month`, tint: 'bg-violet-50 text-violet-700' },
@@ -486,6 +632,23 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     { label: 'Failed Fetches', value: compactNumber(usage.monthFailedRuns || 0), icon: AlertTriangle, accent: 'bg-rose-500', note: `${failedPct}% failure rate`, tint: 'bg-rose-50 text-rose-700' },
     { label: 'API Calls', value: compactNumber(apiCalls), icon: Gauge, accent: 'bg-gray-900', note: 'Views, clicks and sessions combined', tint: 'bg-gray-100 text-gray-700' }
   ];
+
+  const cleanupAnalytics = async () => {
+    if (!confirm('Delete analytics data older than the current calendar month? Current month analytics will stay untouched.')) return;
+    setCleaningAnalytics(true);
+    setCleanupNotice('');
+    try {
+      const { data } = await api.delete('/admin/super/analytics/cleanup');
+      setCleanupNotice(data.message || 'Analytics cleanup completed.');
+      setDbHealth(data.health || null);
+      const analyticsRes = await api.get('/admin/super/analytics');
+      setAnalytics(analyticsRes.data);
+    } catch (e) {
+      setCleanupNotice(e.response?.data?.message || e.message || 'Analytics cleanup failed.');
+    } finally {
+      setCleaningAnalytics(false);
+    }
+  };
 
   return (
     <div className="space-y-6" data-analytics-section="Super admin platform overview">
@@ -507,7 +670,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
             <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
-              <div className="mb-6 flex items-center justify-between">
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
                     <Gauge size={12} /> Usage Leaders
@@ -518,8 +681,39 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <Gauge size={18} className="text-brand-crimson" />
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm border-separate border-spacing-y-2">
+              <div className="space-y-3 lg:hidden">
+                {mobileTopUsers.map((row, index) => (
+                  <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-sm font-black text-white shadow-sm">
+                          {(row.user?.name || 'U')[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
+                          <div className="truncate text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
+                        </div>
+                      </div>
+                      <span className={`tag shrink-0 px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
+                        {row.user?.subscriptionPlan || 'free'}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <UsageMini label="Fetches" value={compactNumber(row.runs || 0)} />
+                      <UsageMini label="Stored" value={compactNumber(row.inserted || 0)} />
+                      <UsageMini label="Errors" value={compactNumber(row.errors || 0)} danger={Number(row.errors || 0) > 0} />
+                      <UsageMini label="Tokens" value={compactNumber(row.estimatedTokens || 0)} />
+                    </div>
+                  </div>
+                ))}
+                {!mobileTopUsers.length && (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white/50 p-8 text-center text-sm font-semibold text-gray-400">
+                    No usage this month yet.
+                  </div>
+                )}
+              </div>
+              <div className="hidden overflow-x-auto lg:block">
+                <table className="w-full min-w-[680px] text-sm border-separate border-spacing-y-2">
                   <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
                     <tr>
                       <th className="py-2 px-3">User</th>
@@ -585,24 +779,40 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
             </div>
             <h3 className="text-xl font-black tracking-tight text-gray-900">Visitor behaviour and engagement</h3>
             <p className="mt-1 max-w-2xl text-sm font-medium text-gray-500">
-              See who is coming in, where people spend time, what gets clicked, and which sections deserve product or content focus.
+              This analytics view resets every calendar month. See who is coming in, where people spend time, what gets clicked, and which sections deserve product or content focus.
             </p>
           </div>
-          <div className="inline-flex w-fit rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
-            {[7, 30, 90].map((days) => (
-              <button
-                key={days}
-                type="button"
-                onClick={() => setAnalyticsDays(days)}
-                className={`rounded-lg px-3 py-2 text-[11px] font-black uppercase tracking-wider transition-all ${analyticsDays === days ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-brand-pink/40 hover:text-brand-crimson'}`}
-              >
-                {days}D
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex w-fit rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm">
+              {analyticsSince ? `Month to date since ${analyticsSince.toLocaleDateString()}` : 'Month to date'}
+            </div>
+            <button
+              type="button"
+              onClick={() => loadDatabaseHealth()}
+              disabled={refreshingHealth}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-white px-3.5 text-[11px] font-black uppercase tracking-wider text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              {refreshingHealth ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Health
+            </button>
+            <button
+              type="button"
+              onClick={cleanupAnalytics}
+              disabled={cleaningAnalytics}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-red-50 px-3.5 text-[11px] font-black uppercase tracking-wider text-red-700 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50"
+            >
+              {cleaningAnalytics ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              Cleanup old analytics
+            </button>
           </div>
         </div>
+        {cleanupNotice ? (
+          <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-600">
+            {cleanupNotice}
+          </div>
+        ) : null}
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <AnalyticsKpi icon={Users} label="Visitors" value={traffic.visitors || 0} detail={`${traffic.sessions || 0} sessions`} color="text-blue-600" bg="bg-blue-50" />
           <AnalyticsKpi icon={MonitorUp} label="Page views" value={traffic.pageViews || 0} detail={`${traffic.engagementRate || 0}% engaged`} color="text-emerald-600" bg="bg-emerald-50" />
           <AnalyticsKpi icon={MousePointerClick} label="Clicks" value={traffic.clicks || 0} detail={`${traffic.clickThroughRate || 0}% CTR`} color="text-amber-600" bg="bg-amber-50" />
@@ -637,7 +847,16 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
               suffix: 'views'
             }))}
           />
-          <BusinessInsightPanel analytics={analytics} />
+          <div className="space-y-5">
+            <BusinessInsightPanel analytics={analytics} />
+            <DatabaseHealthPanel
+              dbHealth={dbHealth}
+              onRefresh={() => loadDatabaseHealth()}
+              refreshing={refreshingHealth}
+              onCleanup={cleanupAnalytics}
+              cleaning={cleaningAnalytics}
+            />
+          </div>
         </div>
         </div>
       ) : null}
@@ -719,7 +938,7 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
       <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-500 pointer-events-none">
         <Icon size={100} />
       </div>
-      <div className="flex items-start gap-4 relative z-10">
+      <div className="relative z-10 flex items-start gap-4">
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
           <Icon size={20} />
         </span>
@@ -760,7 +979,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
 
   return (
     <div className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">System Health</div>
           <h4 className="mt-1 text-lg font-black tracking-tight text-gray-950">Core services</h4>
@@ -772,9 +991,9 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
 
       <div className="space-y-2.5">
         {healthItems.map((item) => (
-          <div key={item.label} className="flex items-center justify-between rounded-2xl bg-gray-50 px-3 py-3">
+          <div key={item.label} className="flex flex-col gap-2 rounded-2xl bg-gray-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm font-bold text-gray-700">{item.label}</span>
-            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ring-1 ${tones[item.tone]}`}>
+            <span className={`inline-flex w-fit items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ring-1 ${tones[item.tone]}`}>
               <span className="h-2 w-2 rounded-full bg-current opacity-70" />
               {item.value}
             </span>
@@ -837,6 +1056,14 @@ function compactNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function formatMegabytes(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '0 MB';
+  if (numeric >= 1024) return `${(numeric / 1024).toFixed(2)} GB`;
+  if (numeric >= 100) return `${Math.round(numeric)} MB`;
+  return `${numeric.toFixed(1)} MB`;
+}
+
 // eslint-disable-next-line no-unused-vars
 function formatSessionDate(value) {
   if (!value) return 'Not available';
@@ -862,7 +1089,7 @@ function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
 
 function AnalyticsTrend({ data }) {
   const max = Math.max(...(data || []).map((row) => Math.max(row.pageViews || 0, row.clicks || 0)), 1);
-  const visible = (data || []).slice(-14);
+  const visible = (data || []).slice(-10);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-1">
@@ -873,7 +1100,7 @@ function AnalyticsTrend({ data }) {
         </div>
         <Activity size={18} className="text-brand-crimson" />
       </div>
-      <div className="flex h-48 items-end gap-2">
+      <div className="flex h-48 items-end gap-1.5 sm:gap-2">
         {visible.map((row) => {
           const viewHeight = Math.max(6, ((row.pageViews || 0) / max) * 100);
           const clickHeight = Math.max(4, ((row.clicks || 0) / max) * 100);
@@ -990,6 +1217,85 @@ function BusinessInsightPanel({ analytics }) {
             <p className="text-sm font-semibold leading-relaxed text-gray-600">{item}</p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function DatabaseHealthPanel({ dbHealth, onRefresh, refreshing = false, onCleanup, cleaning = false }) {
+  const database = dbHealth?.database || {};
+  const analytics = dbHealth?.analytics || {};
+  const hygiene = dbHealth?.hygiene || {};
+  const collections = Array.isArray(dbHealth?.collections) ? dbHealth.collections.slice().sort((a, b) => Number(b.storageSizeMb || 0) - Number(a.storageSizeMb || 0)).slice(0, 4) : [];
+  const cards = [
+    { label: 'Database size', value: formatMegabytes(database.storageSizeMb), detail: `${compactNumber(database.objects || 0)} documents` },
+    { label: 'Analytics kept', value: compactNumber(analytics.currentMonthEvents || 0), detail: 'Current month events' },
+    { label: 'Cleanup queue', value: compactNumber(analytics.pendingCleanup || 0), detail: 'Old analytics waiting to clear' },
+    { label: 'Old logs', value: compactNumber(hygiene.logsPendingTtlCleanup || 0), detail: 'TTL will remove these' }
+  ];
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Database health</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Live storage watch</h4>
+          <div className="mt-1 text-xs font-semibold text-gray-400">
+            {dbHealth?.checkedAt ? `Updated ${new Date(dbHealth.checkedAt).toLocaleTimeString()}` : 'Waiting for metrics'}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white text-gray-600 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50"
+            title="Refresh database health"
+          >
+            {refreshing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+          </button>
+          <button
+            type="button"
+            onClick={onCleanup}
+            disabled={cleaning}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50"
+            title="Delete old analytics"
+          >
+            {cleaning ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((item) => (
+          <div key={item.label} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.label}</div>
+            <div className="mt-1 text-lg font-black tracking-tight text-gray-900">{item.value}</div>
+            <div className="mt-1 text-[11px] font-semibold text-gray-400">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Heaviest collections</div>
+          <HardDrive size={15} className="text-brand-crimson" />
+        </div>
+        <div className="space-y-2">
+          {collections.map((item) => (
+            <div key={item.key} className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 ring-1 ring-gray-100">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-gray-800">{item.label}</div>
+                <div className="text-[11px] font-semibold text-gray-400">{compactNumber(item.count || 0)} docs</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-sm font-black text-gray-900">{formatMegabytes(item.storageSizeMb)}</div>
+                <div className="text-[10px] font-semibold text-gray-400">storage</div>
+              </div>
+            </div>
+          ))}
+          {!collections.length && <div className="rounded-md border border-dashed border-gray-200 p-4 text-center text-sm font-bold text-gray-400">Collection metrics are not available yet.</div>}
+        </div>
       </div>
     </div>
   );
@@ -1973,7 +2279,7 @@ export function FetchTab({ embedded = false }) {
         <div className={`grid grid-cols-1 gap-3 ${embedded ? 'xl:grid-cols-12' : 'md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3'}`}>
           {user?.access?.canUseSavedSearches !== false && (
             <FetchField label="Saved search name" className={embedded ? 'xl:col-span-4' : ''}>
-              <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Rajasthan compliance watch" />
+              <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Singapore compliance watch" />
             </FetchField>
           )}
           <FetchField label="Country" className={embedded ? 'xl:col-span-3' : ''}>
@@ -2042,10 +2348,10 @@ export function FetchTab({ embedded = false }) {
             </select>
           </FetchField>
           <FetchField label="Preferred sources" className={embedded ? 'xl:col-span-6' : ''}>
-            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: rajasthan.gov.in, msme.gov.in" />
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: acra.gov.sg, mom.gov.sg" />
           </FetchField>
           <FetchField label="Tracked competitors" className={embedded ? 'xl:col-span-6' : ''}>
-            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: Deloitte, TCS, Infosys" />
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: BoardRoom, Rikvin, Hawksford" />
           </FetchField>
         </div>
 

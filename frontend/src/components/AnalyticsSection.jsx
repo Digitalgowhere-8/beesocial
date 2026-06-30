@@ -446,7 +446,7 @@ function InsightsCard({ topArticles }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {topArticles.length ? (
           topArticles.map((item, index) => (
             <InsightItem
@@ -456,7 +456,7 @@ function InsightsCard({ topArticles }) {
             />
           ))
         ) : (
-          <div className="md:col-span-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
+          <div className="xl:col-span-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
             <p className="text-[12px] text-gray-500 leading-relaxed">
               No current signals available for the selected filters.
             </p>
@@ -729,17 +729,17 @@ function MarketDistributionCard({ markets, className = '' }) {
 
 function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution }) {
   return (
-    <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 lg:h-full lg:grid-cols-2 lg:overflow-hidden lg:pb-2">
-      <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] lg:h-full lg:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
-        <DonutChart data={donutData} className="min-h-[220px] lg:h-full lg:min-h-0" />
-        <MarketDistributionCard markets={marketDistribution} className="min-h-[210px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
-        <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
+    <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 xl:h-full xl:grid-cols-2 xl:overflow-hidden xl:pb-2">
+      <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] xl:h-full xl:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
+        <DonutChart data={donutData} className="min-h-[220px] xl:h-full xl:min-h-0" />
+        <MarketDistributionCard markets={marketDistribution} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+        <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
       </div>
 
-      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
+      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
 
       {!total && (
-        <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card lg:col-span-2">
+        <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
           No live signals found for today. Once the fetch job indexes fresh articles, these charts will update automatically.
         </section>
       )}
@@ -928,7 +928,7 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
         
         <div className="bg-white rounded-xl p-5 border border-gray-100 space-y-3 shadow-sm">
           <div className="skeleton h-5 w-48 rounded" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="skeleton h-20 w-full rounded" />
             <div className="skeleton h-20 w-full rounded" />
             <div className="skeleton h-20 w-full rounded" />

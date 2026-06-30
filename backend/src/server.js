@@ -32,8 +32,11 @@ const AUTH_RATE_LIMIT_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS
 const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 200;
 const EXPENSIVE_RATE_LIMIT_WINDOW_MS = parseInt(process.env.EXPENSIVE_RATE_LIMIT_WINDOW_MS, 10) || 60 * 1000;
 const EXPENSIVE_RATE_LIMIT_MAX = parseInt(process.env.EXPENSIVE_RATE_LIMIT_MAX, 10) || 30;
+const ANALYTICS_RATE_LIMIT_WINDOW_MS = parseInt(process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS, 10) || 60 * 1000;
+const ANALYTICS_RATE_LIMIT_MAX = parseInt(process.env.ANALYTICS_RATE_LIMIT_MAX, 10) || 300;
 
 const app = express();
+app.disable('x-powered-by');
 
 // Enable 'trust proxy' to support correct IP rate-limiting behind proxies like Render
 app.set('trust proxy', 1);
@@ -42,15 +45,28 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 
-const origins = (process.env.CORS_ORIGINS || '*')
+const configuredOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+const defaultDevOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+const allowedOrigins = configuredOrigins.length
+  ? configuredOrigins
+  : (process.env.NODE_ENV === 'production' ? [] : defaultDevOrigins);
 
 app.use(
   cors({
-    origin: origins.includes('*') ? true : origins,
-    credentials: true
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('CORS origin not allowed'));
+    },
+    credentials: false
   })
 );
 
@@ -94,6 +110,17 @@ app.use('/api/blogs/linkedin/generate', expensiveLimit);
 app.use('/api/admin/fetch', expensiveLimit);
 app.use('/api/admin/n8n/run', expensiveLimit);
 app.use('/api/admin/super/fetch/run', expensiveLimit);
+app.use(
+  '/api/analytics/events',
+  rateLimit({
+    windowMs: ANALYTICS_RATE_LIMIT_WINDOW_MS,
+    max: ANALYTICS_RATE_LIMIT_MAX,
+    keyGenerator: rateLimitKey,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many analytics events. Please slow down and try again shortly.' }
+  })
+);
 
 // --------- Health ---------
 app.get('/api/health', (_req, res) => {
