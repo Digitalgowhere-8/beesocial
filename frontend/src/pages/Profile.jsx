@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { FetchTab as ProfileFetchTab } from './AdminPanel';
@@ -50,9 +50,12 @@ const PROFILE_TABS = [
 export default function Profile() {
   const { user, updateProfile, setAuthState } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const canManageIntelligence = user?.role === 'admin' || user?.role === 'super_admin';
   const canSeeFetchSection = canAccessFetchControls(user);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => (
+    location.state?.tab === 'fetch' ? 'fetch' : 'profile'
+  ));
   const [form, setForm] = useState(() => initialFormFromUser(user));
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [pwdVisibility, setPwdVisibility] = useState({
@@ -87,6 +90,18 @@ export default function Profile() {
       setActiveTab('profile');
     }
   }, [activeTab, canSeeFetchSection]);
+
+  useEffect(() => {
+    if (location.state?.tab === 'fetch' && canSeeFetchSection) {
+      setActiveTab('fetch');
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+    if (location.state?.tab === 'profile') {
+      setActiveTab('profile');
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [canSeeFetchSection, location.pathname, location.state, navigate]);
 
   useEffect(() => {
     setMobileProfileMenuOpen(false);

@@ -794,20 +794,26 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
     const latest = Math.max(0, ...allArticles.map(getInsertedTime));
     return latest ? formatDashboardDateKey(new Date(latest)) : todayKey;
   }, [allArticles, todayKey]);
-  const todayViewDayKey = useMemo(
-    () => allArticles.some((item) => getInsertedDay(item) === todayKey) ? todayKey : latestInsertedDayKey,
-    [allArticles, latestInsertedDayKey, todayKey]
-  );
 
   useEffect(() => {
     if (!isAdmin && viewMode !== 'today') onViewModeChange?.('today');
   }, [isAdmin, onViewModeChange, viewMode]);
 
+  const todayArticles = useMemo(
+    () => allArticles.filter((item) => getInsertedDay(item) === todayKey),
+    [allArticles, todayKey]
+  );
+
+  const todayBuzzArticles = useMemo(() => {
+    if (todayArticles.length) return todayArticles;
+    return allArticles.filter((item) => getInsertedDay(item) === latestInsertedDayKey);
+  }, [allArticles, latestInsertedDayKey, todayArticles]);
+
   const visibleArticles = useMemo(
     () => viewMode === 'today'
-      ? allArticles.filter((item) => getInsertedDay(item) === todayViewDayKey)
+      ? todayArticles
       : allArticles,
-    [allArticles, todayViewDayKey, viewMode]
+    [allArticles, todayArticles, viewMode]
   );
 
   const articlesByType = useMemo(() => ({
@@ -840,8 +846,8 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
   );
 
   const trendingUpdates = useMemo(
-    () => visibleArticles,
-    [visibleArticles]
+    () => viewMode === 'today' ? todayBuzzArticles : visibleArticles,
+    [todayBuzzArticles, viewMode, visibleArticles]
   );
 
   const categoryMomentum = useMemo(

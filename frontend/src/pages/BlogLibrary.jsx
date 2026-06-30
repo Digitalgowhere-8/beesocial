@@ -2,8 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
+
+const LIBRARY_MODES = [
+  { key: 'blogs', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
+  { key: 'linkedin', label: 'Social', desktopLabel: 'Social Media Post', icon: MessageSquareText },
+];
 
 function renderInlineMarkdown(text = '') {
   const parts = [];
@@ -312,13 +317,16 @@ export default function BlogLibrary() {
     if (window.matchMedia('(max-width: 1279px)').matches) setMobileReaderOpen(true);
   };
 
+  const activeMode = LIBRARY_MODES.find((item) => item.key === mode) || LIBRARY_MODES[0];
+  const ActiveModeIcon = activeMode.icon;
+
   const headerActions = (
     <>
     <div className="flex w-full items-center justify-between gap-3 sm:flex-row sm:items-center">
-      <div className="flex items-center gap-2 sm:hidden">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:hidden">
         <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
-          {mode === 'blogs' ? <BookOpenText size={14} /> : <MessageSquareText size={14} />}
-          {mode === 'blogs' ? 'Blog' : 'Social'}
+          <ActiveModeIcon size={14} />
+          {activeMode.label}
         </div>
       </div>
       <div className="ml-auto flex items-center gap-2 sm:hidden">
@@ -355,15 +363,17 @@ export default function BlogLibrary() {
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
-            <button type="button" onClick={() => { setMode('blogs'); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${mode === 'blogs' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
-              <BookOpenText size={14} />
-              Blog
-            </button>
-            <button type="button" onClick={() => { setMode('linkedin'); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${mode === 'linkedin' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
-              <MessageSquareText size={14} />
-              <span className="sm:hidden">Social</span>
-              <span className="hidden sm:inline">Social Media Post</span>
-            </button>
+            {LIBRARY_MODES.map((item) => {
+              const Icon = item.icon;
+              const active = mode === item.key;
+              return (
+                <button type="button" key={item.key} onClick={() => { setMode(item.key); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                  <Icon size={14} />
+                  <span className="sm:hidden">{item.label}</span>
+                  <span className="hidden sm:inline">{item.desktopLabel}</span>
+                </button>
+              );
+            })}
           </div>
           <button type="button" onClick={load} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -455,7 +465,7 @@ export default function BlogLibrary() {
         </div>
 
         {mode === 'linkedin' && isAdmin && selectedSocialIds.length ? (
-          <div className="glass-panel flex flex-wrap items-center gap-2 px-4 py-3">
+          <div className="glass-panel rounded-[22px] flex flex-wrap items-center gap-2 px-4 py-3 shadow-[0_16px_30px_rgba(15,23,42,0.06)]">
             <span className="text-sm font-black text-gray-800">{selectedSocialIds.length} selected</span>
             <button type="button" onClick={toggleSelectAllSocial} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
@@ -471,7 +481,7 @@ export default function BlogLibrary() {
         ) : null}
 
         {mode === 'blogs' && isAdmin && selectedIds.length ? (
-          <div className="glass-panel flex flex-wrap items-center gap-2 px-4 py-3">
+          <div className="glass-panel rounded-[22px] flex flex-wrap items-center gap-2 px-4 py-3 shadow-[0_16px_30px_rgba(15,23,42,0.06)]">
             <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
             <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
@@ -493,7 +503,7 @@ export default function BlogLibrary() {
         )}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
-          <section className={`${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto glass-panel p-3 custom-scrollbar sm:p-4`}>
+          <section className={`${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
             {loading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3 text-brand-crimson">
                 <Loader2 size={24} className="animate-spin" />
@@ -508,8 +518,8 @@ export default function BlogLibrary() {
                   return (
                     <div
                       key={post._id}
-                      className={`w-full rounded-xl border p-4 text-left transition-all duration-300 ${
-                        isSelected ? 'border-brand-crimson/40 bg-white shadow-md' : 'border-white/40 bg-white/50 hover:bg-white hover:shadow-sm'
+                      className={`w-full rounded-[22px] border p-4 text-left transition-all duration-300 ${
+                        isSelected ? 'border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -532,7 +542,7 @@ export default function BlogLibrary() {
                           className="min-w-0 flex-1 text-left"
                         >
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">LinkedIn</span>
+                            <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm">LinkedIn</span>
                             <span className="text-[10px] font-bold text-gray-400">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</span>
                           </div>
                           <div className="line-clamp-2 text-sm font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
@@ -551,10 +561,10 @@ export default function BlogLibrary() {
                   return (
                     <div
                       key={blog._id}
-                      className={`w-full text-left transition-all duration-300 rounded-xl p-4 border relative overflow-hidden group ${
+                      className={`w-full text-left transition-all duration-300 rounded-[22px] p-4 border relative overflow-hidden group ${
                         isSelected 
-                          ? 'border-brand-crimson/40 bg-white shadow-md' 
-                          : 'border-white/40 bg-white/40 hover:bg-white/80 hover:border-white hover:shadow-sm'
+                          ? 'border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' 
+                          : 'border-white/50 bg-white/72 hover:bg-white hover:border-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
                       {isSelected && (
@@ -582,11 +592,11 @@ export default function BlogLibrary() {
                           <div className={`mb-2 text-base font-black leading-snug ${isSelected ? 'text-gray-900' : 'text-gray-800 group-hover:text-gray-900'}`}>
                             {blog.title}
                           </div>
-                          <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500 mb-3">{blog.excerpt}</p>
+                          <p className="mb-3 line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
                           
                           <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
-                            {blog.category && <span className={`rounded-md px-2 py-1 border ${isSelected ? 'bg-brand-pink/10 border-brand-crimson/20 text-brand-crimson' : 'bg-white border-gray-200'}`}>{blog.category}</span>}
-                            {blog.type && <span className={`rounded-md px-2 py-1 border ${isSelected ? 'bg-brand-pink/10 border-brand-crimson/20 text-brand-crimson' : 'bg-white border-gray-200'}`}>{blog.type}</span>}
+                            {blog.category && <span className={`rounded-full px-2.5 py-1 border shadow-sm ${isSelected ? 'bg-brand-pink/10 border-brand-crimson/20 text-brand-crimson' : 'bg-white border-gray-200'}`}>{blog.category}</span>}
+                            {blog.type && <span className={`rounded-full px-2.5 py-1 border shadow-sm ${isSelected ? 'bg-brand-pink/10 border-brand-crimson/20 text-brand-crimson' : 'bg-white border-gray-200'}`}>{blog.type}</span>}
                           </div>
                         </button>
                       </div>
@@ -599,18 +609,24 @@ export default function BlogLibrary() {
             )}
           </section>
 
-          <article className={`${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto glass-panel p-4 custom-scrollbar relative sm:p-8 xl:p-10`}>
-            <button
-              type="button"
-              onClick={() => setMobileReaderOpen(false)}
-              className="mb-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
-            >
-              Back to posts
-            </button>
+          <article className={`${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:p-10`}>
+            <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-gray-100 bg-white/96 px-4 py-3 backdrop-blur xl:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileReaderOpen(false)}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl border border-brand-crimson/15 bg-[linear-gradient(180deg,#fff7f9_0%,#ffeef3_100%)] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-[0_12px_26px_rgba(209,18,67,0.12)] transition-all hover:border-brand-crimson/30 hover:bg-[linear-gradient(180deg,#fff3f6_0%,#ffe7ef_100%)] hover:shadow-[0_14px_30px_rgba(209,18,67,0.16)]"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-brand-crimson shadow-sm">
+                  <ArrowLeft size={14} />
+                </span>
+                <span>Back to posts</span>
+              </button>
+            </div>
             {mode === 'linkedin' ? (
               selectedSocial ? (
                 <div className="max-w-3xl mx-auto animate-fade-in-up">
-                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <div className="mb-5 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       <Pill icon={MessageSquareText} highlight>LinkedIn</Pill>
                       {selectedSocial.framework && <Pill icon={Tag}>{selectedSocial.framework}</Pill>}
@@ -619,11 +635,16 @@ export default function BlogLibrary() {
                     <button
                       type="button"
                       onClick={copySocialPost}
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                      className={`inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                        copied
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
+                      }`}
                     >
                       {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
                       {copied ? 'Copied' : 'Copy'}
                     </button>
+                    </div>
                   </div>
                   <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -643,8 +664,9 @@ export default function BlogLibrary() {
               ) : <Empty large />
             ) : selected ? (
               <div className="max-w-3xl mx-auto animate-fade-in-up">
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-3">
+                <div className="mb-6 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-2.5">
                     {selected.category && <Pill icon={Tag}>{selected.category}</Pill>}
                     {selected.subcategory && <Pill icon={Tag}>{selected.subcategory}</Pill>}
                     {selected.publishedAt && <Pill icon={CalendarDays} highlight>{new Date(selected.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
@@ -652,11 +674,16 @@ export default function BlogLibrary() {
                   <button
                     type="button"
                     onClick={copyBlogPost}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                    className={`inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                      copied
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
+                    }`}
                   >
-                    {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
+                      {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
                 </div>
                 
                 <h2 className="text-3xl sm:text-4xl font-black leading-tight text-gray-900 mb-6 font-display tracking-tight text-gradient">{selected.title}</h2>
@@ -687,12 +714,12 @@ export default function BlogLibrary() {
 
 function Pill({ icon: Icon, children, highlight = false }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider border shadow-sm ${
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border shadow-sm transition-all ${
       highlight 
-        ? 'bg-brand-crimson text-white border-brand-hoverred' 
-        : 'bg-white/80 text-gray-600 border-gray-200'
+        ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(209,18,67,0.18)]' 
+        : 'border-gray-200 bg-white text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]'
     }`}>
-      <Icon size={13} />
+      <Icon size={12} />
       {children}
     </span>
   );

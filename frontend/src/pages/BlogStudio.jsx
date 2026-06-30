@@ -15,6 +15,11 @@ const TYPE_OPTIONS = [
   { value: 'evergreen', label: 'Evergreen Guides' }
 ];
 
+const CONTENT_TYPE_TABS = [
+  { key: 'blog', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
+  { key: 'social', label: 'Social', desktopLabel: 'Social Media Post', icon: MessageSquareText },
+];
+
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
 const CONTENT_STUDIO_UPCOMING_MODE = false;
 
@@ -515,14 +520,21 @@ export default function BlogStudio() {
     setMobileHeaderMenuOpen(false);
   }, [contentType, socialPreviewOpen]);
 
+  const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
+  const ActiveContentIcon = activeContentTab.icon;
+
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
     <>
     <div className="flex w-full items-center justify-between gap-3 sm:flex-row sm:items-center">
       <div className="flex items-center gap-2 sm:hidden">
-        <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
-          {contentType === 'blog' ? <BookOpenText size={14} /> : <MessageSquareText size={14} />}
-          {contentType === 'blog' ? 'Blog' : 'Social'}
-        </div>
+        <button
+          type="button"
+          onClick={() => setMobileHeaderMenuOpen((value) => !value)}
+          className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+        >
+          <ActiveContentIcon size={14} />
+          {activeContentTab.label}
+        </button>
       </div>
       <div className="ml-auto flex items-center gap-2 sm:hidden">
         <button
@@ -544,23 +556,22 @@ export default function BlogStudio() {
       </div>
       <div className="hidden w-full sm:flex sm:flex-row sm:items-center sm:gap-2">
         <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:w-auto sm:min-w-[360px]">
-          <button
-            type="button"
-            onClick={() => setContentType('blog')}
-            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            <BookOpenText size={14} />
-            Blog
-          </button>
-          <button
-            type="button"
-            onClick={() => setContentType('social')}
-            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            <MessageSquareText size={14} />
-            <span className="sm:hidden">Social</span>
-            <span className="hidden sm:inline">Social Media Post</span>
-          </button>
+          {CONTENT_TYPE_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = contentType === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setContentType(tab.key)}
+                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:min-h-[40px] sm:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                <Icon size={14} />
+                <span className="sm:hidden">{tab.label}</span>
+                <span className="hidden sm:inline">{tab.desktopLabel}</span>
+              </button>
+            );
+          })}
         </div>
         <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 sm:w-auto">
           <RefreshCw size={14} />
@@ -592,34 +603,27 @@ export default function BlogStudio() {
             </button>
           </div>
           <div className="space-y-2 p-3">
-            <button
-              type="button"
-              onClick={() => {
-                setContentType('blog');
-                setMobileHeaderMenuOpen(false);
-              }}
-              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${contentType === 'blog' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
-            >
-              <span className="flex items-center gap-3 text-sm font-black">
-                <BookOpenText size={15} />
-                Blog
-              </span>
-              {contentType === 'blog' ? <Check size={15} /> : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setContentType('social');
-                setMobileHeaderMenuOpen(false);
-              }}
-              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${contentType === 'social' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
-            >
-              <span className="flex items-center gap-3 text-sm font-black">
-                <MessageSquareText size={15} />
-                Social
-              </span>
-              {contentType === 'social' ? <Check size={15} /> : null}
-            </button>
+            {CONTENT_TYPE_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = contentType === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setContentType(tab.key);
+                    setMobileHeaderMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                >
+                  <span className="flex items-center gap-3 text-sm font-black">
+                    <Icon size={15} />
+                    {tab.label}
+                  </span>
+                  {active ? <Check size={15} /> : null}
+                </button>
+              );
+            })}
           </div>
         </div>
       </>

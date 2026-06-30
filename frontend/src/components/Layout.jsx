@@ -266,26 +266,18 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
   );
 }
 
-function ProfileMenu({ user, role, onProfile, onLogout, onStartTour }) {
+function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className = '' }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(280px,calc(100vw-24px))] rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <div className="text-sm font-bold text-gray-800 truncate">{user?.name || 'User'}</div>
-        <div className="text-[11px] text-gray-400 truncate">{user?.email || ''}</div>
-        <div className="mt-1 text-[10px] uppercase tracking-wider font-bold text-brand-crimson">{role}</div>
+    <div className={`absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,250,0.97))] shadow-[0_24px_48px_rgba(15,23,42,0.16)] ${className}`}>
+      <div className="border-b border-gray-100 px-4 py-4">
+        <div className="text-sm font-black text-gray-900 truncate">{user?.name || 'User'}</div>
+        <div className="mt-1 text-[12px] font-medium text-gray-400 truncate">{user?.email || ''}</div>
+        <div className="mt-2 text-[10px] uppercase tracking-[0.16em] font-black text-brand-crimson">{role}</div>
       </div>
-      <div className="p-2">
-        <button onClick={onProfile} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
-          <UserIcon size={14} />
-          My Hive Profile
-        </button>
-        <button onClick={onStartTour} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
-          <LayoutDashboard size={14} />
-          Take product tour
-        </button>
-        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-all">
+      <div className="space-y-2 p-3">
+        <button onClick={onLogout} className="w-full flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50/80 px-4 py-3 text-left text-sm font-black text-red-600 transition-all hover:bg-red-100">
           <LogOut size={14} />
-          Sign out
+          Sign off
         </button>
       </div>
     </div>
@@ -614,7 +606,7 @@ export default function Layout({ children, headerActions = null }) {
   return (
     <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
       <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur md:hidden">
-        <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+        <div className="overflow-visible rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
         <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -666,9 +658,34 @@ export default function Layout({ children, headerActions = null }) {
               </>
             )}
             </div>
-            <button onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500">
-              <LogOut size={15} />
-            </button>
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                data-tour="header-profile-menu"
+                onClick={() => {
+                  setShowProfileMenu((v) => !v);
+                  setShowNotifications(false);
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:opacity-90"
+              >
+                {avatar ? (
+                  <img src={avatar} className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-[12px] font-black text-white" style={{ background: `linear-gradient(135deg, ${CRIMSON}, ${DARK_RED})` }}>
+                    {initials}
+                  </div>
+                )}
+              </button>
+              {showProfileMenu && (
+                <ProfileMenu
+                  user={user}
+                  role={roleLabel(user?.role)}
+                  onProfile={openProfile}
+                  onLogout={handleLogout}
+                  onStartTour={startTour}
+                  className="top-12 right-0"
+                />
+              )}
+            </div>
           </div>
         </div>
         {headerActions ? (
