@@ -16,7 +16,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 const FEED_PAGE_SIZE = 8;
-const FEED_SCROLL_ROW_SIZE = 1;
+const FEED_SCROLL_ROW_SIZE = 4;
 
 const FEED_COLUMNS = [
   { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
@@ -633,6 +633,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     return mobileFeedItems;
   }, [activeType, mobileFeedItems, rankedData]);
   const activeFeedScrollRef = useRef(null);
+  const mobileFeedScrollRef = useRef(null);
   const activeFeedLoadMoreRef = useInfiniteScroll({
     enabled: isIntelDesk && Boolean(activeType),
     hasMore: Boolean(activeType && currentFeedState[activeType]?.hasMore),
@@ -660,7 +661,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     enabled: isIntelDesk,
     hasMore: hasCombinedFeedMore,
     loading: isAnyScrollPageLoading || visibleColumns.some((column) => currentFeedState[column.key]?.loadingMore || currentFeedState[column.key]?.loadingInitial),
-    onLoadMore: loadCombinedFeedMore
+    onLoadMore: loadCombinedFeedMore,
+    root: mobileFeedScrollRef.current
   });
   useEffect(() => {
     setSelectedArticleIds(new Set());
@@ -1183,7 +1185,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </div>
             ) : (
               <>
-              <div className="min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
+              <div ref={mobileFeedScrollRef} className="min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
                 {isFeedLoading ? (
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}

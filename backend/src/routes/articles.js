@@ -428,6 +428,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     buildQuery(req)
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
   const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const types = ['news', 'govt', 'competitor', 'evergreen'];
@@ -436,6 +437,9 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
       const pipeline = withEffectiveDateSort({ ...baseQuery, type: t });
       if (dateRange) {
         pipeline.push({ $match: { fetchedDate: dateRange } });
+      }
+      if (offset && offset > 0) {
+        pipeline.push({ $skip: offset });
       }
       if (limit && limit > 0) {
         pipeline.push({ $limit: limit });
