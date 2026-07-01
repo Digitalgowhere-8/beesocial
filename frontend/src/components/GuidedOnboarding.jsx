@@ -32,19 +32,22 @@ function getPanelMetrics(rect) {
   const isMobile = window.innerWidth < 768;
   const isCompact = window.innerHeight < 760;
   const width = Math.min(isMobile ? 520 : MAX_TOOLTIP_WIDTH, window.innerWidth - 24);
-  const desktopMaxHeight = Math.min(isCompact ? 388 : DESKTOP_PANEL_HEIGHT, window.innerHeight - 32);
+  // Always keep at least 32px from viewport bottom so footer buttons are never clipped
+  const safeVh = window.innerHeight - 32;
+  const desktopMaxHeight = Math.min(isCompact ? 388 : DESKTOP_PANEL_HEIGHT, safeVh);
   const compactLift = isCompact ? 30 : 0;
 
   if (!rect) {
     if (isMobile) {
+      const mobileHeight = Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 16);
       return {
         isMobile,
         isCompact,
         width,
         left: Math.max(12, (window.innerWidth - width) / 2),
-        top: Math.max(12, window.innerHeight - Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 20) - compactLift),
+        top: Math.max(8, window.innerHeight - mobileHeight),
         arrow: null,
-        maxHeight: 'calc(100vh - 12px)'
+        maxHeight: `${mobileHeight}px`
       };
     }
 
@@ -60,14 +63,15 @@ function getPanelMetrics(rect) {
   }
 
   if (isMobile) {
+    const mobileHeight = Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 16);
     return {
       isMobile,
       isCompact,
       width,
       left: Math.max(12, (window.innerWidth - width) / 2),
-      top: Math.max(12, window.innerHeight - Math.min(MOBILE_PANEL_HEIGHT, window.innerHeight - 20) - compactLift),
+      top: Math.max(8, window.innerHeight - mobileHeight),
       arrow: null,
-      maxHeight: 'calc(100vh - 12px)'
+      maxHeight: `${mobileHeight}px`
     };
   }
 
@@ -78,11 +82,10 @@ function getPanelMetrics(rect) {
   );
 
   const belowTop = rect.bottom + TOOLTIP_GAP;
-  const aboveTop = rect.top - (desktopMaxHeight - 110);
-  const preferTop = belowTop > window.innerHeight - 36 && aboveTop >= 16;
-  const top = preferTop
-    ? clamp(aboveTop - compactLift, 16, window.innerHeight - desktopMaxHeight - 16)
-    : clamp(belowTop - compactLift, 16, window.innerHeight - desktopMaxHeight - 16);
+  const aboveTop = rect.top - desktopMaxHeight - TOOLTIP_GAP;
+  const preferTop = belowTop + desktopMaxHeight > safeVh && aboveTop >= 16;
+  const rawTop = preferTop ? aboveTop - compactLift : belowTop - compactLift;
+  const top = clamp(rawTop, 16, safeVh - desktopMaxHeight);
 
   return {
     isMobile: false,
@@ -361,7 +364,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
       ) : null}
 
       <div
-        className={`fixed overflow-hidden border bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)] ${
+        className={`fixed flex flex-col overflow-hidden border bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)] ${
           panel.isMobile
             ? 'rounded-t-[30px] rounded-b-none border-white/80 shadow-[0_-16px_50px_rgba(15,23,42,0.22)]'
             : 'rounded-[28px] border-white/30'
@@ -370,7 +373,8 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
           top: panel.top,
           left: panel.left,
           width: panel.width,
-          maxHeight: panel.maxHeight
+          maxHeight: panel.maxHeight,
+          height: panel.maxHeight
         }}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,_rgba(225,29,72,0.16),_transparent_58%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_54%)]" />
@@ -385,7 +389,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
           />
         ) : null}
 
-        <div className={`relative flex max-h-full min-h-0 flex-col overflow-hidden ${panel.isMobile ? 'p-4 pb-5' : panel.isCompact ? 'p-4 pb-4' : 'p-5 sm:p-6'}`}>
+        <div className={`relative flex h-full min-h-0 flex-1 flex-col overflow-hidden ${panel.isMobile ? 'p-4 pb-5' : panel.isCompact ? 'p-4 pb-4' : 'p-5 sm:p-6'}`}>
           {panel.isMobile ? (
             <div className="mb-3 flex justify-center">
               <span className="h-1.5 w-14 rounded-full bg-slate-200" />
@@ -446,7 +450,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
             </div>
           </div>
 
-          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'} flex-1 min-h-0 overflow-y-auto pr-1`}>
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'} min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1`}>
             <div className={`rounded-[24px] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${panel.isCompact && !panel.isMobile ? 'p-3.5' : 'p-4 sm:p-5'}`}>
               <p className={`text-slate-600 ${panel.isCompact && !panel.isMobile ? 'text-[13px] leading-6' : 'text-[14px] leading-7 sm:text-[15px]'}`}>
                 {step.description}
@@ -479,7 +483,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
             </div>
           </div>
 
-          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3 pt-3' : 'mt-5 pt-4'} shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between`}>
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3 pt-3' : 'mt-4 pt-4'} shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white sm:flex-row sm:items-center sm:justify-between`}>
             <div className="flex items-center justify-between gap-3">
               <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
                 {isLast ? 'Tour complete' : 'Keep exploring'}
