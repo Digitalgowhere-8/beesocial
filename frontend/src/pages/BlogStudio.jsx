@@ -530,7 +530,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs({ page: 1, reset: true });
+      setBlogs((prev) => prev.map((blog) => blog._id === data.item._id ? data.item : blog));
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'status', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Status update failed');
@@ -547,7 +547,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs({ page: 1, reset: true });
+      setBlogs((prev) => prev.map((blog) => blog._id === data.item._id ? data.item : blog));
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Draft save failed');
