@@ -293,6 +293,27 @@ async function persistProfileResults(body = {}, options = {}) {
         filter: { urlHash: storedHash },
         update: {
           $set: {
+            relevanceScore: Number(item.relevance_score ?? item.relevanceScore ?? 0),
+            relevanceReason: String(item.relevance_reason || item.relevanceReason || '').slice(0, 500),
+            matchedInterests: Array.isArray(item.matched_terms)
+              ? item.matched_terms
+              : Array.isArray(item.matched_interests)
+                ? item.matched_interests
+                : Array.isArray(item.matchedInterests)
+                  ? item.matchedInterests
+                  : [],
+            targetUserTypes: Array.isArray(item.targetUserTypes) ? item.targetUserTypes : [],
+            contentFingerprint: item.contentFingerprint || buildContentFingerprint({
+              ...item,
+              type: articleType,
+              country: item.country || body.country || defaultCountry(),
+              summary: item.summary || item.ai_summary || item.aiSummary || ''
+            }),
+            urlHash: storedHash,
+            userId: userObjectId || undefined,
+            savedSearchId: savedSearchObjectId || undefined
+          },
+          $setOnInsert: {
             title: String(item.title || '').slice(0, 500),
             summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
             url,
@@ -306,17 +327,7 @@ async function persistProfileResults(body = {}, options = {}) {
             region: item.region || '',
             sector: item.sector || '',
             opportunityType: item.opportunityType || item.opportunity_type || 'market_news',
-            targetUserTypes: Array.isArray(item.targetUserTypes) ? item.targetUserTypes : [],
-            matchedInterests: Array.isArray(item.matched_terms)
-              ? item.matched_terms
-              : Array.isArray(item.matched_interests)
-                ? item.matched_interests
-                : Array.isArray(item.matchedInterests)
-                  ? item.matchedInterests
-                  : [],
             language: item.language || item.lang || 'en',
-            relevanceScore: Number(item.relevance_score ?? item.relevanceScore ?? 0),
-            relevanceReason: String(item.relevance_reason || item.relevanceReason || '').slice(0, 500),
             aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
             rawContent,
             blogContext,
@@ -330,20 +341,9 @@ async function persistProfileResults(body = {}, options = {}) {
               blogContext,
               tavilyAnswer
             },
-            contentFingerprint: item.contentFingerprint || buildContentFingerprint({
-              ...item,
-              type: articleType,
-              country: item.country || body.country || defaultCountry(),
-              summary: item.summary || item.ai_summary || item.aiSummary || ''
-            }),
-            urlHash: storedHash,
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
-            userId: userObjectId || undefined,
-            savedSearchId: savedSearchObjectId || undefined,
+            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
             sourceQuery: String(item.source_query || item.sourceQuery || body.query || '').slice(0, 300)
-          },
-          $setOnInsert: {
-            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date()
           }
         },
         upsert: true
