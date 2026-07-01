@@ -191,6 +191,7 @@ export default function BlogStudio() {
   const [loadingArticles, setLoadingArticles] = useState(() => !cachedStudioState?.articles?.length);
   const [loadingBlogs, setLoadingBlogs] = useState(() => !cachedStudioState?.blogs?.length);
   const [loadingSocialPosts, setLoadingSocialPosts] = useState(() => !cachedStudioState?.socialPosts?.length);
+  const isRefreshing = loadingArticles || (contentType === 'blog' ? loadingBlogs : loadingSocialPosts);
   const [socialPreviewOpen, setSocialPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
@@ -265,6 +266,11 @@ export default function BlogStudio() {
   useEffect(() => {
     selectedArticleRef.current = selectedArticle;
   }, [selectedArticle]);
+
+  const selectedBlogRef = useRef(selectedBlog);
+  useEffect(() => {
+    selectedBlogRef.current = selectedBlog;
+  }, [selectedBlog]);
 
   const selectArticleById = useCallback((articleId) => {
     const article = articles.find((item) => item._id === articleId);
@@ -362,6 +368,57 @@ export default function BlogStudio() {
       setGenProgress(null);
     }
   }, [genProgress, setGenProgress, loadBlogs, loadSocialPosts, setSelectedBlog, setPendingDraftId, setDraftDrawerOpen, setDraftEditorOpen, setLinkedinOutput]);
+
+  // Real-time listener: handles updates pushed to other tabs/users in real-time
+  useEffect(() => {
+    const handleContentChanged = (event) => {
+      const detail = event?.detail || {};
+      if (!detail.scope || detail.scope === 'blogs') {
+        if (detail.id) {
+          // Fetch the updated blog post
+          api.get(`/blogs/${detail.id}`).then(({ data }) => {
+            if (data.item) {
+              // Update in local state in-memory
+              setBlogs((prev) => {
+                const exists = prev.some((b) => b._id === data.item._id);
+                if (exists) {
+                  return prev.map((b) => b._id === data.item._id ? data.item : b);
+                }
+                return prev;
+              });
+              
+              // Also update selected blog if it matches
+              if (selectedBlogRef.current?._id === data.item._id) {
+                if (selectedBlogRef.current.status !== data.item.status || 
+                    selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
+                  setSelectedBlog(data.item);
+                }
+              }
+            }
+          }).catch((err) => {
+            // If it returns 404 (deleted), remove it from list
+            if (err.response?.status === 404) {
+              setBlogs((prev) => prev.filter((b) => b._id !== detail.id));
+              if (selectedBlogRef.current?._id === detail.id) {
+                setSelectedBlog(null);
+              }
+            }
+          });
+        } else {
+          // Fallback to full load if no specific ID is provided
+          loadBlogs({ page: 1, reset: true });
+        }
+      }
+      if (!detail.scope || detail.scope === 'social') {
+        loadSocialPosts();
+      }
+    };
+
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    return () => {
+      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    };
+  }, [loadBlogs, loadSocialPosts, setSelectedBlog]);
 
   useEffect(() => {
     if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
@@ -685,7 +742,7 @@ export default function BlogStudio() {
           className="inline-flex h-[42px] min-w-[42px] items-center justify-center gap-2 rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
           aria-label="Refresh content studio"
         >
-          <RefreshCw size={16} />
+          <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
         </button>
         <button
           type="button"
@@ -716,7 +773,7 @@ export default function BlogStudio() {
           })}
         </div>
         <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 xl:w-auto">
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           Refresh
         </button>
       </div>
