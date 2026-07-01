@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { memo, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -7,13 +7,16 @@ import ArticleCard from '../components/ArticleCard';
 import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
-import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
+import useInfiniteScroll from '../hooks/useInfiniteScroll';
+import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import {
   Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
+const FEED_PAGE_SIZE = 8;
+const FEED_SCROLL_ROW_SIZE = 1;
 
 const FEED_COLUMNS = [
   { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
@@ -21,6 +24,7 @@ const FEED_COLUMNS = [
   { key: 'evergreen', label: 'Evergreen Topics', icon: BookOpen, dot: 'bg-violet-500', color: '#8b5cf6', tint: 'rgba(139,92,246,0.08)' },
   { key: 'competitor', label: 'Competitor Intel', icon: Building2, dot: 'bg-amber-500', color: '#f59e0b', tint: 'rgba(245,158,11,0.08)' },
 ];
+const INTEL_DESK_TABS = ['intel', 'tailored', 'saved'];
 
 const TYPE_LABELS = Object.fromEntries(FEED_COLUMNS.map((col) => [col.key, col]));
 
@@ -49,6 +53,62 @@ function articleDescription(item = {}) {
 function withoutRegion(value = {}) {
   const { region: _region, ...rest } = value || {};
   return rest;
+}
+
+function safeSessionGet(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSessionSet(key, value) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+function emptyFeedState() {
+  return Object.fromEntries(
+    FEED_COLUMNS.map(({ key }) => [key, {
+      items: [],
+      page: 0,
+      total: 0,
+      loaded: false,
+      loadingInitial: false,
+      hasMore: true,
+      loadingMore: false
+    }])
+  );
+}
+
+function emptyColumnState() {
+  return {
+    items: [],
+    page: 0,
+    total: 0,
+    loaded: false,
+    loadingInitial: false,
+    hasMore: true,
+    loadingMore: false
+  };
+}
+
+function normalizeCachedColumnState(value = {}) {
+  return {
+    ...emptyColumnState(),
+    ...value,
+    loadingInitial: false,
+    loadingMore: false
+  };
+}
+
+function normalizeCachedFeedState(value = {}) {
+  return Object.fromEntries(
+    FEED_COLUMNS.map(({ key }) => [key, normalizeCachedColumnState(value?.[key])])
+  );
 }
 
 function SkeletonCard() {
@@ -105,8 +165,15 @@ function dateScoreRanked(items = []) {
   });
 }
 
-function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
+const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount = 0, isAdmin, renderArticle, hasMore = false, loadingMore = false, onLoadMore }) {
   const Icon = column.icon;
+  const scrollRef = useRef(null);
+  const sentinelRef = useInfiniteScroll({
+    hasMore,
+    loading: loadingMore || loading,
+    onLoadMore,
+    root: scrollRef.current
+  });
 
   return (
     <section data-analytics-section={`Intel feed: ${column.label}`} className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
@@ -121,32 +188,47 @@ function FeedColumn({ column, items, loading, isAdmin, renderArticle }) {
             </div>
           </div>
           <span className="rounded-md px-2 py-1 text-[11px] font-black" style={{ color: column.color, background: column.tint }}>
-            {loading ? '...' : items.length}
+            {loading ? '...' : totalCount}
           </span>
         </div>
       </div>
 
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-gray-50/40 p-4">
+      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-gray-50/40 p-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
             ? items.map(item => renderArticle(item, { compact: true }))
             : <EmptyState icon={Icon} isAdmin={isAdmin} />}
+        {!loading && hasMore ? (
+          <div ref={sentinelRef} className="flex items-center justify-center py-2 text-[11px] font-bold text-gray-400">
+            {loadingMore ? 'Loading more...' : 'Scroll for more'}
+          </div>
+        ) : null}
       </div>
     </section>
   );
-}
+});
 
 export default function Dashboard({ initialTab = 'analytics' }) {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
-  const [analyticsData, setAnalyticsData] = useState({ news: [], govt: [], competitor: [], evergreen: [] });
-  const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
-  const [loading, setLoading] = useState(true);
   const dashTab = initialTab;
+  const intelDeskCacheKey = user?._id ? `intel_desk_state_${user._id}` : null;
+  const cachedIntelDeskState = useMemo(
+    () => (intelDeskCacheKey ? safeSessionGet(intelDeskCacheKey, null) : null),
+    [intelDeskCacheKey]
+  );
+  const [analyticsData, setAnalyticsData] = useState(() => normalizeBuckets());
+  const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
+  const [feedStateByTab, setFeedStateByTab] = useState(() => ({
+    intel: cachedIntelDeskState?.feedStateByTab?.intel ? normalizeCachedFeedState(cachedIntelDeskState.feedStateByTab.intel) : emptyFeedState(),
+    tailored: cachedIntelDeskState?.feedStateByTab?.tailored ? normalizeCachedFeedState(cachedIntelDeskState.feedStateByTab.tailored) : emptyFeedState(),
+    saved: cachedIntelDeskState?.feedStateByTab?.saved ? normalizeCachedFeedState(cachedIntelDeskState.feedStateByTab.saved) : emptyFeedState()
+  }));
+  const [loading, setLoading] = useState(true);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
   const isIntelDesk = dashTab === 'feed';
-  const [intelDeskTab, setIntelDeskTab] = useState('intel');
+  const [intelDeskTab, setIntelDeskTab] = useState(() => cachedIntelDeskState?.intelDeskTab || 'intel');
   const [analyticsViewMode, setAnalyticsViewMode] = useState('today');
   const [mobileIntelMenuOpen, setMobileIntelMenuOpen] = useState(false);
   const [mobileAnalyticsMenuOpen, setMobileAnalyticsMenuOpen] = useState(false);
@@ -163,6 +245,23 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [savingArticleIds, setSavingArticleIds] = useState(new Set());
   const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
+  const feedRequestVersionRef = useRef(0);
+  const feedScrollRequestRef = useRef(null);
+  const feedStateRef = useRef(feedStateByTab);
+  const feedLoadedSignatureRef = useRef(cachedIntelDeskState?.feedLoadedSignatures || {});
+
+  useEffect(() => {
+    feedStateRef.current = feedStateByTab;
+  }, [feedStateByTab]);
+
+  useEffect(() => {
+    if (!intelDeskCacheKey) return;
+    safeSessionSet(intelDeskCacheKey, {
+      intelDeskTab,
+      feedStateByTab,
+      feedLoadedSignatures: feedLoadedSignatureRef.current
+    });
+  }, [feedStateByTab, intelDeskCacheKey, intelDeskTab]);
 
   useEffect(() => {
     if (user?._id)
@@ -175,70 +274,394 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     delete next.publishedOnly;
     delete next.ownerOnly;
     delete next.sharedOnly;
-    if (isIntelDesk && intelDeskTab === 'tailored') next.ownerOnly = 'true';
-    if (isIntelDesk && intelDeskTab === 'intel') next.sharedOnly = 'true';
-    if (isIntelDesk && intelDeskTab === 'saved') next.saved = 'true';
     return next;
-  }, [filters, intelDeskTab, isIntelDesk]);
+  }, [filters]);
+  const [debouncedFilters, setDebouncedFilters] = useState(effectiveFilters);
+  const feedQuerySignature = useMemo(
+    () => JSON.stringify({ filters: withoutRegion(debouncedFilters), refreshKey }),
+    [debouncedFilters, refreshKey]
+  );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedFilters(effectiveFilters);
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [effectiveFilters]);
+
+  const scopeParamsForTab = useCallback((tabKey) => {
+    if (tabKey === 'tailored') return { ownerOnly: 'true' };
+    if (tabKey === 'saved') return { saved: 'true' };
+    return { sharedOnly: 'true' };
+  }, []);
+  const filterMetaParams = useMemo(() => ({
+    personalized: 'true',
+    ...scopeParamsForTab(intelDeskTab)
+  }), [intelDeskTab, scopeParamsForTab]);
+  const activeType = filters.type;
 
   const load = useCallback(async (f) => {
     setLoading(true);
     try {
       const params = { personalized: 'true' };
       for (const [k, v] of Object.entries(withoutRegion(f))) if (v) params[k] = v;
-      const [dashboardRes, analyticsRes, analyticsVelocityRes] = await Promise.all([
+      const [analyticsRes, analyticsVelocityRes] = await Promise.all([
         api.get('/articles/dashboard', { params }),
-        api.get('/articles/dashboard'),
         api.get('/articles/velocity', { params })
       ]);
-      setData(normalizeBuckets(dashboardRes.data));
+
       setAnalyticsData(normalizeBuckets(analyticsRes.data));
       setAnalyticsVelocityData(analyticsVelocityRes.data.days || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(effectiveFilters); }, [load, effectiveFilters, refreshKey]);
+  const loadFeedCounts = useCallback(async (tabKey, requestVersion = feedRequestVersionRef.current) => {
+      const params = {
+        personalized: 'true',
+        ...withoutRegion(debouncedFilters),
+        ...scopeParamsForTab(tabKey)
+      };
+
+    try {
+      const { data } = await api.get('/articles/counts', { params });
+      if (requestVersion !== feedRequestVersionRef.current) return;
+      setFeedStateByTab((prev) => ({
+        ...prev,
+        [tabKey]: Object.fromEntries(
+          FEED_COLUMNS.map(({ key }) => [
+            key,
+            {
+              ...(prev[tabKey]?.[key] || { items: [], page: 0, total: 0, hasMore: true, loadingMore: false }),
+              total: Math.max(0, Number(data?.[key] || 0))
+            }
+          ])
+        )
+      }));
+    } catch (error) {
+      console.error(error);
+    }
+  }, [debouncedFilters, scopeParamsForTab]);
+
+  const loadFeedSnapshot = useCallback(async ({ tabKey, offset = 0, limit = FEED_PAGE_SIZE, reset = false, requestVersion = feedRequestVersionRef.current }) => {
+    const isScrollPage = !reset && offset > 0;
+    const requestKey = isScrollPage ? `${tabKey}:all:${offset}:${limit}` : null;
+    if (isScrollPage) {
+      if (feedScrollRequestRef.current && feedScrollRequestRef.current !== requestKey) {
+        return false;
+      }
+      feedScrollRequestRef.current = requestKey;
+    }
+
+    const params = {
+      personalized: 'true',
+      offset,
+      limit,
+      ...withoutRegion(debouncedFilters),
+      ...scopeParamsForTab(tabKey)
+    };
+
+    setFeedStateByTab((prev) => ({
+      ...prev,
+      [tabKey]: Object.fromEntries(
+        FEED_COLUMNS.map(({ key }) => {
+          const current = prev[tabKey]?.[key] || emptyColumnState();
+          return [
+            key,
+            {
+              ...current,
+              items: reset ? [] : current.items,
+              page: reset ? 0 : current.page,
+              loadingInitial: reset,
+              loadingMore: !reset
+            }
+          ];
+        })
+      )
+    }));
+
+    try {
+      const { data } = await api.get('/articles/dashboard', { params });
+      if (requestVersion !== feedRequestVersionRef.current) return;
+      setFeedStateByTab((prev) => ({
+        ...prev,
+        [tabKey]: Object.fromEntries(
+          FEED_COLUMNS.map(({ key }) => {
+            const nextItems = Array.isArray(data?.[key]) ? data[key].filter((item) => String(item?.type || '') === key) : [];
+            const current = prev[tabKey]?.[key] || emptyColumnState();
+            const total = Number(current.total || 0);
+            const mergedItems = reset
+              ? nextItems
+              : [...current.items, ...nextItems.filter((item) => !current.items.some((existing) => existing._id === item._id))];
+            return [
+              key,
+              {
+                ...current,
+                items: mergedItems,
+                page: mergedItems.length,
+                loaded: true,
+                loadingInitial: false,
+                hasMore: total > mergedItems.length,
+                loadingMore: false
+              }
+            ];
+          })
+        )
+      }));
+      return true;
+    } catch (error) {
+      console.error(error);
+      setFeedStateByTab((prev) => ({
+        ...prev,
+        [tabKey]: Object.fromEntries(
+          FEED_COLUMNS.map(({ key }) => [
+            key,
+            {
+              ...(prev[tabKey]?.[key] || emptyColumnState()),
+              loadingInitial: false,
+              loadingMore: false
+            }
+          ])
+        )
+      }));
+      return false;
+    } finally {
+      if (isScrollPage && feedScrollRequestRef.current === requestKey) {
+        feedScrollRequestRef.current = null;
+      }
+    }
+  }, [debouncedFilters, scopeParamsForTab]);
+
+  const loadFeedPage = useCallback(async ({ tabKey, type, page = 1, reset = false, requestVersion = feedRequestVersionRef.current }) => {
+    const isScrollPage = !reset && page > 1;
+    const requestKey = isScrollPage ? `${tabKey}:${type}:${page}` : null;
+    if (isScrollPage) {
+      if (feedScrollRequestRef.current && feedScrollRequestRef.current !== requestKey) {
+        return;
+      }
+      feedScrollRequestRef.current = requestKey;
+    }
+
+    const params = {
+      personalized: 'true',
+      type,
+      page,
+      limit: FEED_PAGE_SIZE,
+      ...withoutRegion(debouncedFilters),
+      ...scopeParamsForTab(tabKey)
+    };
+
+    setFeedStateByTab((prev) => ({
+      ...prev,
+        [tabKey]: {
+          ...prev[tabKey],
+          [type]: {
+          ...(prev[tabKey]?.[type] || emptyColumnState()),
+          items: reset ? [] : (prev[tabKey]?.[type]?.items || []),
+          page: reset ? 0 : (prev[tabKey]?.[type]?.page || 0),
+          hasMore: reset ? true : (prev[tabKey]?.[type]?.hasMore ?? true),
+          loadingInitial: reset,
+          loadingMore: !reset
+        }
+      }
+    }));
+
+    try {
+      const { data } = await api.get('/articles', { params });
+      if (requestVersion !== feedRequestVersionRef.current) return;
+      const nextItems = (Array.isArray(data.items) ? data.items : []).filter((item) => String(item?.type || '') === String(type));
+      const totalItems = Math.max(0, Number(data.total || 0));
+      setFeedStateByTab((prev) => {
+        const current = prev[tabKey]?.[type] || emptyColumnState();
+        const mergedItems = reset
+          ? nextItems
+          : [...current.items, ...nextItems.filter((item) => !current.items.some((existing) => existing._id === item._id))];
+        return {
+          ...prev,
+          [tabKey]: {
+            ...prev[tabKey],
+            [type]: {
+              items: mergedItems,
+              page,
+              total: totalItems,
+              loaded: true,
+              loadingInitial: false,
+              hasMore: page < Number(data.pages || page),
+              loadingMore: false
+            }
+          }
+        };
+      });
+    } catch (error) {
+      console.error(error);
+      setFeedStateByTab((prev) => ({
+        ...prev,
+        [tabKey]: {
+          ...prev[tabKey],
+          [type]: {
+            ...prev[tabKey][type],
+            loadingInitial: false,
+            loadingMore: false
+          }
+        }
+      }));
+    } finally {
+      if (isScrollPage && feedScrollRequestRef.current === requestKey) {
+        feedScrollRequestRef.current = null;
+      }
+    }
+  }, [debouncedFilters, scopeParamsForTab]);
 
   useEffect(() => {
-    const handleContentChanged = () => {
-      load(effectiveFilters);
-    };
-    const refreshVisibleData = () => {
-      if (document.visibilityState === 'hidden') return;
-      load(effectiveFilters);
+    if (dashTab !== 'analytics') return;
+    load({});
+  }, [dashTab, load, refreshKey]);
+
+  useEffect(() => {
+    if (dashTab === 'analytics') return;
+    const currentTabState = feedStateRef.current[intelDeskTab] || emptyFeedState();
+    const typesToLoad = activeType ? [activeType] : FEED_COLUMNS.map((column) => column.key);
+    const hasMatchingLoadedData = (
+      feedLoadedSignatureRef.current[intelDeskTab] === feedQuerySignature &&
+      typesToLoad.every((type) => currentTabState[type]?.loaded)
+    );
+    if (hasMatchingLoadedData) {
+      setFeedRefreshing(false);
+      return;
+    }
+    const shouldWarmAllTabs = INTEL_DESK_TABS.every(
+      (tabKey) => feedLoadedSignatureRef.current[tabKey] !== feedQuerySignature
+    );
+    const tabsToLoad = shouldWarmAllTabs ? INTEL_DESK_TABS : [intelDeskTab];
+
+    const requestVersion = feedRequestVersionRef.current + 1;
+    feedRequestVersionRef.current = requestVersion;
+    setFeedStateByTab((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        tabsToLoad.map((tabKey) => [
+          tabKey,
+          Object.fromEntries(
+            FEED_COLUMNS.map(({ key }) => [
+              key,
+              typesToLoad.includes(key)
+                ? {
+                    ...(prev[tabKey]?.[key] || emptyColumnState()),
+                    items: [],
+                    page: 0,
+                    total: 0,
+                    loaded: false,
+                    loadingInitial: true,
+                    hasMore: true,
+                    loadingMore: false
+                  }
+                : prev[tabKey]?.[key] || emptyColumnState()
+            ])
+          )
+        ])
+      )
+    }));
+    setFeedRefreshing(true);
+    const requests = activeType
+      ? tabsToLoad.flatMap((tabKey) => (
+          typesToLoad.map((type) => loadFeedPage({ tabKey, type, page: 1, reset: true, requestVersion }))
+        ))
+      : tabsToLoad.flatMap((tabKey) => ([
+          loadFeedCounts(tabKey, requestVersion),
+          loadFeedSnapshot({ tabKey, offset: 0, limit: FEED_PAGE_SIZE, reset: true, requestVersion })
+        ]));
+    Promise.all(requests)
+      .then(() => {
+        if (requestVersion === feedRequestVersionRef.current) {
+          tabsToLoad.forEach((tabKey) => {
+            feedLoadedSignatureRef.current[tabKey] = feedQuerySignature;
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (requestVersion === feedRequestVersionRef.current) {
+          setFeedRefreshing(false);
+        }
+      });
+  }, [activeType, dashTab, debouncedFilters, feedQuerySignature, intelDeskTab, loadFeedCounts, loadFeedPage, loadFeedSnapshot]);
+
+  useEffect(() => {
+    const invalidateDashboardCache = () => {
+      setRefreshKey((value) => value + 1);
     };
 
-    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-    window.addEventListener('focus', refreshVisibleData);
-    document.addEventListener('visibilitychange', refreshVisibleData);
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, invalidateDashboardCache);
+    window.addEventListener(APP_EVENT_AUTH_CHANGED, invalidateDashboardCache);
     return () => {
-      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-      window.removeEventListener('focus', refreshVisibleData);
-      document.removeEventListener('visibilitychange', refreshVisibleData);
+      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, invalidateDashboardCache);
+      window.removeEventListener(APP_EVENT_AUTH_CHANGED, invalidateDashboardCache);
     };
-  }, [load, effectiveFilters]);
+  }, []);
 
-  const activeType = filters.type;
   const visibleColumns = activeType ? FEED_COLUMNS.filter(c => c.key === activeType) : FEED_COLUMNS;
   const canDeleteTailoredArticles = isIntelDesk && intelDeskTab === 'tailored' && isAdmin;
-  const rankedData = {
-    news: dateScoreRanked(data.news),
-    govt: dateScoreRanked(data.govt),
-    competitor: dateScoreRanked(data.competitor),
-    evergreen: dateScoreRanked(data.evergreen),
-  };
-  const mobileFeedItems = visibleColumns
-    .flatMap((col) => rankedData[col.key] || [])
-    .sort((a, b) => {
-      const timeDiff = getEffectiveTime(b) - getEffectiveTime(a);
-      if (timeDiff) return timeDiff;
+  const currentFeedState = feedStateByTab[intelDeskTab] || emptyFeedState();
+  const isFeedLoading = visibleColumns.some((column) => currentFeedState[column.key]?.loadingInitial);
+  const isAnyScrollPageLoading = FEED_COLUMNS.some((column) => currentFeedState[column.key]?.loadingMore);
+  const combinedFeedLoadedCount = visibleColumns.reduce((maxCount, column) => {
+    const count = Number(currentFeedState[column.key]?.items?.length || 0);
+    return count > maxCount ? count : maxCount;
+  }, 0);
+  const hasCombinedFeedMore = visibleColumns.some((column) => currentFeedState[column.key]?.hasMore);
+  const refreshIndicatorLoading = dashTab === 'analytics' ? loading : (feedRefreshing || isFeedLoading);
+  const rankedData = useMemo(() => ({
+    news: dateScoreRanked(currentFeedState.news?.items || []),
+    govt: dateScoreRanked(currentFeedState.govt?.items || []),
+    competitor: dateScoreRanked(currentFeedState.competitor?.items || []),
+    evergreen: dateScoreRanked(currentFeedState.evergreen?.items || []),
+  }), [currentFeedState]);
+  const mobileFeedItems = useMemo(() => (
+    visibleColumns
+      .flatMap((col) => rankedData[col.key] || [])
+      .sort((a, b) => {
+        const timeDiff = getEffectiveTime(b) - getEffectiveTime(a);
+        if (timeDiff) return timeDiff;
 
-      const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
-      if (scoreDiff) return scoreDiff;
-      return getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
+        const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
+        if (scoreDiff) return scoreDiff;
+        return getEffectiveDateKey(b).localeCompare(getEffectiveDateKey(a));
+      })
+  ), [rankedData, visibleColumns]);
+  const visibleFeedItems = useMemo(() => {
+    if (activeType) return rankedData[activeType] || [];
+    return mobileFeedItems;
+  }, [activeType, mobileFeedItems, rankedData]);
+  const activeFeedScrollRef = useRef(null);
+  const activeFeedLoadMoreRef = useInfiniteScroll({
+    enabled: isIntelDesk && Boolean(activeType),
+    hasMore: Boolean(activeType && currentFeedState[activeType]?.hasMore),
+    loading: Boolean(isAnyScrollPageLoading || (activeType && (currentFeedState[activeType]?.loadingMore || currentFeedState[activeType]?.loadingInitial))),
+    onLoadMore: () => {
+      if (!activeType) return false;
+      const state = currentFeedState[activeType];
+      if (!state?.hasMore || state.loadingMore || isAnyScrollPageLoading) return false;
+      loadFeedPage({ tabKey: intelDeskTab, type: activeType, page: (state.page || 1) + 1, requestVersion: feedRequestVersionRef.current });
+      return true;
+    },
+    root: activeFeedScrollRef.current
+  });
+  const loadCombinedFeedMore = useCallback(() => {
+    if (activeType || isAnyScrollPageLoading || !hasCombinedFeedMore) return false;
+    loadFeedSnapshot({
+      tabKey: intelDeskTab,
+      offset: combinedFeedLoadedCount,
+      limit: FEED_SCROLL_ROW_SIZE,
+      requestVersion: feedRequestVersionRef.current
     });
-  const visibleFeedItems = activeType ? (rankedData[activeType] || []) : mobileFeedItems;
+    return true;
+  }, [activeType, combinedFeedLoadedCount, hasCombinedFeedMore, intelDeskTab, isAnyScrollPageLoading, loadFeedSnapshot]);
+  const mobileLoadMoreRef = useInfiniteScroll({
+    enabled: isIntelDesk,
+    hasMore: hasCombinedFeedMore,
+    loading: isAnyScrollPageLoading || visibleColumns.some((column) => currentFeedState[column.key]?.loadingMore || currentFeedState[column.key]?.loadingInitial),
+    onLoadMore: loadCombinedFeedMore
+  });
   useEffect(() => {
     setSelectedArticleIds(new Set());
   }, [canDeleteTailoredArticles, filters.type, intelDeskTab]);
@@ -274,14 +697,49 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     openStudioForArticle(draggedArticle, mode);
   };
 
-  const patchArticleSavedState = (articleId, isSaved) => {
+  const patchArticleSavedState = (article, isSaved) => {
+    const articleId = article?._id;
+    if (!articleId) return;
     const updateBuckets = (prev) => Object.fromEntries(
       Object.entries(prev || {}).map(([type, items]) => [
         type,
         (items || []).map((item) => item._id === articleId ? { ...item, isSaved } : item)
       ])
     );
-    setData(updateBuckets);
+    setFeedStateByTab((prev) => {
+      const next = Object.fromEntries(
+        Object.entries(prev || {}).map(([tab, bucketState]) => [tab, Object.fromEntries(
+          Object.entries(bucketState || {}).map(([type, state]) => [
+            type,
+            { ...state, items: (state.items || []).map((item) => item._id === articleId ? { ...item, isSaved } : item) }
+          ])
+        )])
+      );
+
+      const articleType = article.type;
+      if (articleType && next.saved?.[articleType]) {
+        const savedState = next.saved[articleType];
+        const savedItems = savedState.items || [];
+        const existingIndex = savedItems.findIndex((item) => item._id === articleId);
+
+        if (isSaved) {
+          const savedItem = { ...article, isSaved: true };
+          next.saved[articleType] = {
+            ...savedState,
+            items: existingIndex >= 0
+              ? savedItems.map((item) => item._id === articleId ? { ...item, ...savedItem } : item)
+              : [savedItem, ...savedItems]
+          };
+        } else if (existingIndex >= 0) {
+          next.saved[articleType] = {
+            ...savedState,
+            items: savedItems.filter((item) => item._id !== articleId)
+          };
+        }
+      }
+
+      return next;
+    });
     setAnalyticsData(updateBuckets);
   };
 
@@ -293,7 +751,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         (items || []).filter((item) => !ids.has(String(item._id)))
       ])
     );
-    setData(updateBuckets);
+    setFeedStateByTab((prev) => Object.fromEntries(
+      Object.entries(prev || {}).map(([tab, bucketState]) => [tab, Object.fromEntries(
+        Object.entries(bucketState || {}).map(([type, state]) => [
+          type,
+          { ...state, items: (state.items || []).filter((item) => !ids.has(String(item._id))) }
+        ])
+      )])
+    ));
     setAnalyticsData(updateBuckets);
   };
 
@@ -336,7 +801,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     if (!item?._id || savingArticleIds.has(item._id)) return;
     setSavingArticleIds((prev) => new Set(prev).add(item._id));
     const nextSaved = !item.isSaved;
-    patchArticleSavedState(item._id, nextSaved);
+    patchArticleSavedState(item, nextSaved);
     try {
       if (nextSaved) {
         await api.post(`/articles/${item._id}/save`);
@@ -344,7 +809,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         await api.delete(`/articles/${item._id}/save`);
       }
     } catch (error) {
-      patchArticleSavedState(item._id, item.isSaved);
+      patchArticleSavedState(item, item.isSaved);
       console.error(error);
     } finally {
       setSavingArticleIds((prev) => {
@@ -426,7 +891,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
               aria-label="Refresh intel desk"
             >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw size={16} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
             </button>
             <button
               type="button"
@@ -488,7 +953,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-[linear-gradient(180deg,#fff8fa_0%,#fff1f5_100%)] text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
                 aria-label="Refresh dashboard"
               >
-                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw size={16} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
               </button>
               <button
                 type="button"
@@ -531,7 +996,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         data-tour="dashboard-refresh"
         className={`hidden min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white sm:w-auto ${(dashTab === 'analytics' || isIntelDesk) ? 'sm:inline-flex' : ''}`}
       >
-        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        <RefreshCw size={14} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
         Refresh
       </button>
       {isIntelDesk && mobileIntelMenuOpen ? (
@@ -645,7 +1110,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalized intelligence feed">
             <div className="mb-4 shrink-0" data-tour="intel-filters">
-              <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} />
+              <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} metaParams={filterMetaParams} />
             </div>
 
             {canDeleteTailoredArticles && selectedArticleIds.size > 0 && (
@@ -678,7 +1143,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             )}
 
             {activeType ? (
-              <div className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
+              <div ref={activeFeedScrollRef} className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
                 {(() => {
                   const col = visibleColumns[0];
                   if (!col) return null;
@@ -691,17 +1156,22 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                           <h2 className="font-bold text-[15px] text-gray-800">{col.label}</h2>
                         </div>
                         <span className="text-[11px] text-gray-400 uppercase tracking-wider font-mono">
-                          {loading ? '...' : rankedData[col.key]?.length || 0}
+                          {currentFeedState[col.key]?.loadingInitial ? '...' : currentFeedState[col.key]?.total || 0}
                         </span>
                       </div>
                       <div>
-                        {loading ? (
+                        {currentFeedState[col.key]?.loadingInitial ? (
                             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
                           </div>
                         ) : rankedData[col.key]?.length ? (
-                          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                             {rankedData[col.key].map(item => renderDraggableArticle(item))}
+                            {currentFeedState[col.key]?.hasMore ? (
+                              <div ref={activeFeedLoadMoreRef} className="col-span-full flex items-center justify-center py-2 text-xs font-bold text-gray-400">
+                                {currentFeedState[col.key]?.loadingMore ? 'Loading more...' : 'Scroll for more'}
+                              </div>
+                            ) : null}
                           </div>
                         ) : (
                           <EmptyState icon={col.icon} isAdmin={isAdmin} />
@@ -714,29 +1184,43 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             ) : (
               <>
               <div className="min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
-                {loading ? (
+                {isFeedLoading ? (
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
                   </div>
                 ) : mobileFeedItems.length ? (
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {mobileFeedItems.map(item => renderDraggableArticle(item))}
+                    {hasCombinedFeedMore ? (
+                      <div ref={mobileLoadMoreRef} className="col-span-full flex items-center justify-center py-2 text-xs font-bold text-gray-400">
+                        {isAnyScrollPageLoading ? 'Loading more...' : 'Scroll for more'}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />
                 )}
               </div>
               <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5" data-tour="intel-feed">
-                {visibleColumns.map(col => (
-                  <FeedColumn
-                    key={col.key}
-                    column={col}
-                    items={rankedData[col.key] || []}
-                    loading={loading}
-                    isAdmin={isAdmin}
-                    renderArticle={renderDraggableArticle}
-                  />
-                ))}
+                  {visibleColumns.map(col => (
+                    <FeedColumn
+                      key={col.key}
+                      column={col}
+                      items={rankedData[col.key] || []}
+                      totalCount={currentFeedState[col.key]?.total || 0}
+                      loading={Boolean(currentFeedState[col.key]?.loadingInitial)}
+                      isAdmin={isAdmin}
+                      renderArticle={renderDraggableArticle}
+                      hasMore={Boolean(currentFeedState[col.key]?.hasMore)}
+                      loadingMore={Boolean(currentFeedState[col.key]?.loadingMore)}
+                      onLoadMore={() => {
+                        const state = currentFeedState[col.key];
+                        if (!state?.hasMore || state.loadingMore || isAnyScrollPageLoading) return false;
+                        loadFeedPage({ tabKey: intelDeskTab, type: col.key, page: (state.page || 1) + 1, requestVersion: feedRequestVersionRef.current });
+                        return true;
+                      }}
+                    />
+                  ))}
                 {false && visibleColumns.map(col => (
                   <div key={col.key} className="flex min-h-0 flex-col">
                     <div className="flex items-center justify-between mb-4 px-0.5">

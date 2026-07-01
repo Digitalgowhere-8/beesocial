@@ -9,6 +9,8 @@ const { protect } = require('../middleware/auth');
 const { generateBlogPost, generateLinkedInPost } = require('../services/aiService');
 const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
 const { publishTenantEvent } = require('../utils/realtime');
+const { acquire } = require('../utils/concurrencyGate');
+const genProgress = require('../services/generationProgress');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -62,6 +64,10 @@ function tenantQuery(user) {
   return { tenantAdminId: tenantAdminId(user) };
 }
 
+function tenantScopeKey(user) {
+  return String(tenantAdminId(user));
+}
+
 function articleTenantQuery(user) {
   if (user.role === 'super_admin') return {};
   return {
@@ -83,6 +89,8 @@ function slugify(value) {
 
 function blogSourceContext(article = {}) {
   return [
+    article.rawContent,
+    article.rawData?.rawContent,
     article.tavilyAnswer,
     article.blogContext,
     article.blog_context,
@@ -93,7 +101,7 @@ function blogSourceContext(article = {}) {
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join('\n\n')
-    .slice(0, 7000);
+    .slice(0, 12000);
 }
 
 function limitReachedPayload({ message, limitType, used, limit }) {
@@ -224,10 +232,10 @@ const linkedinOptionsSchema = Joi.object({
   tone: Joi.string().valid('professional', 'conversational', 'authoritative', 'friendly', 'educational', 'persuasive', 'technical', 'thought_leadership').default('professional'),
   audience: Joi.string().allow('').max(220).default('business decision-makers'),
   length: Joi.string().valid('short', 'medium', 'long').default('medium'),
-  hookStyle: Joi.string().valid('proof', 'contrarian', 'personal_story', 'insight', 'question', 'stat', 'story').default('proof'),
-  framework: Joi.string().valid('auto', 'SLAY', 'PAS', 'POV', '5-Line Mirror', 'AIDA').default('auto'),
-  topicTier: Joi.string().valid('auto', 'Broad', 'Narrow', 'Niche').default('auto'),
-  emotionalJob: Joi.string().valid('auto', 'Inspire', 'Educate', 'Provoke', 'Convert').default('auto'),
+  hookStyle: Joi.string().valid('proof', 'warning', 'contrarian', 'personal_story', 'insight', 'question', 'stat', 'story').default('proof'),
+  framework: Joi.string().valid('auto', 'SLAY', 'PAS', 'PRA', 'POV', '5-Line Mirror', 'AIDA').default('auto'),
+  topicTier: Joi.string().valid('auto', 'Broad', 'Practical', 'Narrow', 'Niche').default('auto'),
+  emotionalJob: Joi.string().valid('auto', 'Inspire', 'Educate', 'Urgency', 'Reassure', 'Provoke', 'Convert').default('auto'),
   personaProfile: Joi.string().allow('').max(500),
   icpPainPoints: Joi.string().allow('').max(2000),
   marketReality: Joi.string().allow('').max(2000),
@@ -295,6 +303,27 @@ router.get('/', protect, requireContentRepository, asyncHandler(async (req, res)
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 }));
 
+// GET /blogs/generation-status — returns the active generation state for the calling tenant
+router.get('/generation-status', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const tenantId = tenantAdminId(req.user);
+  const state = genProgress.getGeneration(String(tenantId));
+  res.json(state || { status: 'idle' });
+}));
+
+// POST /blogs/generation-clear — clear status after frontend has handled the completed/failed state
+router.post('/generation-clear', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const tenantId = tenantAdminId(req.user);
+  genProgress.finishGeneration(String(tenantId));
+  res.json({ ok: true });
+}));
+
+// POST /blogs/cancel — cancel any in-flight generation for the calling tenant
+router.post('/cancel', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const tenantId = tenantAdminId(req.user);
+  genProgress.cancelGeneration(String(tenantId));
+  res.json({ ok: true, message: 'Generation cancellation requested.' });
+}));
+
 router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyncHandler(async (req, res) => {
   const { error, value } = generateSchema.validate(req.body || {});
   if (error) return res.status(400).json({ message: error.message });
@@ -306,55 +335,89 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const tenantId = tenantAdminId(req.user);
+
+  // Reject if a generation is already running for this tenant
+  const existing = genProgress.getGeneration(String(tenantId));
+  if (existing && existing.status === 'running') {
+    return res.status(409).json({ message: 'A generation is already in progress. Please wait for it to finish or cancel it first.' });
+  }
+
+  genProgress.startGeneration(String(tenantId), 'blog');
+  const release = acquire('blog', tenantScopeKey(req.user));
   const sourceContext = blogSourceContext(article);
-  const generated = await generateBlogPost({
-    article,
-    style: value.style,
-    keywords: value.keywords,
-    company: { name: req.user.company || req.user.name }
-  });
-  const slug = await uniqueSlug(tenantId, generated.title);
+  const userObj = req.user;
 
-  const item = await BlogPost.create({
-    tenantAdminId: tenantId,
-    createdBy: req.user._id,
-    sourceArticleId: article._id,
-    title: generated.title,
-    slug,
-    excerpt: generated.excerpt,
-    bodyMarkdown: generated.bodyMarkdown,
-    status: value.status,
-    sourceSnapshot: {
-      title: article.title,
-      summary: article.summary || article.aiSummary || '',
-      context: sourceContext,
-      url: article.url,
-      source: article.source,
-      articleType: article.type,
-      sourceQuery: article.sourceQuery || '',
-      relevanceReason: article.relevanceReason || '',
-      matchedInterests: Array.isArray(article.matchedInterests) ? article.matchedInterests : []
-    },
-    style: value.style,
-    category: article.category || '',
-    subcategory: article.subcategory || '',
-    type: article.type || 'news',
-    country: article.country || '',
-    region: article.region || '',
-    keywords: generated.suggestedKeywords || value.keywords,
-    language: article.language || 'en',
-    model: generated.model || '',
-    generationPrompt: JSON.stringify({ style: value.style, keywords: value.keywords }),
-    publishedAt: value.status === 'published' ? new Date() : undefined
+  setImmediate(async () => {
+    try {
+      // Check for cancellation before the expensive AI call
+      if (genProgress.isCancelled(String(tenantId))) {
+        return;
+      }
+
+      const generated = await generateBlogPost({
+        article,
+        style: value.style,
+        keywords: value.keywords,
+        company: { name: userObj.company || userObj.name }
+      });
+
+      // Check again after the AI call returns
+      if (genProgress.isCancelled(String(tenantId))) {
+        return;
+      }
+
+      const slug = await uniqueSlug(tenantId, generated.title);
+
+      const item = await BlogPost.create({
+        tenantAdminId: tenantId,
+        createdBy: userObj._id,
+        sourceArticleId: article._id,
+        title: generated.title,
+        slug,
+        excerpt: generated.excerpt,
+        bodyMarkdown: generated.bodyMarkdown,
+        status: value.status,
+        sourceSnapshot: {
+          title: article.title,
+          summary: article.summary || article.aiSummary || '',
+          rawContent: article.rawContent || article.rawData?.rawContent || '',
+          context: sourceContext,
+          url: article.url,
+          source: article.source,
+          articleType: article.type,
+          sourceQuery: article.sourceQuery || '',
+          relevanceReason: article.relevanceReason || '',
+          matchedInterests: Array.isArray(article.matchedInterests) ? article.matchedInterests : []
+        },
+        style: value.style,
+        category: article.category || '',
+        subcategory: article.subcategory || '',
+        type: article.type || 'news',
+        country: article.country || '',
+        region: article.region || '',
+        keywords: generated.suggestedKeywords || value.keywords,
+        language: article.language || 'en',
+        model: generated.model || '',
+        generationPrompt: JSON.stringify({ style: value.style, keywords: value.keywords }),
+        publishedAt: value.status === 'published' ? new Date() : undefined
+      });
+
+      publishTenantEvent(String(tenantId), 'content', {
+        scope: 'blogs',
+        action: 'generated',
+        id: String(item._id)
+      });
+
+      genProgress.completeGeneration(String(tenantId), String(item._id));
+    } catch (err) {
+      console.error('[Async Blog Gen Error]', err);
+      genProgress.failGeneration(String(tenantId), err.message || 'Blog generation failed');
+    } finally {
+      release();
+    }
   });
 
-  publishTenantEvent(String(tenantId), 'content', {
-    scope: 'blogs',
-    action: 'generated',
-    id: String(item._id)
-  });
-
-  res.status(201).json({ item });
+  res.status(202).json({ ok: true, status: 'running', message: 'Blog generation started in background' });
 }));
 
 router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLimit, asyncHandler(async (req, res) => {
@@ -367,45 +430,88 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
   const article = await Article.findOne({ _id: value.articleId, ...articleTenantQuery(req.user) }).lean();
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
-  const generated = await generateLinkedInPost({
-    article,
-    options: value.options,
-    company: { name: req.user.company || req.user.name }
-  });
+  const tenantId = tenantAdminId(req.user);
 
-  const sourceSnapshot = {
-    title: article.title,
-    summary: article.summary || article.aiSummary || '',
-    url: article.url,
-    source: article.source,
-    articleType: article.type,
-    category: article.category || '',
-    subcategory: article.subcategory || '',
-    country: article.country || '',
-    region: article.region || '',
-    relevanceReason: article.relevanceReason || ''
-  };
+  // Reject if a generation is already running for this tenant
+  const existingGen = genProgress.getGeneration(String(tenantId));
+  if (existingGen && existingGen.status === 'running') {
+    return res.status(409).json({ message: 'A generation is already in progress. Please wait for it to finish or cancel it first.' });
+  }
 
-  res.status(201).json({
-    item: {
-      ...generated,
-      sourceArticleId: article._id,
-      status: 'draft',
-      platform: 'linkedin',
-      saved: false,
-      sourceSnapshot,
-      options: value.options
+  genProgress.startGeneration(String(tenantId), 'linkedin');
+  const release = acquire('social', tenantScopeKey(req.user));
+  const userObj = req.user;
+
+  setImmediate(async () => {
+    try {
+      if (genProgress.isCancelled(String(tenantId))) {
+        return;
+      }
+
+      const generated = await generateLinkedInPost({
+        article,
+        options: value.options,
+        company: { name: userObj.company || userObj.name }
+      });
+
+      if (genProgress.isCancelled(String(tenantId))) {
+        return;
+      }
+
+      const sourceSnapshot = {
+        title: article.title,
+        summary: article.summary || article.aiSummary || '',
+        url: article.url,
+        source: article.source,
+        articleType: article.type,
+        category: article.category || '',
+        subcategory: article.subcategory || '',
+        country: article.country || '',
+        region: article.region || '',
+        relevanceReason: article.relevanceReason || ''
+      };
+
+      const resultPayload = {
+        ...generated,
+        sourceArticleId: article._id,
+        status: 'draft',
+        platform: 'linkedin',
+        saved: false,
+        sourceSnapshot,
+        options: value.options
+      };
+
+      genProgress.completeGeneration(String(tenantId), null, resultPayload);
+    } catch (err) {
+      console.error('[Async LinkedIn Gen Error]', err);
+      genProgress.failGeneration(String(tenantId), err.message || 'LinkedIn post generation failed');
+    } finally {
+      release();
     }
   });
+
+  res.status(202).json({ ok: true, status: 'running', message: 'LinkedIn post generation started in background' });
 }));
 
 router.get('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
   const q = { ...tenantQuery(req.user) };
   if (req.query.platform) q.platform = req.query.platform;
   if (req.query.status) q.status = req.query.status;
+  if (req.query.q) q.postText = { $regex: escapeRegex(String(req.query.q).trim()), $options: 'i' };
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
-  const items = await SocialPost.find(q).sort({ updatedAt: -1 }).limit(limit).lean();
-  res.json({ items });
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    SocialPost.find(q).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
+    SocialPost.countDocuments(q)
+  ]);
+  res.json({
+    items,
+    page,
+    limit,
+    total,
+    pages: Math.ceil(total / limit)
+  });
 }));
 
 router.post('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req, res) => {

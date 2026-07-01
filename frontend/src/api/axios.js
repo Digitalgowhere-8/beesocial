@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 120000
@@ -45,6 +47,11 @@ api.interceptors.response.use(
     }
     // Auto-logout on 401 (token expired) - except for /auth/* endpoints
     if (err.response?.status === 401 && !/\/auth\//.test(err.config?.url || '')) {
+      try {
+        sessionStorage.setItem(AUTH_REDIRECT_NOTICE_KEY, err.message || 'Your session ended. Please sign in again.');
+      } catch {
+        // Ignore storage failures; redirect is still important.
+      }
       localStorage.removeItem('opportunityos_token');
       localStorage.removeItem('opportunityos_user');
       localStorage.removeItem('opportunityos_session');

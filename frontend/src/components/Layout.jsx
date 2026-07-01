@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import GuidedOnboarding from './GuidedOnboarding';
 import {
-  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X
+  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -25,9 +25,9 @@ function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '', dataTou
       to={to}
       data-tour={dataTour || undefined}
       onClick={(event) => {
-        if (onActiveClick && window.location.pathname.startsWith(to)) {
+        if (window.location.pathname.startsWith(to)) {
           event.preventDefault();
-          onActiveClick();
+          onActiveClick?.();
         }
       }}
       className={({ isActive }) =>
@@ -285,7 +285,7 @@ function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className =
 }
 
 export default function Layout({ children, headerActions = null }) {
-  const { user, isAdmin, isSuperAdmin, logout, runProgress } = useAuth();
+  const { user, isAdmin, isSuperAdmin, logout, runProgress, setRunProgress, genProgress, setGenProgress } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -525,6 +525,11 @@ export default function Layout({ children, headerActions = null }) {
     navigate('/profile');
   };
 
+  const navigateIfNeeded = useCallback((path) => {
+    if (location.pathname.startsWith(path)) return;
+    navigate(path);
+  }, [location.pathname, navigate]);
+
   useEffect(() => {
     setShowNotifications(false);
     setShowProfileMenu(false);
@@ -541,23 +546,13 @@ export default function Layout({ children, headerActions = null }) {
     const handleAuthChanged = () => {
       pollNotifications();
     };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') pollNotifications();
-    };
-    const handleFocus = () => {
-      pollNotifications();
-    };
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     window.addEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
       window.removeEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isSuperAdmin, pollNotifications, user?._id]);
 
@@ -598,12 +593,12 @@ export default function Layout({ children, headerActions = null }) {
   const mobileNavItems = isSuperAdmin
     ? []
     : [
-        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, onClick: () => navigate('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
-        { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigate('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
+        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
+        { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigateIfNeeded('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
         ...(canUseContentRepository ? [
-          { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigate('/blogs'), active: location.pathname.startsWith('/blogs') }
+          { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigateIfNeeded('/blogs'), active: location.pathname.startsWith('/blogs') }
         ] : []),
-        { key: 'profile', label: 'Profile', icon: UserIcon, onClick: () => navigate('/profile'), active: location.pathname.startsWith('/profile'), dataTour: 'nav-profile' }
+        { key: 'profile', label: 'Profile', icon: UserIcon, onClick: () => navigateIfNeeded('/profile'), active: location.pathname.startsWith('/profile'), dataTour: 'nav-profile' }
       ];
 
   return (
@@ -712,12 +707,12 @@ export default function Layout({ children, headerActions = null }) {
               <img 
                 src="/logo.png" 
                 className="h-8 cursor-pointer object-contain" 
-                onClick={() => navigate('/dashboard')} 
+                onClick={() => navigateIfNeeded('/dashboard')} 
                 alt="OpportunityOS AI Logo" 
               />
             </div>
           ) : (
-            <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigate('/dashboard')}>
+            <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigateIfNeeded('/dashboard')}>
               <img src="/favicon.png" className="h-6 w-6 object-contain" alt="OpportunityOS AI Logo" />
             </div>
           )}
@@ -815,27 +810,27 @@ export default function Layout({ children, headerActions = null }) {
           <>
           {collapsed ? (
             <>
-              <button onClick={() => navigate('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
+              <button onClick={() => navigateIfNeeded('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <LayoutDashboard size={16} />
               </button>
-              <button onClick={() => navigate('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
+              <button onClick={() => navigateIfNeeded('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <Newspaper size={16} />
               </button>
               {canUseContentRepository && (
-                <button onClick={() => navigate('/blogs')} title="Content Repository" data-tour="nav-content-repository"
+                <button onClick={() => navigateIfNeeded('/blogs')} title="Content Repository" data-tour="nav-content-repository"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
               {canUseBlogStudio && (
-                <button onClick={() => navigate('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
+                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
-              <button onClick={() => navigate('/profile')} title="My Hive Profile" data-tour="nav-profile"
+              <button onClick={() => navigateIfNeeded('/profile')} title="My Hive Profile" data-tour="nav-profile"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
@@ -962,6 +957,45 @@ export default function Layout({ children, headerActions = null }) {
                     <span className="text-[12px] font-black text-gray-800 truncate">Fetching Intelligence</span>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">{runProgress.step || 'Processing...'}</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRunProgress(null);
+                      localStorage.removeItem('ascentium_run_progress');
+                    }}
+                    className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
+                    title="Stop"
+                  >
+                    <Ban size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {genProgress && genProgress.status === 'running' && (
+              <div className={`fixed ${runProgress && ['queued', 'running'].includes(runProgress.status) ? 'bottom-36 md:bottom-20' : 'bottom-20 md:bottom-6'} right-4 sm:right-6 z-50 animate-fade-in-up`}>
+                <div className="rounded-xl border border-purple-200 bg-white p-3 shadow-lg flex items-center gap-3">
+                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-50">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-20"></span>
+                    <div className="h-4 w-4 rounded-full border-2 border-purple-500 border-t-transparent animate-spin"></div>
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[12px] font-black text-gray-800 truncate">
+                      {genProgress.type === 'linkedin' ? 'Generating LinkedIn Post' : 'Generating Blog'}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">AI is writing…</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try { await api.post('/blogs/cancel'); } catch { /* ignore */ }
+                      setGenProgress(null);
+                    }}
+                    className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
+                    title="Stop generation"
+                  >
+                    <Ban size={14} />
+                  </button>
                 </div>
               </div>
             )}

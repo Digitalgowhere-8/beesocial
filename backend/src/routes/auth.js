@@ -72,6 +72,12 @@ async function syncUserPresenceFromSessions(userId) {
   );
 }
 
+async function deletedTenantAdminForUser(user) {
+  if (!user?.tenantAdminId) return null;
+  if (String(user.tenantAdminId) === String(user._id)) return null;
+  return User.findById(user.tenantAdminId).withDeleted().select('_id deletedAt isActive').lean();
+}
+
 // Strict email validation - rejects patterns like jitesh@gmail.com.com
 function isValidEmail(email) {
   const str = String(email || '').trim();
@@ -179,7 +185,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   const { error, value } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
-  const exists = await User.findOne({ email: value.email.toLowerCase() });
+  const exists = await User.findOne({ email: value.email.toLowerCase() }).withDeleted();
   if (exists) return res.status(409).json({ message: 'Email already registered' });
 
   const user = await User.create({
@@ -232,8 +238,15 @@ router.post('/login', asyncHandler(async (req, res) => {
   const { error, value } = loginSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
-  const user = await User.findOne({ email: value.email.toLowerCase() }).select('+password');
+  const user = await User.findOne({ email: value.email.toLowerCase() }).withDeleted().select('+password');
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+  if (user.deletedAt) {
+    return res.status(410).json({ message: 'This account has been deleted by an administrator.' });
+  }
+  const tenantAdmin = await deletedTenantAdminForUser(user);
+  if (tenantAdmin?.deletedAt || tenantAdmin?.isActive === false) {
+    return res.status(410).json({ message: 'This account is no longer available because its admin account has been deleted or disabled.' });
+  }
   if (!user.isActive) {
     return res.status(403).json({ message: 'Your account is pending super admin approval.' });
   }

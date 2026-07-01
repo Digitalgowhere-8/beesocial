@@ -350,8 +350,9 @@ function broadTopicQueryVariant(topic, profile = {}) {
 
   if (topic === 'govt') {
     return compactQuery([
+      country,
       authorityHints,
-      'new government policy regulation law tax employment company registry investment compliance update',
+      'official government regulation policy circular tax employment licensing company registry compliance update',
       year
     ]);
   }
@@ -392,6 +393,13 @@ function buildCategoryQueryVariants(topic, category, profile = {}) {
     ].filter(Boolean);
   }
 
+  if (topic === 'govt') {
+    return [
+      compactQuery([country, category, keywordTerms, 'official government regulation policy circular announcement', year]),
+      compactQuery([country, authorityHints, category, 'tax employment licensing company registry compliance update', year])
+    ].filter(Boolean);
+  }
+
   return [
     compactQuery([authorityHints, base, year]),
     compactQuery([country, authorityHints, category, subcategoryTerms, year])
@@ -416,7 +424,10 @@ function buildTopicQueryVariants(profile = {}) {
     const categoryVariants = categories.flatMap((category) => (
       buildCategoryQueryVariants(topic, category, { ...profile, competitors })
     )).filter(Boolean);
-    const broadVariant = categories.length > 1 ? broadTopicQueryVariant(topic, { ...profile, competitors }) : '';
+    // Keep one broad variant in the mix so admin fetches still discover data
+    // across the approved domains, then let the later relevance/category
+    // filters narrow results to the user's requirement.
+    const broadVariant = broadTopicQueryVariant(topic, { ...profile, competitors });
     queries[topic] = customQueryOverride
       ? [customQueryOverride]
       : [broadVariant, ...categoryVariants].filter(Boolean);
@@ -568,6 +579,9 @@ function buildN8nPayload(profile = {}, extra = {}) {
   if (scope.categoryOptions.length) payload.subcategoryOptions = scope.categoryOptions;
   if (profile.minTavilyScore !== undefined && profile.minTavilyScore !== null && profile.minTavilyScore !== '') {
     payload.minTavilyScore = Math.max(0, Math.min(100, Number(profile.minTavilyScore) || 0));
+  }
+  if (profile.minStoreScore !== undefined && profile.minStoreScore !== null && profile.minStoreScore !== '') {
+    payload.minStoreScore = Math.max(0, Math.min(100, Number(profile.minStoreScore) || 0));
   }
 
   return payload;

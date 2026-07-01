@@ -199,6 +199,10 @@ function buildQuery(req, opts = {}) {
   const q = {};
   const ownerIds = tenantOwnerIds(req.user);
 
+  // Enforce a strict minimum relevance threshold of 30 before displaying any article
+  const minScoreThreshold = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+  q.relevanceScore = { $gte: minScoreThreshold };
+
   if (req.query.type) {
     const types = req.query.type.split(',').map((s) => s.trim()).filter(Boolean);
     if (types.length === 1) q.type = types[0];

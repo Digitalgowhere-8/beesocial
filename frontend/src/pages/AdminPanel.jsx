@@ -1309,6 +1309,9 @@ function ArticlesTab({ ownerOnly = false }) {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState(new Set());
+  const filterMetaParams = useMemo(() => (
+    ownerOnly ? { ownerOnly: 'true' } : {}
+  ), [ownerOnly]);
 
   const load = useCallback(async (f = filters, page = 1) => {
     setLoading(true);
@@ -1324,7 +1327,10 @@ function ArticlesTab({ ownerOnly = false }) {
     }
   }, [filters, ownerOnly]);
 
-  useEffect(() => { load(filters, 1); }, [filters, load]);
+  useEffect(() => {
+    setSelected(new Set());
+    load(filters, 1);
+  }, [filters, load]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -1358,7 +1364,13 @@ function ArticlesTab({ ownerOnly = false }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
-        <Filters onChange={setFilters} showAdmin showStatusFilter={false} />
+        <Filters
+          initial={filters}
+          onChange={setFilters}
+          showAdmin
+          showStatusFilter={false}
+          metaParams={filterMetaParams}
+        />
       </div>
 
       {selected.size > 0 && (
@@ -2588,7 +2600,7 @@ export function FetchTab({ embedded = false }) {
               }`}>{lastLog.status}</span>
             </div>
             <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
-            <Stat label="Trigger" value={lastLog.triggeredBy} />
+            <Stat label="Trigger" value={logTriggerLabel(lastLog) || '-'} />
             <Stat label="Fetched" value={lastLog.totalFetched} />
             <Stat label="Inserted" value={lastLog.totalInserted} highlight />
             <Stat label="Duplicates" value={lastLog.totalDuplicates} />
@@ -2835,10 +2847,11 @@ function LogsTab() {
               <span className="text-sm font-bold text-gray-800">
                 {new Date(log.startedAt).toLocaleString()}
               </span>
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">
-                {log.triggeredBy}
-                {log.triggeredByUser?.name && ` · ${log.triggeredByUser.name}`}
-              </span>
+              {logTriggerLabel(log) ? (
+                <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">
+                  {logTriggerLabel(log)}
+                </span>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[12px] font-black text-gray-500">
               <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">+{log.totalInserted || 0} new</span>
@@ -3189,7 +3202,7 @@ function UsersTab({ dbPlans }) {
   };
 
   const remove = async (u) => {
-    if (!confirm(`Delete ${u.email}? This is permanent.`)) return;
+    if (!confirm(`Delete ${u.email}? Account access will stop immediately and background cleanup will remove related data after the retention window.`)) return;
     try {
       await api.delete(`/admin/users/${u._id}`);
       load();
@@ -3556,6 +3569,20 @@ function UsersTab({ dbPlans }) {
       </>
     </div>
   );
+}
+
+function logTriggerLabel(log = {}) {
+  const notes = String(log?.notes || '').toLowerCase();
+  if (log?.triggeredBy === 'cron' || notes.includes('scheduled profile intelligence trigger') || notes.includes('fetch queued from scheduler')) {
+    return 'Scheduler';
+  }
+  if (log?.triggeredByUser?.name) {
+    const role = String(log?.triggeredByUser?.role || '').toLowerCase();
+    if (role === 'admin' || role === 'super_admin') return `${log.triggeredByUser.name} manual`;
+    return log.triggeredByUser.name;
+  }
+  if (log?.triggeredBy === 'manual') return 'Manual';
+  return '';
 }
 
 function LimitInput({ label, value, onSave }) {

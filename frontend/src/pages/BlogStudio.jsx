@@ -5,7 +5,8 @@ import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
-import { ArrowLeft, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
+import useInfiniteScroll from '../hooks/useInfiniteScroll';
+import { ArrowLeft, Ban, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -22,6 +23,25 @@ const CONTENT_TYPE_TABS = [
 
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
 const CONTENT_STUDIO_UPCOMING_MODE = false;
+const CONTENT_STUDIO_CACHE_VERSION = 'v1';
+const STUDIO_PAGE_SIZE = 12;
+
+function safeSessionGet(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSessionSet(key, value) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
 
 const STYLE_OPTIONS = {
   tone: [
@@ -112,15 +132,23 @@ const DEFAULT_LINKEDIN_FORM = {
   takeaway: '',
   includeHashtags: true,
   includeCTA: true,
-  cta: 'Follow us for more market intelligence.',
+  cta: '',
   customInstructions: ''
 };
 
 export default function BlogStudio() {
-  const { user, refreshMe } = useAuth();
+  const { user, refreshMe, genProgress, setGenProgress } = useAuth();
   const location = useLocation();
   const inboundState = location.state || {};
   const canUseBlogStudio = user?.access?.canUseBlogStudio !== false;
+  const studioCacheKey = useMemo(
+    () => `content_studio_cache:${CONTENT_STUDIO_CACHE_VERSION}:${user?._id || 'guest'}`,
+    [user?._id]
+  );
+  const cachedStudioState = useMemo(
+    () => safeSessionGet(studioCacheKey, null),
+    [studioCacheKey]
+  );
 
   if (!canUseBlogStudio) {
     return (
@@ -137,17 +165,17 @@ export default function BlogStudio() {
       </Layout>
     );
   }
-  const [contentType, setContentType] = useState(() => inboundState.contentType || 'blog');
-  const [socialPlatform, setSocialPlatform] = useState(() => inboundState.socialPlatform || 'linkedin');
-  const [articles, setArticles] = useState([]);
-  const [blogs, setBlogs] = useState([]);
-  const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || null);
-  const [selectedBlog, setSelectedBlog] = useState(null);
-  const [socialPosts, setSocialPosts] = useState([]);
-  const [style, setStyle] = useState(DEFAULT_STYLE);
-  const [keywords, setKeywords] = useState('');
-  const [topicMeta, setTopicMeta] = useState(EMPTY_META);
-  const [topicFilters, setTopicFilters] = useState({
+  const [contentType, setContentType] = useState(() => cachedStudioState?.contentType || inboundState.contentType || 'blog');
+  const [socialPlatform, setSocialPlatform] = useState(() => cachedStudioState?.socialPlatform || inboundState.socialPlatform || 'linkedin');
+  const [articles, setArticles] = useState(cachedStudioState?.articles || []);
+  const [blogs, setBlogs] = useState(cachedStudioState?.blogs || []);
+  const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || cachedStudioState?.selectedArticle || null);
+  const [selectedBlog, setSelectedBlog] = useState(cachedStudioState?.selectedBlog || null);
+  const [socialPosts, setSocialPosts] = useState(cachedStudioState?.socialPosts || []);
+  const [style, setStyle] = useState(cachedStudioState?.style || DEFAULT_STYLE);
+  const [keywords, setKeywords] = useState(cachedStudioState?.keywords || '');
+  const [topicMeta, setTopicMeta] = useState(cachedStudioState?.topicMeta || EMPTY_META);
+  const [topicFilters, setTopicFilters] = useState(cachedStudioState?.topicFilters || {
     q: '',
     type: '',
     category: '',
@@ -155,13 +183,30 @@ export default function BlogStudio() {
     country: '',
     saved: ''
   });
-  const [blogQuery, setBlogQuery] = useState('');
-  const [loadingArticles, setLoadingArticles] = useState(false);
-  const [loadingBlogs, setLoadingBlogs] = useState(false);
-  const [loadingSocialPosts, setLoadingSocialPosts] = useState(false);
+  const [blogQuery, setBlogQuery] = useState(cachedStudioState?.blogQuery || '');
+  const [articlesPage, setArticlesPage] = useState(cachedStudioState?.articlesPage || 1);
+  const [articlesHasMore, setArticlesHasMore] = useState(cachedStudioState?.articlesHasMore ?? true);
+  const [blogsPage, setBlogsPage] = useState(cachedStudioState?.blogsPage || 1);
+  const [blogsHasMore, setBlogsHasMore] = useState(cachedStudioState?.blogsHasMore ?? true);
+  const [loadingArticles, setLoadingArticles] = useState(() => !cachedStudioState?.articles?.length);
+  const [loadingBlogs, setLoadingBlogs] = useState(() => !cachedStudioState?.blogs?.length);
+  const [loadingSocialPosts, setLoadingSocialPosts] = useState(() => !cachedStudioState?.socialPosts?.length);
   const [socialPreviewOpen, setSocialPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
+
+  // Derive generating flags from global genProgress so they survive tab switches
+  const isGenerating = generating || (genProgress?.status === 'running' && genProgress?.type === 'blog');
+  const isGeneratingLinkedin = generatingLinkedin || (genProgress?.status === 'running' && genProgress?.type === 'linkedin');
+
+  const cancelGeneration = async () => {
+    try {
+      await api.post('/blogs/cancel');
+    } catch { /* ignore */ }
+    setGenProgress(null);
+    setGenerating(false);
+    setGeneratingLinkedin(false);
+  };
   const [savingLinkedinPost, setSavingLinkedinPost] = useState(false);
   const [deletingBlogs, setDeletingBlogs] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
@@ -179,6 +224,11 @@ export default function BlogStudio() {
   const [linkedinOutput, setLinkedinOutput] = useState(null);
   const selectedArticleRef = useRef(selectedArticle);
   const focusComposerMode = Boolean(inboundState.focusComposer && inboundState.article?._id);
+  const hasTopicFilters = useMemo(
+    () => Object.values(topicFilters || {}).some(Boolean),
+    [topicFilters]
+  );
+  const hasBlogSearch = Boolean(String(blogQuery || '').trim());
 
   const keywordList = useMemo(() => cleanList(keywords), [keywords]);
   const categoryTree = useMemo(() => {
@@ -186,6 +236,21 @@ export default function BlogStudio() {
     return Object.keys(dataCategories).length ? dataCategories : topicMeta.categories || {};
   }, [topicMeta]);
   const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+  const countryOptions = useMemo(() => {
+    const directCountries = Array.isArray(topicMeta.countries)
+      ? topicMeta.countries.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (directCountries.length) {
+      return [...new Set(directCountries)].sort((a, b) => a.localeCompare(b));
+    }
+
+    const fallbackCountries = Object.values(topicMeta.sources || {})
+      .flatMap((sources) => (sources || []).flatMap((source) => source?.countries || []))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    return [...new Set(fallbackCountries)].sort((a, b) => a.localeCompare(b));
+  }, [topicMeta]);
   const subcategoryOptions = useMemo(() => (
     topicFilters.category ? categoryTree[topicFilters.category] || [] : []
   ), [categoryTree, topicFilters.category]);
@@ -206,10 +271,10 @@ export default function BlogStudio() {
     if (article) setSelectedArticle(article);
   }, [articles]);
 
-  const loadArticles = useCallback(async () => {
+  const loadArticles = useCallback(async ({ page = 1, reset = false } = {}) => {
     setLoadingArticles(true);
     try {
-      const params = { limit: 24, personalized: 'true' };
+      const params = { limit: STUDIO_PAGE_SIZE, page, personalized: 'true' };
       Object.entries(topicFilters).forEach(([key, value]) => {
         if (value) params[key] = value;
       });
@@ -217,9 +282,12 @@ export default function BlogStudio() {
       const items = data.items || [];
       setArticles((prevArticles) => {
         const pinned = selectedArticleRef.current || prevArticles.find((item) => item._id === inboundState.articleId);
-        if (pinned?._id && !items.some((item) => item._id === pinned._id)) return [pinned, ...items];
-        return items;
+        const baseItems = reset ? items : [...prevArticles, ...items.filter((item) => !prevArticles.some((existing) => existing._id === item._id))];
+        if (pinned?._id && !baseItems.some((item) => item._id === pinned._id)) return [pinned, ...baseItems];
+        return baseItems;
       });
+      setArticlesPage(page);
+      setArticlesHasMore(page < Number(data.pages || page));
     } catch (err) {
       setError(err.message || 'Could not load topics');
     } finally {
@@ -227,14 +295,17 @@ export default function BlogStudio() {
     }
   }, [inboundState.articleId, topicFilters]);
 
-  const loadBlogs = useCallback(async () => {
+  const loadBlogs = useCallback(async ({ page = 1, reset = false } = {}) => {
     setLoadingBlogs(true);
     try {
-      const params = { limit: 30 };
+      const params = { limit: STUDIO_PAGE_SIZE, page };
       if (blogQuery) params.q = blogQuery;
       const { data } = await api.get('/blogs', { params });
-      setBlogs(data.items || []);
-      if (data.items?.length) setSelectedBlog((prev) => prev || data.items[0]);
+      const nextBlogs = data.items || [];
+      setBlogs((prev) => reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]);
+      if (nextBlogs.length) setSelectedBlog((prev) => prev || nextBlogs[0]);
+      setBlogsPage(page);
+      setBlogsHasMore(page < Number(data.pages || page));
     } catch (err) {
       setError(err.message || 'Could not load blogs');
     } finally {
@@ -254,36 +325,63 @@ export default function BlogStudio() {
     }
   }, []);
 
-  useEffect(() => { loadArticles(); }, [loadArticles]);
-  useEffect(() => { loadBlogs(); }, [loadBlogs]);
-  useEffect(() => { loadSocialPosts(); }, [loadSocialPosts]);
+  // Listen to global generation progress updates to handle background success, failure or cancellation
   useEffect(() => {
-    const handleContentChanged = () => {
-      loadArticles();
-      loadBlogs();
-      loadSocialPosts();
-    };
-    const refreshVisibleData = () => {
-      if (document.visibilityState === 'hidden') return;
-      loadArticles();
-      loadBlogs();
-      loadSocialPosts();
-    };
+    if (!genProgress) return;
 
-    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-    window.addEventListener('focus', refreshVisibleData);
-    document.addEventListener('visibilitychange', refreshVisibleData);
-    return () => {
-      window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-      window.removeEventListener('focus', refreshVisibleData);
-      document.removeEventListener('visibilitychange', refreshVisibleData);
-    };
-  }, [loadArticles, loadBlogs, loadSocialPosts]);
+    if (genProgress.status === 'completed') {
+      const handleCompleted = async () => {
+        try {
+          if (genProgress.type === 'blog') {
+            const { data } = await api.get(`/blogs/${genProgress.resultId}`);
+            setSelectedBlog(data.item);
+            setPendingDraftId(data.item?._id || '');
+            setDraftDrawerOpen(true);
+            setDraftEditorOpen(true);
+            await loadBlogs({ page: 1, reset: true });
+            emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
+          } else if (genProgress.type === 'linkedin') {
+            setLinkedinOutput(genProgress.data);
+            await loadSocialPosts();
+          }
+        } catch (err) {
+          setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
+        } finally {
+          await api.post('/blogs/generation-clear').catch(() => {});
+          setGenProgress(null);
+        }
+      };
+      handleCompleted();
+    } else if (genProgress.status === 'failed') {
+      setError(genProgress.error || 'Generation failed');
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
+    } else if (genProgress.status === 'cancelled') {
+      setError('Generation was cancelled');
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
+    }
+  }, [genProgress, setGenProgress, loadBlogs, loadSocialPosts, setSelectedBlog, setPendingDraftId, setDraftDrawerOpen, setDraftEditorOpen, setLinkedinOutput]);
+
   useEffect(() => {
+    if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
+    loadArticles({ page: 1, reset: true });
+  }, [cachedStudioState?.articles?.length, hasTopicFilters, loadArticles]);
+  useEffect(() => {
+    if (cachedStudioState?.blogs?.length && !hasBlogSearch) return;
+    loadBlogs({ page: 1, reset: true });
+  }, [cachedStudioState?.blogs?.length, hasBlogSearch, loadBlogs]);
+  useEffect(() => {
+    if (!cachedStudioState?.socialPosts?.length) loadSocialPosts();
+  }, [cachedStudioState?.socialPosts?.length, loadSocialPosts]);
+  useEffect(() => {
+    const cachedCategoryCount = Object.keys(cachedStudioState?.topicMeta?.dataCategories || cachedStudioState?.topicMeta?.categories || {}).length;
+    const cachedCountryCount = Array.isArray(cachedStudioState?.topicMeta?.countries) ? cachedStudioState.topicMeta.countries.length : 0;
+    if (cachedStudioState?.topicMeta && cachedCategoryCount > 0 && cachedCountryCount > 0) return;
     api.get('/articles/meta/filters')
       .then(({ data }) => setTopicMeta({ ...EMPTY_META, ...data }))
       .catch(() => setTopicMeta(EMPTY_META));
-  }, []);
+  }, [cachedStudioState?.topicMeta]);
   useEffect(() => {
     if (inboundState.contentType) setContentType(inboundState.contentType);
     if (inboundState.socialPlatform) setSocialPlatform(inboundState.socialPlatform);
@@ -305,6 +403,59 @@ export default function BlogStudio() {
     });
   }, [selectedBlog]);
 
+  useEffect(() => {
+    safeSessionSet(studioCacheKey, {
+      contentType,
+      socialPlatform,
+      articles,
+      blogs,
+      articlesPage,
+      articlesHasMore,
+      blogsPage,
+      blogsHasMore,
+      selectedArticle,
+      selectedBlog,
+      socialPosts,
+      style,
+      keywords,
+      topicMeta,
+      topicFilters,
+    blogQuery
+  });
+  }, [
+    articles,
+    articlesHasMore,
+    articlesPage,
+    blogQuery,
+    blogs,
+    blogsHasMore,
+    blogsPage,
+    contentType,
+    keywords,
+    selectedArticle,
+    selectedBlog,
+    socialPlatform,
+    socialPosts,
+    studioCacheKey,
+    style,
+    topicFilters,
+    topicMeta
+  ]);
+
+  const articleLoadMoreRef = useInfiniteScroll({
+    enabled: contentType === 'blog' || contentType === 'social',
+    hasMore: articlesHasMore,
+    loading: loadingArticles,
+    onLoadMore: () => loadArticles({ page: articlesPage + 1 })
+  });
+
+  const blogLoadMoreRef = useInfiniteScroll({
+    enabled: contentType === 'blog' && draftDrawerOpen,
+    hasMore: blogsHasMore,
+    loading: loadingBlogs,
+    onLoadMore: () => loadBlogs({ page: blogsPage + 1 })
+  });
+
   const deleteBlogsInternal = useCallback(async (ids) => {
     const targetIds = ids.filter(Boolean);
     if (!targetIds.length) return;
@@ -323,7 +474,7 @@ export default function BlogStudio() {
     if (targetIds.includes(pendingDraftId)) {
       setPendingDraftId('');
     }
-    await loadBlogs();
+    await loadBlogs({ page: 1, reset: true });
     emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
   }, [loadBlogs, pendingDraftId, selectedBlog?._id]);
 
@@ -350,6 +501,7 @@ export default function BlogStudio() {
     }
     setError('');
     setGenerating(true);
+    setGenProgress({ type: 'blog', status: 'running', startedAt: new Date().toISOString() });
     try {
       const { data } = await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
@@ -361,12 +513,13 @@ export default function BlogStudio() {
       setPendingDraftId(data.item?._id || '');
       setDraftDrawerOpen(true);
       setDraftEditorOpen(true);
-      await loadBlogs();
+      await loadBlogs({ page: 1, reset: true });
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
     } finally {
       setGenerating(false);
+      setGenProgress(null);
     }
   };
 
@@ -377,7 +530,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs();
+      await loadBlogs({ page: 1, reset: true });
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'status', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Status update failed');
@@ -394,7 +547,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs();
+      await loadBlogs({ page: 1, reset: true });
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Draft save failed');
@@ -450,6 +603,7 @@ export default function BlogStudio() {
     }
     setError('');
     setGeneratingLinkedin(true);
+    setGenProgress({ type: 'linkedin', status: 'running', startedAt: new Date().toISOString() });
     try {
       const { data } = await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
@@ -460,6 +614,7 @@ export default function BlogStudio() {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
     } finally {
       setGeneratingLinkedin(false);
+      setGenProgress(null);
     }
   };
 
@@ -493,28 +648,15 @@ export default function BlogStudio() {
     }
   };
 
-  const resetStudioComposer = useCallback(() => {
-    setSelectedArticle(null);
-    setSelectedBlog(null);
-    setSelectedBlogIds([]);
-    setDraftForm({ title: '', excerpt: '', bodyMarkdown: '' });
-    setDraftEditorOpen(false);
-    setDraftDrawerOpen(false);
-    setPendingDraftId('');
-    setKeywords('');
-    setStyle(DEFAULT_STYLE);
-    setLinkedinForm(DEFAULT_LINKEDIN_FORM);
-    setLinkedinOutput(null);
-    setBlogQuery('');
-    setError('');
-  }, []);
-
   const refreshStudio = useCallback(() => {
-    resetStudioComposer();
-    loadArticles();
-    loadBlogs();
+    if (contentType === 'blog') {
+      loadArticles({ page: 1, reset: true });
+      loadBlogs({ page: 1, reset: true });
+      return;
+    }
+    loadArticles({ page: 1, reset: true });
     loadSocialPosts();
-  }, [loadArticles, loadBlogs, loadSocialPosts, resetStudioComposer]);
+  }, [contentType, loadArticles, loadBlogs, loadSocialPosts]);
 
   useEffect(() => {
     setMobileHeaderMenuOpen(false);
@@ -648,6 +790,8 @@ export default function BlogStudio() {
                 socialPlatform={socialPlatform}
                 setSocialPlatform={setSocialPlatform}
                 articles={articles}
+                articlesHasMore={articlesHasMore}
+                articleLoadMoreRef={articleLoadMoreRef}
                 selectedArticle={selectedArticle}
                 setSelectedArticle={setSelectedArticle}
                 loadingArticles={loadingArticles}
@@ -655,12 +799,13 @@ export default function BlogStudio() {
                 updateTopicFilter={updateTopicFilter}
                 categoryOptions={categoryOptions}
                 subcategoryOptions={subcategoryOptions}
-                countries={topicMeta.countries || []}
+                countries={countryOptions}
                 types={topicMeta.types || EMPTY_META.types}
                 linkedinForm={linkedinForm}
                 setLinkedinForm={setLinkedinForm}
-                generatingLinkedin={generatingLinkedin}
+                generatingLinkedin={isGeneratingLinkedin}
                 generateLinkedinPost={generateLinkedinPost}
+                cancelGeneration={cancelGeneration}
                 saveLinkedinPost={saveLinkedinPost}
                 canUseBlogStudio={canUseBlogStudio}
                 linkedinOutput={linkedinOutput}
@@ -687,12 +832,12 @@ export default function BlogStudio() {
               onChange={updateTopicFilter}
               categoryOptions={categoryOptions}
               subcategoryOptions={subcategoryOptions}
-              countries={topicMeta.countries || []}
+              countries={countryOptions}
               types={topicMeta.types || EMPTY_META.types}
             />
             
             <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-3 custom-scrollbar">
-              {loadingArticles ? (
+              {loadingArticles && !articles.length ? (
                 <LoadingRows label="Loading intelligence topics..." />
               ) : articles.length ? (
                 <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
@@ -741,6 +886,11 @@ export default function BlogStudio() {
                       </div>
                     );
                   })}
+                  {articlesHasMore ? (
+                    <div ref={articleLoadMoreRef} className="col-span-full flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                      {loadingArticles ? 'Loading more...' : 'Scroll for more'}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <Empty icon={FileText} label="No topics found matching criteria" />
@@ -903,10 +1053,10 @@ export default function BlogStudio() {
                 <button 
                   type="button" 
                   onClick={generate} 
-                  disabled={generating || !selectedArticle} 
+                  disabled={isGenerating || !selectedArticle} 
                   className="btn-primary w-full py-3 text-base rounded-xl font-black tracking-wide shadow-lg hover:shadow-brand-crimson/20 transition-all hover-lift disabled:hover:translate-y-0 relative overflow-hidden group"
                 >
-                  {generating ? (
+                  {isGenerating ? (
                     <>
                       <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
                       <Loader2 size={18} className="animate-spin relative z-10" />
@@ -927,9 +1077,6 @@ export default function BlogStudio() {
                   <BookOpenText size={16} />
                   Drafts & Publishing
                 </button>
-              </div>
-              <div className="mt-3 text-xs font-semibold text-gray-500">
-                After generation, the draft will open in the right-side drawer. If you close it without saving or publishing, the temporary draft will be removed.
               </div>
             </div>
           </section>
@@ -956,6 +1103,8 @@ export default function BlogStudio() {
           setDraftForm={setDraftForm}
           saveDraftEdits={saveDraftEdits}
           savingDraft={savingDraft}
+          blogsHasMore={blogsHasMore}
+          blogLoadMoreRef={blogLoadMoreRef}
         />
         </>
         )}
@@ -1001,7 +1150,9 @@ function BlogDraftDrawer({
   draftForm,
   setDraftForm,
   saveDraftEdits,
-  savingDraft
+  savingDraft,
+  blogsHasMore,
+  blogLoadMoreRef
 }) {
   const allBlogsSelected = blogs.length > 0 && selectedBlogIds.length === blogs.length;
 
@@ -1051,53 +1202,58 @@ function BlogDraftDrawer({
                 ) : null}
               </div>
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
-                {loadingBlogs ? (
+                {loadingBlogs && !blogs.length ? (
                   <LoadingRows label="Loading drafts..." />
-                ) : blogs.length ? blogs.map((blog) => {
-                  const selectedForBulk = selectedBlogIds.includes(blog._id);
-                  const active = selectedBlog?._id === blog._id;
-                  return (
-                    <div
-                      key={blog._id}
-                      className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleBlogSelection(blog._id)}
-                          className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
-                          title={selectedForBulk ? 'Unselect' : 'Select'}
+                ) : blogs.length ? (
+                  <>
+                    {blogs.map((blog) => {
+                      const selectedForBulk = selectedBlogIds.includes(blog._id);
+                      const active = selectedBlog?._id === blog._id;
+                      return (
+                        <div
+                          key={blog._id}
+                          className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
                         >
-                          {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBlog(blog);
-                            if (window.matchMedia('(max-width: 1279px)').matches) {
-                              setDraftEditorOpen(true);
-                            } else {
-                              setDraftEditorOpen(true);
-                            }
-                          }}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <div className="mb-2 flex items-start justify-between gap-2">
-                            <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
-                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                              blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                              blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                              'bg-gray-50 text-gray-500 border-gray-200'
-                            }`}>
-                              {blog.status}
-                            </span>
+                          <div className="flex items-start gap-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleBlogSelection(blog._id)}
+                              className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                              title={selectedForBulk ? 'Unselect' : 'Select'}
+                            >
+                              {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedBlog(blog);
+                                setDraftEditorOpen(true);
+                              }}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <div className="mb-2 flex items-start justify-between gap-2">
+                                <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
+                                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                                  blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                  blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  'bg-gray-50 text-gray-500 border-gray-200'
+                                }`}>
+                                  {blog.status}
+                                </span>
+                              </div>
+                              <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
+                            </button>
                           </div>
-                          <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
-                        </button>
+                        </div>
+                      );
+                    })}
+                    {blogsHasMore ? (
+                      <div ref={blogLoadMoreRef} className="flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                        {loadingBlogs ? 'Loading more...' : 'Scroll for more'}
                       </div>
-                    </div>
-                  );
-                }) : (
+                    ) : null}
+                  </>
+                ) : (
                   <Empty icon={BookOpenText} label="No drafts generated yet" />
                 )}
               </div>
@@ -1556,6 +1712,8 @@ function LinkedInStudio({
   socialPlatform,
   setSocialPlatform,
   articles,
+  articlesHasMore,
+  articleLoadMoreRef,
   selectedArticle,
   setSelectedArticle,
   loadingArticles,
@@ -1569,6 +1727,7 @@ function LinkedInStudio({
   setLinkedinForm,
   generatingLinkedin,
   generateLinkedinPost,
+  cancelGeneration,
   saveLinkedinPost,
   canUseBlogStudio,
   linkedinOutput,
@@ -1616,7 +1775,7 @@ function LinkedInStudio({
           types={types}
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-4 custom-scrollbar">
-          {loadingArticles ? (
+          {loadingArticles && !articles.length ? (
             <LoadingRows label="Loading intelligence topics..." />
           ) : articles.length ? (
             <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
@@ -1665,6 +1824,11 @@ function LinkedInStudio({
                   </div>
                 );
               })}
+              {articlesHasMore ? (
+                <div ref={articleLoadMoreRef} className="col-span-full flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                  {loadingArticles ? 'Loading more...' : 'Scroll for more'}
+                </div>
+              ) : null}
             </div>
           ) : (
             <Empty icon={FileText} label="No topics found matching criteria" />
@@ -1760,6 +1924,7 @@ function LinkedInStudio({
                 onChange={(value) => update('hookStyle', value)}
                 options={[
                   ['proof', 'Proof-led'],
+                  ['warning', 'Warning-led'],
                   ['contrarian', 'Contrarian'],
                   ['personal_story', 'Personal story'],
                   ['insight', 'Insight-led'],
@@ -1775,6 +1940,7 @@ function LinkedInStudio({
                   ['auto', 'Auto select'],
                   ['SLAY', 'SLAY - story-led authority'],
                   ['PAS', 'PAS - pain-driven inbound'],
+                  ['PRA', 'PRA - problem-risk-action'],
                   ['POV', 'POV - high reach'],
                   ['5-Line Mirror', '5-Line Mirror'],
                   ['AIDA', 'AIDA - conversion']
@@ -1787,6 +1953,7 @@ function LinkedInStudio({
                 options={[
                   ['auto', 'Auto select'],
                   ['Broad', 'Broad - reach'],
+                  ['Practical', 'Practical - decision-useful'],
                   ['Narrow', 'Narrow - authority'],
                   ['Niche', 'Niche - conversion']
                 ]}
@@ -1799,6 +1966,8 @@ function LinkedInStudio({
                   ['auto', 'Auto select'],
                   ['Inspire', 'Inspire'],
                   ['Educate', 'Educate'],
+                  ['Urgency', 'Urgency'],
+                  ['Reassure', 'Reassure'],
                   ['Provoke', 'Provoke'],
                   ['Convert', 'Convert']
                 ]}
@@ -1816,7 +1985,7 @@ function LinkedInStudio({
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
               </Field>
               <Field label="Call to Action">
-                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} />
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} placeholder="Optional - leave blank for a contextual CTA" />
               </Field>
               <Field label="Soft Authority Line">
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />

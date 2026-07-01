@@ -5,6 +5,14 @@ const UserResult = require('../models/UserResult');
 const { hashUrl } = require('../utils/hash');
 const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
 const { CATEGORIES } = require('../config/categories');
+const {
+  applyGovernmentIntakeRules,
+  articleWindowEnd,
+  articleWindowStart,
+  buildContentFingerprint,
+  choosePreferredGovernmentItem
+} = require('./articleIntakePolicy');
+const { evaluateTopicArticle } = require('./articleTopicRules');
 
 function cleanLogId(value) {
   const id = String(value || '').trim().replace(/^=+/, '');
@@ -17,10 +25,20 @@ function dedupeResultItems(items = []) {
 
   for (const item of items) {
     const url = String(item?.url || item?.link || '').trim();
-    const rawKey = item?.urlHash || item?.hash || url || `${item?.title || 'untitled'}:${item?.source || ''}`;
+    const normalizedTitle = String(item?.title || '')
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const rawKey = item?.urlHash || item?.hash || url || `${normalizedTitle}:${item?.source || ''}`;
+    const fallbackSimilarityKey = `${normalizedTitle}:${String(item?.source || item?.sourceId || '').toLowerCase()}:${String(item?.publishedAt || '').slice(0, 10)}`;
     const key = hashUrl(String(rawKey).toLowerCase().replace(/\/$/, ''));
+    const similarityKey = hashUrl(fallbackSimilarityKey);
     if (seen.has(key)) continue;
+    if (normalizedTitle && seen.has(similarityKey)) continue;
     seen.add(key);
+    if (normalizedTitle) seen.add(similarityKey);
     deduped.push(item);
   }
 
@@ -116,11 +134,26 @@ function defaultCountry() {
   return String(process.env.DEFAULT_FETCH_COUNTRY || '').trim();
 }
 
+function minStoreScore(body = {}) {
+  const fallback = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+  return Math.max(0, Math.min(100, Number(body.minStoreScore ?? fallback) || fallback));
+}
+
 async function persistProfileResults(body = {}, options = {}) {
   const rawItems = Array.isArray(body.results) ? body.results : [];
-  const items = dedupeResultItems(rawItems);
+  const dedupedItems = dedupeResultItems(rawItems);
   const userObjectId = mongoose.Types.ObjectId.isValid(body.userId) ? new mongoose.Types.ObjectId(body.userId) : null;
   const savedSearchObjectId = mongoose.Types.ObjectId.isValid(body.savedSearchId) ? new mongoose.Types.ObjectId(body.savedSearchId) : null;
+  const filteredItems = [];
+  const filteredCounts = {
+    blockedDomain: 0,
+    staticPage: 0,
+    stale: 0,
+    topicRejected: 0,
+    lowScore: 0,
+    incomingDuplicate: 0,
+    existingDuplicate: 0
+  };
 
   const articleHashForItem = (item) => {
     const url = String(item.url || item.link || '').trim();
@@ -132,12 +165,127 @@ async function persistProfileResults(body = {}, options = {}) {
     };
   };
 
+  const incomingGovernmentByFingerprint = new Map();
+  const storeFloor = minStoreScore(body);
+  for (const item of dedupedItems) {
+    const score = Number(item.relevance_score ?? item.relevanceScore ?? item.tavilyScore ?? item.tavily_score ?? 0);
+    if (score < storeFloor) {
+      filteredCounts.lowScore += 1;
+      continue;
+    }
+    const topicType = normalizeArticleType(item);
+    item.type = topicType;
+    const topicRule = evaluateTopicArticle({
+      ...item,
+      type: topicType
+    }, {
+      topic: topicType,
+      profile: {
+        competitors: Array.isArray(body.competitors) ? body.competitors : []
+      }
+    });
+    if (!topicRule.keep) {
+      filteredCounts.topicRejected += 1;
+      continue;
+    }
+
+    const intake = applyGovernmentIntakeRules(item);
+    if (!intake.keep) {
+      if (intake.reason === 'blocked-domain') filteredCounts.blockedDomain += 1;
+      else if (intake.reason === 'static-government-page') filteredCounts.staticPage += 1;
+      else if (intake.reason === 'stale-government-update') filteredCounts.stale += 1;
+      continue;
+    }
+
+    if (String(item.type || '').toLowerCase() !== 'govt') {
+      filteredItems.push(item);
+      continue;
+    }
+
+    const fingerprint = buildContentFingerprint(item);
+    item.contentFingerprint = fingerprint;
+    if (!fingerprint) {
+      filteredItems.push(item);
+      continue;
+    }
+
+    const existing = incomingGovernmentByFingerprint.get(fingerprint);
+    if (!existing) {
+      incomingGovernmentByFingerprint.set(fingerprint, item);
+      continue;
+    }
+
+    filteredCounts.incomingDuplicate += 1;
+    incomingGovernmentByFingerprint.set(fingerprint, choosePreferredGovernmentItem(existing, item));
+  }
+
+  filteredItems.push(...incomingGovernmentByFingerprint.values());
+
+  const governmentItems = filteredItems.filter((item) => String(item.type || '').toLowerCase() === 'govt' && item.contentFingerprint);
+  if (governmentItems.length) {
+    const existingCandidates = await Article.find({
+      type: 'govt',
+      country: { $in: [...new Set(governmentItems.map((item) => item.country || body.country || defaultCountry()).filter(Boolean))] },
+      contentFingerprint: { $in: [...new Set(governmentItems.map((item) => item.contentFingerprint).filter(Boolean))] },
+      $or: governmentItems.flatMap((item) => {
+        const country = item.country || body.country || defaultCountry();
+        return [{
+          country,
+          contentFingerprint: item.contentFingerprint,
+          publishedAt: { $gte: articleWindowStart(item), $lte: articleWindowEnd(item) }
+        }, {
+          country,
+          contentFingerprint: item.contentFingerprint,
+          fetchedAt: { $gte: articleWindowStart(item), $lte: articleWindowEnd(item) }
+        }];
+      })
+    }).select('_id url type country contentFingerprint source sourceId sourceType publishedAt fetchedAt relevanceScore').lean();
+
+    const existingByFingerprint = new Map();
+    for (const row of existingCandidates) {
+      const key = `${row.country || ''}|${row.contentFingerprint || ''}`;
+      const current = existingByFingerprint.get(key);
+      existingByFingerprint.set(key, current ? choosePreferredGovernmentItem(current, row) : row);
+    }
+
+    const finalItems = [];
+    for (const item of filteredItems) {
+      if (String(item.type || '').toLowerCase() !== 'govt' || !item.contentFingerprint) {
+        finalItems.push(item);
+        continue;
+      }
+      const country = item.country || body.country || defaultCountry();
+      const key = `${country}|${item.contentFingerprint}`;
+      const existing = existingByFingerprint.get(key);
+      if (!existing) {
+        finalItems.push(item);
+        continue;
+      }
+      const preferred = choosePreferredGovernmentItem(existing, item);
+      if (preferred === item) {
+        try {
+          await Article.deleteOne({ _id: existing._id });
+        } catch {
+          // If cleanup misses, the preferred version will still be upserted.
+        }
+        finalItems.push(item);
+      } else {
+        filteredCounts.existingDuplicate += 1;
+      }
+    }
+    filteredItems.length = 0;
+    filteredItems.push(...finalItems);
+  }
+
+  const items = filteredItems;
+
   const ops = items.map((item) => {
     const url = String(item.url || item.link || '').trim();
     const { rawHash, storedHash } = articleHashForItem(item);
     const articleType = normalizeArticleType(item);
-    const blogContext = String(item.blog_context || item.blogContext || item.raw?.blogContext || item.raw_content || '').slice(0, 3000);
-    const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 1200);
+    const rawContent = String(item.rawContent || item.raw_content || item.rawData?.rawContent || item.raw?.rawContent || '').slice(0, 20000);
+    const blogContext = String(item.blog_context || item.blogContext || item.rawData?.blogContext || item.raw?.blogContext || rawContent || '').slice(0, 12000);
+    const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.rawData?.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 4000);
     const category = normalizeCategory(item.category, body.category);
     const subcategory = normalizeSubcategory(category, item.sub_category || item.subcategory, body.subcategory || body.sub_category);
     return {
@@ -146,7 +294,7 @@ async function persistProfileResults(body = {}, options = {}) {
         update: {
           $set: {
             title: String(item.title || '').slice(0, 500),
-            summary: String(item.summary || item.ai_summary || item.aiSummary || '').slice(0, 2000),
+            summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
             url,
             type: articleType,
             source: item.source || item.sourceName || 'profile-search',
@@ -170,6 +318,7 @@ async function persistProfileResults(body = {}, options = {}) {
             relevanceScore: Number(item.relevance_score ?? item.relevanceScore ?? 0),
             relevanceReason: String(item.relevance_reason || item.relevanceReason || '').slice(0, 500),
             aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
+            rawContent,
             blogContext,
             tavilyAnswer,
             rawData: item.rawData || item.raw || {
@@ -177,9 +326,16 @@ async function persistProfileResults(body = {}, options = {}) {
               queryCategory: item.queryCategory || '',
               tavilyScore: item.tavilyScore || item.tavily_score || null,
               allowedDomains: item.allowedDomains || item.includeDomains || item.include_domains || [],
+              rawContent,
               blogContext,
               tavilyAnswer
             },
+            contentFingerprint: item.contentFingerprint || buildContentFingerprint({
+              ...item,
+              type: articleType,
+              country: item.country || body.country || defaultCountry(),
+              summary: item.summary || item.ai_summary || item.aiSummary || ''
+            }),
             urlHash: storedHash,
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
             userId: userObjectId || undefined,
@@ -200,7 +356,7 @@ async function persistProfileResults(body = {}, options = {}) {
     writeResult = await Article.bulkWrite(ops, { ordered: false });
   }
   const inserted = Number(writeResult?.upsertedCount || 0);
-  const duplicates = Math.max(0, items.length - inserted);
+  const duplicates = Math.max(0, items.length - inserted) + filteredCounts.incomingDuplicate + filteredCounts.existingDuplicate;
 
   if (userObjectId && items.length) {
     const hashes = items.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
@@ -244,7 +400,14 @@ async function persistProfileResults(body = {}, options = {}) {
   }
 
   if (options.skipLog) {
-    return { ok: true, processed: items.length, inserted, duplicates };
+    return {
+      ok: true,
+      processed: items.length,
+      inserted,
+      duplicates,
+      filteredOut: Object.values(filteredCounts).reduce((sum, count) => sum + Number(count || 0), 0),
+      filterBreakdown: filteredCounts
+    };
   }
 
   const update = {
@@ -258,14 +421,14 @@ async function persistProfileResults(body = {}, options = {}) {
     totalInserted: Number(body.totalInserted ?? body.inserted ?? inserted),
     totalDuplicates: Number(body.totalDuplicates ?? body.duplicates ?? duplicates),
     totalErrors: Number(body.totalErrors ?? body.errors ?? 0),
-    notes: body.notes || 'code profile-search results received',
     userId: userObjectId || undefined,
     savedSearchId: savedSearchObjectId || undefined,
     country: body.country || '',
     region: body.region || '',
     sector: body.sector || '',
     query: body.query || '',
-    resultCount: items.length
+    resultCount: items.length,
+    notes: body.notes || `code profile-search results received (filtered: ${Object.values(filteredCounts).reduce((sum, count) => sum + Number(count || 0), 0)})`
   };
 
   const logId = cleanLogId(body.logId);

@@ -3,6 +3,7 @@ const aiService = require('./aiService');
 const { hashUrl } = require('../utils/hash');
 const { CATEGORIES } = require('../config/categories');
 const { canonicalCountry, defaultSourceDomainsForCountry } = require('../config/fetchSources');
+const { evaluateTopicArticle } = require('./articleTopicRules');
 
 const ALLOWED_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergreen')
   .split(',')
@@ -20,7 +21,7 @@ const DEFAULT_TARGET_PER_TOPIC = 100;
 const MAX_TARGET_PER_TOPIC = 100;
 const DEFAULT_TAVILY_MAX_RESULTS = 5;
 const MAX_TAVILY_MAX_RESULTS = 5;
-const MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
+const DEFAULT_MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
 const BROAD_DISCOVERY_MAX_RESULTS = Math.max(1, Math.min(5, Number(process.env.BROAD_DISCOVERY_MAX_RESULTS || 3) || 3));
 
 function text(value, fallback = '') {
@@ -312,10 +313,19 @@ function normalizedUrl(value) {
   return text(value).toLowerCase().replace(/\/$/, '');
 }
 
+function normalizedTitle(value) {
+  return text(value)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function articleIdentityHash({ url, title }) {
   return hashUrl([
     normalizedUrl(url),
-    text(title).toLowerCase()
+    normalizedTitle(title)
   ].join('|'));
 }
 
@@ -335,14 +345,33 @@ function sourceNameFromHost(host) {
     .join(' ') || 'Dynamic Search';
 }
 
+function articleSimilarityKey(article = {}) {
+  const host = hostFromUrl(article.url);
+  const publishedDay = text(article.publishedAt).slice(0, 10);
+  return hashUrl([
+    host,
+    normalizedTitle(article.title),
+    publishedDay
+  ].join('|'));
+}
+
 function filterStats() {
   return {
     missing: 0,
     date: 0,
     source: 0,
     type: 0,
-    score: 0
+    score: 0,
+    pdf: 0,
+    topic: 0
   };
+}
+
+function minStoreScoreForProfile(profile = {}) {
+  return Math.max(
+    0,
+    Math.min(100, Number(profile.minStoreScore ?? DEFAULT_MIN_STORE_SCORE) || DEFAULT_MIN_STORE_SCORE)
+  );
 }
 
 function rejectCandidate(stats, reason) {
@@ -403,6 +432,7 @@ function normalizeProfileInput(incoming = {}) {
     days: Math.max(1, Math.min(365, Number(incoming.days || 30) || 30)),
     targetPerTopic: Math.max(1, Math.min(MAX_TARGET_PER_TOPIC, Number(incoming.targetPerTopic || incoming.maxPerTopic || DEFAULT_TARGET_PER_TOPIC) || DEFAULT_TARGET_PER_TOPIC)),
     minTavilyScore: incoming.minTavilyScore,
+    minStoreScore: incoming.minStoreScore,
     language: text(incoming.language || defaultLanguage()),
     timezone: text(incoming.timezone || defaultTimezone()),
     callbackUrl: text(incoming.callbackUrl),
@@ -425,14 +455,10 @@ function domainsForTopic(profile, topic) {
     ).map(cleanDomain).filter(Boolean)
   );
   const defaultDomains = configuredDefaults.length ? configuredDefaults : fallbackDefaults;
-  if (topic === 'govt' || topic === 'competitor') {
-    return defaultDomains.length ? defaultDomains : topicDomains;
-  }
-
-  const preferredDomains = unique(list(profile.preferredDomains));
-  const userDomains = unique(list(profile.userDomains));
-  if (profile.strictSources) return topicDomains.length ? topicDomains : (preferredDomains.length ? preferredDomains : userDomains);
-  return unique([...(topicDomains.length ? topicDomains : preferredDomains), ...userDomains]);
+  // Keep fetches locked to the configured source lists so results stay inside
+  // the known domain set for the selected country/topic.
+  if (defaultDomains.length) return defaultDomains;
+  return topicDomains;
 }
 
 function tavilyTopicForProfileTopic(topic) {
@@ -440,6 +466,15 @@ function tavilyTopicForProfileTopic(topic) {
 }
 
 function sourceFallbackQuery(profile, topic) {
+  if (topic === 'govt') {
+    return [
+      profile.country,
+      profile.region,
+      profile.category,
+      'official government regulation policy circular announcement tax employment licensing company registry compliance'
+    ].map((part) => text(part)).filter(Boolean).join(' ');
+  }
+
   return [
     profile.country,
     profile.region,
@@ -527,7 +562,7 @@ function buildTopicQueries(profile, topic) {
       searchDepth,
       maxResults: maxResultsOverride || maxResults,
       timeRange: daysToTimeRange(profile.days),
-      includeRawContent: false,
+      includeRawContent: true,
       timeoutMs: 30000,
       includeDomains: includeDomainsOverride || []
     }
@@ -537,7 +572,8 @@ function buildTopicQueries(profile, topic) {
     query: entry.query,
     category: entry.category || profile.categories[variantIndex] || profile.category,
     variantIndex,
-    includeDomainsOverride: includeDomains.length ? includeDomains : []
+    includeDomainsOverride: includeDomains.length ? includeDomains : [],
+    searchDepth: topic === 'govt' ? 'advanced' : 'basic'
   }));
 
   const sourceFallbackRequests = includeDomains.length
@@ -554,10 +590,10 @@ function buildTopicQueries(profile, topic) {
         minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 0) || 0)),
         tavilyOptions: {
           topic: tavilyTopicForProfileTopic(topic),
-          searchDepth: 'basic',
+          searchDepth: topic === 'govt' ? 'advanced' : 'basic',
           maxResults,
           timeRange: daysToTimeRange(profile.days),
-          includeRawContent: false,
+          includeRawContent: true,
           timeoutMs: 30000,
           includeDomains
         }
@@ -593,7 +629,6 @@ function articleFromResult(row, request, stats) {
   const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
   const articleDate = resultArticleDate(row);
   if (!title || !url) return rejectCandidate(stats, 'missing');
-  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) return rejectCandidate(stats, 'date');
   if (
     shouldEnforcePostSourceFilter(request.topic) &&
     !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])
@@ -603,14 +638,21 @@ function articleFromResult(row, request, stats) {
   if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
     return rejectCandidate(stats, 'source');
   }
-  if (request.topic === 'evergreen' && !isEvergreenResult({ title, url, summary })) {
-    return rejectCandidate(stats, 'type');
+  const topicRule = evaluateTopicArticle({
+    title,
+    summary,
+    rawContent,
+    url,
+    type: request.topic,
+    source: hostFromUrl(url)
+  }, {
+    topic: request.topic,
+    profile: request.profile || {}
+  });
+  if (!topicRule.keep) {
+    return rejectCandidate(stats, topicRule.reason === 'pdf' ? 'pdf' : 'topic');
   }
-
   const tavilyScore = typeof row.score === 'number' ? row.score : 50;
-  if (request.topic !== 'news' && tavilyScore < (request.minTavilyScore || 0)) {
-    return rejectCandidate(stats, 'score');
-  }
 
   const profile = request.profile || {};
   const sourceType = hostFromUrl(url);
@@ -637,6 +679,8 @@ function articleFromResult(row, request, stats) {
     title: title.slice(0, 500),
     summary: summary.slice(0, 3000),
     aiSummary: summary.slice(0, 3000),
+    rawContent: rawContent.slice(0, 20000),
+    blogContext: [rawContent, snippet].filter(Boolean).join('\n\n').slice(0, 12000),
     tavilyScore,
     relevanceScore: tavilyScore,
     relevance_score: tavilyScore,
@@ -651,30 +695,47 @@ function articleFromResult(row, request, stats) {
     allowedDomains: request.tavilyOptions?.includeDomains || [],
     sourceQuery: request.sourceQuery,
     fetched_at: new Date().toISOString(),
-    publishedAt: articleDate.toISOString()
+    publishedAt: articleDate.toISOString(),
+    rawData: {
+      rawContent: rawContent.slice(0, 20000),
+      snippet: snippet.slice(0, 4000),
+      sourceQuery: request.sourceQuery,
+      allowedDomains: request.tavilyOptions?.includeDomains || [],
+      tavilyScore
+    }
   };
 }
 
 function dedupeArticlesForAi(articles = []) {
   const byIdentity = new Map();
+  const byUrl = new Map();
+  const bySimilarity = new Map();
   let duplicates = 0;
 
   for (const article of articles) {
-    const key = articleIdentityHash({ url: article.url, title: article.title });
-    const existing = byIdentity.get(key);
+    const identityKey = articleIdentityHash({ url: article.url, title: article.title });
+    const urlKey = articleUrlHash(article.url);
+    const similarityKey = articleSimilarityKey(article);
+    const existing = byIdentity.get(identityKey) || byUrl.get(urlKey) || bySimilarity.get(similarityKey);
     if (!existing) {
-      byIdentity.set(key, article);
+      byIdentity.set(identityKey, article);
+      byUrl.set(urlKey, article);
+      bySimilarity.set(similarityKey, article);
       continue;
     }
 
     duplicates += 1;
     const existingScore = Number(existing.tavilyScore || existing.relevanceScore || 0);
     const articleScore = Number(article.tavilyScore || article.relevanceScore || 0);
-    if (articleScore > existingScore) byIdentity.set(key, article);
+    if (articleScore > existingScore) {
+      byIdentity.set(identityKey, article);
+      byUrl.set(urlKey, article);
+      bySimilarity.set(similarityKey, article);
+    }
   }
 
   return {
-    articles: [...byIdentity.values()],
+    articles: [...new Set(byUrl.values())],
     duplicates
   };
 }
@@ -715,6 +776,7 @@ function resultFromArticle(article, topic, ai = {}) {
     profile: workflowProfile(article.profile),
     title: article.title,
     summary: ai.summary || article.summary || '',
+    rawContent: article.rawContent || article.rawData?.rawContent || '',
     url: article.url,
     urlHash: article.urlHash,
     type: topic,
@@ -733,8 +795,10 @@ function resultFromArticle(article, topic, ai = {}) {
     relevanceReason: ai.relevance_reason || '',
     relevance_reason: ai.relevance_reason || '',
     aiSummary: ai.summary || article.aiSummary || '',
+    blogContext: article.blogContext || article.rawContent || article.summary || '',
     sourceQuery: article.sourceQuery || '',
     rawData: article.rawData || {
+      rawContent: article.rawContent || '',
       sourceQuery: article.sourceQuery || '',
       allowedDomains: article.allowedDomains || [],
       tavilyScore: article.tavilyScore || null
@@ -742,6 +806,36 @@ function resultFromArticle(article, topic, ai = {}) {
     fetched_at: article.fetched_at || new Date().toISOString(),
     publishedAt: article.publishedAt || ''
   };
+}
+
+function selectedCategoriesForProfile(profile = {}) {
+  const selected = unique(
+    list(profile.categories).map((category) => normalizeCategory(category)).filter(Boolean)
+  );
+  if (selected.length) return selected;
+  return [normalizeCategory(profile.category)].filter(Boolean);
+}
+
+function selectedSubcategoryForProfile(profile = {}, category = '') {
+  const selected = cleanSubcategory(profile.subcategory);
+  if (!selected) return '';
+  return normalizeSubcategory(category || normalizeCategory(profile.category), selected, selected);
+}
+
+function articleMatchesSelection(profile = {}, ai = {}, article = {}) {
+  const aiCategory = normalizeCategory(ai.category, article.category || profile.category);
+  const allowedCategories = selectedCategoriesForProfile(profile);
+  if (allowedCategories.length && !allowedCategories.includes(aiCategory)) return false;
+
+  const selectedSubcategory = selectedSubcategoryForProfile(profile, aiCategory);
+  if (!selectedSubcategory) return true;
+
+  const aiSubcategory = normalizeSubcategory(
+    aiCategory,
+    ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+    article.subcategory || profile.subcategory
+  );
+  return aiSubcategory === selectedSubcategory;
 }
 
 async function runTopic(profile, topic, onProgress) {
@@ -786,7 +880,7 @@ async function runTopic(profile, topic, onProgress) {
 
   onProgress?.({
     step: `topic:${topic}:process`,
-    message: `${topic} topic: processed ${rawCandidates} Tavily candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed filters; rejected missing:${rejected.missing}, date:${rejected.date}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}`
+    message: `${topic} topic: processed ${rawCandidates} Tavily candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed filters; rejected missing:${rejected.missing}, date:${rejected.date}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}, pdf:${rejected.pdf}, topic:${rejected.topic}`
   });
 
   const deduped = dedupeArticlesForAi(articles);
@@ -799,32 +893,62 @@ async function runTopic(profile, topic, onProgress) {
 
   onProgress?.({
     step: `topic:${topic}:ai`,
-    message: `${topic} topic: reviewing ${deduped.articles.length} unique candidate${deduped.articles.length === 1 ? '' : 's'} with AI relevance`
+    message: `${topic} topic: enriching ${deduped.articles.length} unique candidate${deduped.articles.length === 1 ? '' : 's'} and checking selected category fit`
   });
   const output = [];
-  let aiKept = 0;
+  let categoryRejected = 0;
+  let scoreRejected = 0;
+  const minStoreScore = minStoreScoreForProfile(profile);
   for (const article of deduped.articles) {
-    const ai = await aiService.classifyProfileRelevance({ article, profile, topic });
-    const score = Math.max(0, Math.min(100, parseInt(ai.relevance_score, 10) || 0));
-    const decision = text(ai.decision).toUpperCase();
-    const aiCategory = text(ai.category);
-    const ignored = decision !== 'STORE' || score < MIN_STORE_SCORE || text(ai.category).toUpperCase() === 'IGNORE' || !CATEGORIES[aiCategory];
-    if (ignored) continue;
+    let ai = {};
+    try {
+      ai = await aiService.classifyProfileRelevance({ article, profile, topic });
+    } catch (_err) {
+      ai = {};
+    }
 
-    output.push(resultFromArticle(article, topic, ai));
-    aiKept += 1;
-  }
+    if (ai.decision === 'IGNORE' || ai.category === 'IGNORE' || ai.subcategory === 'IGNORE') {
+      continue;
+    }
 
-  if (!output.length && deduped.articles.length) {
-    onProgress?.({
-      step: `topic:${topic}:filtered`,
-      message: `${topic} topic: no result met the AI relevance threshold`
+    const resolvedCategory = bestCategory(article.category || article.profile?.category, ai);
+    const resolvedSubcategory = normalizeSubcategory(
+      resolvedCategory,
+      ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+      article.subcategory || profile.subcategory
+    );
+
+    if (!articleMatchesSelection(profile, { category: resolvedCategory, subcategory: resolvedSubcategory }, article)) {
+      categoryRejected += 1;
+      continue;
+    }
+
+    const rawScore = ai.relevance_score ?? ai.relevanceScore;
+    const computedScore = (rawScore !== undefined && rawScore !== null && rawScore !== '')
+      ? parseInt(rawScore, 10)
+      : Number(article.relevanceScore || article.tavilyScore || 60);
+
+    const result = resultFromArticle(article, topic, {
+      ...ai,
+      decision: 'STORE',
+      category: resolvedCategory,
+      subcategory: resolvedSubcategory,
+      relevance_score: Math.max(0, Math.min(100, computedScore || 0)),
+      summary: ai.summary || article.summary || article.aiSummary || '',
+      relevance_reason: ai.relevance_reason || ai.relevanceReason || 'Matched allowed source domain and selected category.'
     });
+
+    if (Number(result.relevanceScore || result.relevance_score || 0) < minStoreScore) {
+      scoreRejected += 1;
+      continue;
+    }
+
+    output.push(result);
   }
 
   onProgress?.({
     step: `topic:${topic}:done`,
-    message: `${topic} topic: kept ${output.length} AI-relevant result${output.length === 1 ? '' : 's'} (score >= ${MIN_STORE_SCORE})${searchErrors ? `; ${searchErrors} query variant${searchErrors === 1 ? '' : 's'} failed` : ''}`
+    message: `${topic} topic: kept ${output.length} result${output.length === 1 ? '' : 's'} after domain, duplicate, category, and score checks${categoryRejected ? `; ${categoryRejected} category mismatch reject${categoryRejected === 1 ? '' : 's'}` : ''}${scoreRejected ? `; ${scoreRejected} low-score reject${scoreRejected === 1 ? '' : 's'} (<${minStoreScore})` : ''}${searchErrors ? `; ${searchErrors} query variant${searchErrors === 1 ? '' : 's'} failed` : ''}`
   });
   return output;
 }
@@ -851,6 +975,7 @@ function buildBackendCallback(profile, topicItems) {
     const result = {
       title: d.title,
       summary: d.summary || '',
+      rawContent: d.rawContent || d.rawData?.rawContent || '',
       url: d.url,
       urlHash: d.urlHash,
       type: d.type || 'news',
@@ -869,8 +994,10 @@ function buildBackendCallback(profile, topicItems) {
       relevanceReason: d.relevanceReason || d.relevance_reason || '',
       relevance_reason: d.relevance_reason || d.relevanceReason || '',
       aiSummary: d.aiSummary || d.summary || '',
+      blogContext: d.blogContext || d.rawContent || d.summary || '',
       sourceQuery: d.sourceQuery || '',
       rawData: d.rawData || d.raw || {
+        rawContent: d.rawContent || '',
         sourceQuery: d.sourceQuery || '',
         allowedDomains: d.allowedDomains || [],
         tavilyScore: d.tavilyScore || d.tavily_score || null

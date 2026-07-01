@@ -21,6 +21,7 @@ const {
 } = require('../services/platformFetchService');
 const { cleanupAnalyticsRetention, getDatabaseHealthSummary } = require('../services/storageMaintenance');
 const { buildAdminBroadcastEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { softDeleteUser, cleanupDeletedUsers, graceDays } = require('../services/userDeletionService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
 
@@ -751,10 +752,19 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     User.aggregate([{ $group: { _id: '$subscriptionPlan', count: { $sum: 1 } } }]),
     FetchLog.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
     FetchLog.aggregate([
-      { $match: { startedAt: { $gte: monthStart } } },
+      {
+        $match: {
+          startedAt: { $gte: monthStart },
+          sector: { $ne: 'platform intelligence' },
+          $or: [
+            { userId: { $exists: true, $ne: null } },
+            { triggeredByUser: { $exists: true, $ne: null } }
+          ]
+        }
+      },
       {
         $group: {
-          _id: '$userId',
+          _id: { $ifNull: ['$userId', '$triggeredByUser'] },
           runs: { $sum: 1 },
           inserted: { $sum: '$totalInserted' },
           fetched: { $sum: '$totalFetched' },
@@ -795,8 +805,8 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     FetchLog.find({})
       .sort({ startedAt: -1 })
       .limit(8)
-      .populate('userId', 'name email company subscriptionPlan')
-      .populate('triggeredByUser', 'name email company subscriptionPlan')
+      .populate('userId', 'name email company subscriptionPlan role')
+      .populate('triggeredByUser', 'name email company subscriptionPlan role')
       .lean()
   ]);
 
@@ -1163,7 +1173,7 @@ router.get('/logs', asyncHandler(async (req, res) => {
     ];
   }
   const [items, total] = await Promise.all([
-    FetchLog.find(q).sort({ startedAt: -1 }).skip(skip).limit(limit).populate('triggeredByUser', 'name email').lean(),
+    FetchLog.find(q).sort({ startedAt: -1 }).skip(skip).limit(limit).populate('triggeredByUser', 'name email role').lean(),
     FetchLog.countDocuments(q)
   ]);
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
@@ -1280,7 +1290,7 @@ router.post('/users', asyncHandler(async (req, res) => {
   }
 
   const normalizedEmail = String(email).toLowerCase().trim();
-  const exists = await User.findOne({ email: normalizedEmail });
+  const exists = await User.findOne({ email: normalizedEmail }).withDeleted();
   if (exists) return res.status(409).json({ message: 'Email already registered' });
 
   // Determine plan and apply defaults for super admin account creation
@@ -1405,8 +1415,25 @@ router.delete('/users/:id', asyncHandler(async (req, res) => {
   if (target.role === 'super_admin') {
     return res.status(403).json({ message: 'Super admin is managed by the developer' });
   }
-  await target.deleteOne();
-  res.json({ message: 'Deleted', id: req.params.id });
+  const result = await softDeleteUser(target, req.user, { reason: 'deleted_by_super_admin' });
+  res.json({
+    message: result.scope === 'tenant'
+      ? `Tenant scheduled for deletion. Related data will be cleaned in the background after ${graceDays()} day(s).`
+      : `User scheduled for deletion. Related data will be cleaned in the background after ${graceDays()} day(s).`,
+    id: req.params.id,
+    scope: result.scope,
+    purgeAfter: result.purgeAfter,
+    deletedUsers: result.deletedUsers
+  });
+}));
+
+router.post('/users/deletion-cleanup/run', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const result = await cleanupDeletedUsers();
+  res.json({
+    ok: true,
+    processedBatches: result.processedBatches,
+    results: result.results
+  });
 }));
 
 // ============== SESSION MANAGEMENT (SUPER ADMIN) ==============

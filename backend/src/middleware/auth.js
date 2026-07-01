@@ -46,6 +46,12 @@ async function protect(req, res, next) {
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'User not found or inactive' });
     }
+    if (user.tenantAdminId && String(user.tenantAdminId) !== String(user._id)) {
+      const tenantAdmin = await User.findById(user.tenantAdminId).withDeleted().select('_id deletedAt isActive').lean();
+      if (!tenantAdmin || tenantAdmin.deletedAt || tenantAdmin.isActive === false) {
+        return res.status(401).json({ message: 'Tenant admin is inactive or deleted. Please contact support.' });
+      }
+    }
 
     const session = await UserSession.findOne({
       sessionId: decoded.sid,

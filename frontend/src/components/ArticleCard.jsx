@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bookmark, Check, ExternalLink, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -65,7 +66,7 @@ function MetaPill({ icon: Icon, children, title, relaxed = false }) {
   );
 }
 
-export default function ArticleCard({
+function ArticleCard({
   item = {},
   compact = false,
   selectable = false,
@@ -96,22 +97,16 @@ export default function ArticleCard({
       data-analytics-section={`Article: ${item.type || 'signal'} - ${item.category || 'General'}`}
       className={[
         'group relative isolate flex flex-col overflow-hidden rounded-lg bg-white font-sans fade-in',
-        'transition-all duration-200',
+        'transition-all duration-200 hover:-translate-y-0.5',
         compact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5',
         selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
         boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 0 0 1px rgba(15,23,42,0.08)',
-      }}
-      onMouseOver={e => {
-        if (window.matchMedia('(hover: hover)').matches) {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-        }
-        e.currentTarget.style.boxShadow = `0 12px 28px rgba(15,23,42,0.08), 0 0 0 1px ${typeStyle.accent}30`;
-      }}
-      onMouseOut={e => {
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,23,42,0.04), 0 0 0 1px rgba(15,23,42,0.07)';
+        contentVisibility: 'auto',
+        containIntrinsicSize: compact ? '320px' : '380px',
+        contain: 'layout paint style',
+        willChange: 'transform',
       }}
     >
       <div className="absolute left-0 top-0 h-full w-1 opacity-90" style={{ background: typeStyle.accent }} />
@@ -141,6 +136,10 @@ export default function ArticleCard({
               type="checkbox"
               checked={selected}
               onChange={() => onSelect?.(item._id)}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              onDragStart={(event) => event.preventDefault()}
+              draggable={false}
               className="mt-0.5 rounded border-gray-200 text-brand-crimson focus:ring-brand-crimson/30"
             />
           )}
@@ -289,3 +288,5 @@ export default function ArticleCard({
     </article>
   );
 }
+
+export default memo(ArticleCard);

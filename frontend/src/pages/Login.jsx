@@ -12,7 +12,18 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState(state?.message || '');
+  const [notice, setNotice] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('auth_redirect_notice');
+      if (stored) {
+        sessionStorage.removeItem('auth_redirect_notice');
+        return stored;
+      }
+    } catch {
+      // Ignore storage failures and fall back to route state.
+    }
+    return state?.message || '';
+  });
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {

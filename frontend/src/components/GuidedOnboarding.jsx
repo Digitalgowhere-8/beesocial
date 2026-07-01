@@ -385,7 +385,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
           />
         ) : null}
 
-        <div className={`relative flex max-h-full flex-col overflow-hidden ${panel.isMobile ? 'p-4 pb-5' : panel.isCompact ? 'p-4 pb-4' : 'p-5 sm:p-6'}`}>
+        <div className={`relative flex max-h-full min-h-0 flex-col overflow-hidden ${panel.isMobile ? 'p-4 pb-5' : panel.isCompact ? 'p-4 pb-4' : 'p-5 sm:p-6'}`}>
           {panel.isMobile ? (
             <div className="mb-3 flex justify-center">
               <span className="h-1.5 w-14 rounded-full bg-slate-200" />
@@ -446,7 +446,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
             </div>
           </div>
 
-          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'} flex-1 overflow-y-auto pr-1`}>
+          <div className={`${panel.isCompact && !panel.isMobile ? 'mt-3' : 'mt-4'} flex-1 min-h-0 overflow-y-auto pr-1`}>
             <div className={`rounded-[24px] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${panel.isCompact && !panel.isMobile ? 'p-3.5' : 'p-4 sm:p-5'}`}>
               <p className={`text-slate-600 ${panel.isCompact && !panel.isMobile ? 'text-[13px] leading-6' : 'text-[14px] leading-7 sm:text-[15px]'}`}>
                 {step.description}

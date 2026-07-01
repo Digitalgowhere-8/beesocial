@@ -33,7 +33,7 @@ function isEnabled() {
 }
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 50) || 50));
+const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
   const title = article?.title || 'Market intelligence update';
@@ -106,7 +106,14 @@ function fallbackLinkedInPost({ article, options = {} }) {
       cta
     ].join('\n'),
     cta,
-    hashtags: ['#BusinessIntelligence', '#MarketIntelligence', '#Advisory'],
+    hashtags: [
+      '#MarketIntelligence',
+      '#BusinessStrategy',
+      '#RiskManagement',
+      '#Governance',
+      '#Compliance',
+      '#Advisory'
+    ],
     qualityChecks: {
       hookUnderEightWords: hook.split(/\s+/).length <= 8,
       oneClearIdea: true,
@@ -119,6 +126,8 @@ function fallbackLinkedInPost({ article, options = {} }) {
 
 function blogSourceContext(article = {}) {
   return [
+    article.rawContent || article.raw_content,
+    article.rawData?.rawContent,
     article.tavilyAnswer || article.tavily_answer,
     article.blogContext || article.blog_context,
     article.summary,
@@ -131,7 +140,7 @@ function blogSourceContext(article = {}) {
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join('\n\n')
-    .slice(0, 3000);
+    .slice(0, 12000);
 }
 
 function uniqueStrings(values = []) {
@@ -144,8 +153,37 @@ function uniqueStrings(values = []) {
   });
 }
 
+function normalizeHashtags(values = [], fallback = []) {
+  const normalized = uniqueStrings(
+    values.map((value) => {
+      const tag = String(value || '').trim().replace(/\s+/g, '');
+      if (!tag) return '';
+      return tag.startsWith('#') ? tag : `#${tag}`;
+    })
+  ).filter(Boolean);
+
+  if (normalized.length >= 5) return normalized.slice(0, 7);
+  return uniqueStrings([
+    ...normalized,
+    ...fallback
+  ]).slice(0, 7);
+}
+
 function normalizeLineBreaks(value) {
   return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function stripTrailingHashtags(value) {
+  const lines = normalizeLineBreaks(value).trim().split('\n');
+  while (lines.length) {
+    const line = String(lines[lines.length - 1] || '').trim();
+    if (!line || (line.includes('#') && /^(\s*#[A-Za-z0-9_]+\s*)+$/.test(line))) {
+      lines.pop();
+      continue;
+    }
+    break;
+  }
+  return lines.join('\n').trim();
 }
 
 function buildPlainToc(lines = []) {
@@ -1169,6 +1207,7 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             'You are a founder/operator/advisor LinkedIn ghostwriter.',
             'You do not sound like a content writer or AI.',
             'You write like someone who has done the work, learned the lesson, and can explain it plainly.',
+            'You optimize for sharpness, specificity, and memorability over safe generic phrasing.',
             '',
             'Return ONLY valid JSON. No markdown outside JSON.',
             '',
@@ -1180,12 +1219,23 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '- Thought leader',
             '- Leverage, unless used in a financial context',
             '- Generic CTAs like What do you think?',
+            '- Remember,',
+            '- Stay informed',
+            '- The key takeaway is',
             '',
             'Never use motivational fluff, corporate filler, or AI-polished phrasing.',
             'Use one clear idea only.',
             'Use I only when the post is written as a lived/operator insight.',
             'Do not invent facts, numbers, timeframes, clients, or results.',
             'If proof is not provided by the user or source, use a cautious proof element from the source only.'
+            ,
+            'If the source is weak, indirect, or low-relevance, do NOT fake importance.',
+            'Instead, turn it into a sharper lesson about filtering, risk judgment, governance, timing, or decision quality.',
+            'If the source contains an enforcement action, penalty, regulatory filing, fine, deadline, consultation, or official notice, make the business implication concrete.',
+            'Turn compliance updates into operational judgment: who owns the control, what can fail, what should be reviewed, and why it matters.',
+            'Avoid generic lines like "not all news matters" unless made more specific and original.',
+            'Every post should contain at least one line that feels quotable or worth saving.',
+            'Do not write a summary. Write a point of view built from the source.'
           ].join('\n')
         },
         {
@@ -1221,23 +1271,27 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             `Custom instructions:\n${customInstructions}`,
             '',
             'STEP 1 - TOPIC INTELLIGENCE',
-            'Generate content topic options based on ICP pain points, market realities, founder/operator experience, industry misconceptions, and buyer psychology.',
-            'Each topic must be specific, relevant to ICP + person profile, and capable of triggering engagement or inbound.',
+            'Generate 3 content topic options based on the source, ICP pain points, market realities, founder/operator experience, industry misconceptions, and buyer psychology.',
+            'Each topic must be specific, relevant to ICP + person profile, and useful enough that a busy operator would save it.',
+            'Do not choose the article title as the topic unless it is already a strong business lesson.',
             '',
             'STEP 2 - CLASSIFY EACH TOPIC',
             'For each topic, assign:',
-            '- Tier: Broad (reach), Narrow (authority), or Niche (conversion)',
-            '- Emotional Job: Inspire, Educate, Provoke, or Convert',
+            '- Tier: Broad (reach), Practical (decision-useful), Narrow (authority), or Niche (conversion)',
+            '- Emotional Job: Inspire, Educate, Urgency, Reassure, Provoke, or Convert',
             `Preferred tier: ${topicTier}`,
             `Preferred emotional job: ${emotionalJob}`,
             '',
             'STEP 3 - SELECT BEST TOPIC',
-            'Pick the best topic based on highest relevance to ICP, strongest emotional tension, and best fit for authority positioning.',
+            'Pick the best topic based on decision value, emotional tension, proof strength, and authority positioning.',
+            'If the source is weak or political/noisy, select a filtering/judgment topic instead of pretending it is a direct market signal.',
+            'If the source is about enforcement, filings, compliance, governance, tax, hiring, market entry, or regulation, select a practical risk/control topic.',
             '',
             'STEP 4 - SELECT WRITING FRAMEWORK',
             'Choose ONE framework:',
             '- SLAY: story-led authority',
             '- PAS: pain-driven inbound',
+            '- PRA: problem-risk-action',
             '- POV: high reach',
             '- 5-Line Mirror: authority + relatability',
             '- AIDA: conversion / announcement',
@@ -1245,8 +1299,9 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '',
             'STEP 5 - HOOK GENERATION',
             `Hook style preference: ${hookStyle}`,
-            'Generate proof-led, contrarian, and personal-story hook options.',
+            'Generate proof-led, warning-led, contrarian, and personal-story hook options.',
             'Each hook line 1 must be under 8 words, create curiosity or tension, and avoid generic phrasing.',
+            'Prefer hooks that are concrete, pointed, and slightly uncomfortable over bland summary hooks.',
             'Select the strongest hook.',
             '',
             'STEP 6 - WRITE THE POST',
@@ -1256,8 +1311,10 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '- No paragraph over 30 words.',
             '- Mix short, medium, and punchy sentence lengths.',
             '- Include exactly one proof element.',
-            '- Include one soft authority line.',
+            '- Include one soft authority line only if it adds credibility without sounding promotional.',
             '- Include one clear takeaway: Rule of One.',
+            '- Do not include hashtags inside postText. Return hashtags only in the hashtags array.',
+            '- Do not restate the source summary. Convert it into a practical lesson, decision rule, or operating question.',
             '',
             'Voice rules:',
             '- Write like someone who has done the work.',
@@ -1265,11 +1322,24 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '- No corporate jargon unless natural.',
             '- No motivational fluff.',
             '- No AI-polished tone.',
+            '- No textbook summary voice.',
+            '- No repeating the same idea in different wording.',
+            '- Every paragraph should move the idea forward.',
+            '- Prefer concrete nouns and business consequences over broad phrases like market-relevant intelligence.',
             '',
             'STEP 7 - CTA',
             `Include CTA: ${includeCTA ? 'Yes' : 'No'}`,
-            'Write one tightly coupled CTA related directly to the topic.',
-            'It should feel like a natural next step, preferably curiosity-driven.',
+            'Write one tightly coupled CTA related directly to the topic, even if the user CTA direction is generic.',
+            'It should feel like a natural next step, preferably a useful operator question.',
+            'Do not use a generic CTA if the topic does not support one.',
+            'If the user provided a generic CTA like "Follow us", turn it into a contextual CTA and keep the promotional wording out of the post.',
+            '',
+            'STEP 7B - HASHTAGS',
+            `Include hashtags: ${includeHashtags ? 'Yes' : 'No'}`,
+            'If hashtags are included, return 5 to 7 hashtags only.',
+            'Use a balanced mix: 2 broad discovery hashtags, 2 category hashtags, 1 to 3 article-specific hashtags.',
+            'Make them specific to market intelligence, risk, compliance, governance, business strategy, regulation, tax, corporate services, hiring, market entry, or the article theme.',
+            'Do not use vague filler hashtags.',
             '',
             'STEP 8 - QUALITY CONTROL',
             'Validate before output:',
@@ -1279,31 +1349,32 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '- Sounds human, not AI.',
             '- Valuable to a cold reader.',
             '- No generic ending.',
-            '',
-            `Include hashtags: ${includeHashtags ? 'Yes' : 'No'}`,
+            '- CTA is contextual, not promotional filler.',
+            '- Hashtags are outside postText and count is 5 to 7 when enabled.',
             `Length: ${length}`,
             '',
             'OUTPUT JSON SHAPE',
             '{',
             '  "topicOptions": [',
-            '    { "topic": "<specific topic>", "tier": "Broad|Narrow|Niche", "emotionalJob": "Inspire|Educate|Provoke|Convert", "reason": "<why it works>" }',
+            '    { "topic": "<specific topic>", "tier": "Broad|Practical|Narrow|Niche", "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert", "reason": "<why it works>" }',
             '  ],',
             '  "selectedTopic": "<best topic>",',
-            '  "topicTier": "Broad|Narrow|Niche",',
-            '  "emotionalJob": "Inspire|Educate|Provoke|Convert",',
-            '  "framework": "SLAY|PAS|POV|5-Line Mirror|AIDA",',
+            '  "topicTier": "Broad|Practical|Narrow|Niche",',
+            '  "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert",',
+            '  "framework": "SLAY|PAS|PRA|POV|5-Line Mirror|AIDA",',
             '  "hookOptions": ["<hook 1>", "<hook 2>", "<hook 3>"],',
             '  "hook": "<selected hook under 8 words>",',
             '  "postText": "<complete LinkedIn post with line breaks>",',
             '  "cta": "<final CTA or empty string>",',
-            '  "hashtags": ["<hashtag 1>", "<hashtag 2>"],',
+            '  "hashtags": ["<hashtag 1>", "<hashtag 2>", "<hashtag 3>", "<hashtag 4>", "<hashtag 5>", "<optional hashtag 6>", "<optional hashtag 7>"],',
             '  "qualityChecks": {',
             '    "hookUnderEightWords": true,',
             '    "noBannedPhrases": true,',
             '    "oneClearIdea": true,',
             '    "soundsHuman": true,',
             '    "valuableToColdReader": true,',
-            '    "noGenericEnding": true',
+            '    "noGenericEnding": true,',
+            '    "hashtagsOutsidePostText": true',
             '  }',
             '}'
           ].join('\n')
@@ -1328,9 +1399,19 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
       framework: String(parsed.framework || '').trim(),
       hookOptions: Array.isArray(parsed.hookOptions) ? parsed.hookOptions.map(String) : [],
       hook: String(parsed.hook || '').trim(),
-      postText: String(parsed.postText || '').trim(),
+      postText: stripTrailingHashtags(parsed.postText),
       cta: String(parsed.cta || '').trim(),
-      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.map(String) : [],
+      hashtags: normalizeHashtags(
+        Array.isArray(parsed.hashtags) ? parsed.hashtags.map(String) : [],
+        [
+          '#MarketIntelligence',
+          '#BusinessStrategy',
+          '#RiskManagement',
+          '#Governance',
+          '#Compliance',
+          '#Advisory'
+        ]
+      ),
       qualityChecks: parsed.qualityChecks || {},
       model: MODEL
     };

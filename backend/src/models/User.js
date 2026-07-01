@@ -72,12 +72,40 @@ const userSchema = new mongoose.Schema(
 
     lastLoginAt: { type: Date },
     lastSeenAt: { type: Date },
-    isActive: { type: Boolean, default: false }
+    isActive: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    deleteReason: { type: String, default: '', trim: true, maxlength: 200 },
+    purgeAfter: { type: Date, default: null, index: true },
+    deletionBatchId: { type: String, default: '', trim: true, index: true },
+    deletionRootUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    deletionScope: { type: String, enum: ['', 'user', 'tenant'], default: '' },
+    cleanupStatus: { type: String, enum: ['', 'pending', 'in_progress', 'failed'], default: '', index: true },
+    cleanupStartedAt: { type: Date, default: null },
+    cleanupError: { type: String, default: '', trim: true, maxlength: 500 }
   },
   { timestamps: true }
 );
 
 userSchema.index({ tenantAdminId: 1, role: 1 });
+userSchema.index({ deletedAt: 1, purgeAfter: 1, cleanupStatus: 1 });
+
+userSchema.query.withDeleted = function withDeleted() {
+  return this.setOptions({ withDeleted: true });
+};
+
+function excludeSoftDeleted(next) {
+  if (this.getOptions && this.getOptions().withDeleted) return next();
+  const query = this.getQuery();
+  if (Object.prototype.hasOwnProperty.call(query, 'deletedAt')) return next();
+  this.where({ deletedAt: null });
+  return next();
+}
+
+userSchema.pre('find', excludeSoftDeleted);
+userSchema.pre('findOne', excludeSoftDeleted);
+userSchema.pre('countDocuments', excludeSoftDeleted);
+userSchema.pre('count', excludeSoftDeleted);
 
 // Hash password on save
 userSchema.pre('save', async function (next) {

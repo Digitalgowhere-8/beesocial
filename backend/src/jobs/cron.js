@@ -11,20 +11,30 @@ const orchestrator = require('../services/orchestrator');
 const { runDueSchedules } = require('./userSchedule');
 const { runDuePlatformFetch } = require('../services/platformFetchService');
 const { cleanupAnalyticsRetention } = require('../services/storageMaintenance');
+const { cleanupDeletedUsers } = require('../services/userDeletionService');
 
 let task = null;
 let maintenanceTask = null;
 
 async function runStorageMaintenance(reason = 'scheduled') {
   try {
-    const result = await cleanupAnalyticsRetention();
-    if (result.deleted) {
-      console.log(`[maintenance] ${reason} analytics cleanup removed ${result.deleted} events older than ${result.cutoff.toISOString()}`);
+    const [analyticsResult, deletionResult] = await Promise.all([
+      cleanupAnalyticsRetention(),
+      cleanupDeletedUsers()
+    ]);
+    const deletedBatches = Number(deletionResult.processedBatches || 0);
+    if (analyticsResult.deleted) {
+      console.log(`[maintenance] ${reason} analytics cleanup removed ${analyticsResult.deleted} events older than ${analyticsResult.cutoff.toISOString()}`);
     } else {
       console.log(`[maintenance] ${reason} analytics cleanup found nothing to remove`);
     }
+    if (deletedBatches) {
+      console.log(`[maintenance] ${reason} deleted ${deletedBatches} soft-delete batch${deletedBatches === 1 ? '' : 'es'} in background cleanup`);
+    } else {
+      console.log(`[maintenance] ${reason} soft-delete cleanup found nothing due`);
+    }
   } catch (err) {
-    console.error('[maintenance] analytics cleanup failed', err);
+    console.error('[maintenance] cleanup failed', err);
   }
 }
 

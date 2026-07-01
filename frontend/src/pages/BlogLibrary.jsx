@@ -1,14 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
+import useInfiniteScroll from '../hooks/useInfiniteScroll';
 import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
-import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 
 const LIBRARY_MODES = [
   { key: 'blogs', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
   { key: 'linkedin', label: 'Social', desktopLabel: 'Social Media Post', icon: MessageSquareText },
 ];
+const LIBRARY_CACHE_VERSION = 'v1';
+const LIBRARY_PAGE_SIZE = 12;
+
+function safeSessionGet(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSessionSet(key, value) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
 
 function renderInlineMarkdown(text = '') {
   const parts = [];
@@ -145,70 +164,121 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
 }
 
 export default function BlogLibrary() {
-  const { isAdmin } = useAuth();
-  const [mode, setMode] = useState('blogs');
-  const [items, setItems] = useState([]);
-  const [socialItems, setSocialItems] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [selectedSocial, setSelectedSocial] = useState(null);
+  const { isAdmin, user } = useAuth();
+  const cacheKey = useMemo(
+    () => `blog_library_cache:${LIBRARY_CACHE_VERSION}:${user?._id || 'guest'}`,
+    [user?._id]
+  );
+  const cachedLibraryState = useMemo(
+    () => safeSessionGet(cacheKey, null),
+    [cacheKey]
+  );
+  const [mode, setMode] = useState(() => cachedLibraryState?.mode || 'blogs');
+  const [items, setItems] = useState(cachedLibraryState?.items || []);
+  const [socialItems, setSocialItems] = useState(cachedLibraryState?.socialItems || []);
+  const [selected, setSelected] = useState(cachedLibraryState?.selected || null);
+  const [selectedSocial, setSelectedSocial] = useState(cachedLibraryState?.selectedSocial || null);
+  const [blogPage, setBlogPage] = useState(cachedLibraryState?.blogPage || 1);
+  const [blogHasMore, setBlogHasMore] = useState(cachedLibraryState?.blogHasMore ?? true);
+  const [socialPage, setSocialPage] = useState(cachedLibraryState?.socialPage || 1);
+  const [socialHasMore, setSocialHasMore] = useState(cachedLibraryState?.socialHasMore ?? true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedSocialIds, setSelectedSocialIds] = useState([]);
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingBlogs, setLoadingBlogs] = useState(() => !cachedLibraryState?.items?.length);
+  const [loadingSocial, setLoadingSocial] = useState(() => !cachedLibraryState?.socialItems?.length);
   const [mobileModeMenuOpen, setMobileModeMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
+  const loading = mode === 'blogs' ? loadingBlogs : loadingSocial;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadBlogs = useCallback(async ({ page = 1, reset = false } = {}) => {
+    setLoadingBlogs(true);
     setError('');
     try {
-      if (mode === 'linkedin') {
-        const { data } = await api.get('/blogs/social-posts', { params: { platform: 'linkedin', limit: 60 } });
-        const rows = (data.items || []).filter((item) => (
-          !query || `${item.selectedTopic || ''} ${item.postText || ''}`.toLowerCase().includes(query.toLowerCase())
-        ));
-        setSocialItems(rows);
-        setSelectedSocial((prev) => prev && rows.some((item) => item._id === prev._id) ? prev : rows[0] || null);
-      } else {
-        const params = { status: 'published', limit: 30 };
-        if (query) params.q = query;
-        const { data } = await api.get('/blogs', { params });
-        setItems(data.items || []);
-        setSelected((prev) => prev || data.items?.[0] || null);
-      }
+      const params = { status: 'published', limit: LIBRARY_PAGE_SIZE, page };
+      if (query) params.q = query;
+      const { data } = await api.get('/blogs', { params });
+      const nextBlogs = data.items || [];
+      setItems((prev) => (
+        reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]
+      ));
+      setSelected((prev) => {
+        if (prev && nextBlogs.some((item) => item._id === prev._id)) return prev;
+        return reset ? (nextBlogs[0] || null) : (prev || nextBlogs[0] || null);
+      });
+      setBlogPage(page);
+      setBlogHasMore(page < Number(data.pages || page));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not load content');
     } finally {
-      setLoading(false);
+      setLoadingBlogs(false);
     }
-  }, [mode, query]);
+  }, [query]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadSocial = useCallback(async ({ page = 1, reset = false } = {}) => {
+    setLoadingSocial(true);
+    setError('');
+    try {
+      const params = { platform: 'linkedin', limit: LIBRARY_PAGE_SIZE, page };
+      if (query) params.q = query;
+      const { data } = await api.get('/blogs/social-posts', { params });
+      const nextSocial = data.items || [];
+      setSocialItems((prev) => (
+        reset ? nextSocial : [...prev, ...nextSocial.filter((item) => !prev.some((existing) => existing._id === item._id))]
+      ));
+      setSelectedSocial((prev) => {
+        if (prev && nextSocial.some((item) => item._id === prev._id)) return prev;
+        return reset ? (nextSocial[0] || null) : (prev || nextSocial[0] || null);
+      });
+      setSocialPage(page);
+      setSocialHasMore(page < Number(data.pages || page));
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not load content');
+    } finally {
+      setLoadingSocial(false);
+    }
+  }, [query]);
 
   useEffect(() => {
-    const handleContentChange = () => {
-      load();
-    };
-    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChange);
-    return () => window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChange);
-  }, [load]);
+    if (mode === 'blogs') {
+      if (cachedLibraryState?.items?.length && !query) return;
+      loadBlogs({ page: 1, reset: true });
+      return;
+    }
+    if (cachedLibraryState?.socialItems?.length && !query) return;
+    loadSocial({ page: 1, reset: true });
+  }, [cachedLibraryState?.items?.length, cachedLibraryState?.socialItems?.length, loadBlogs, loadSocial, mode, query]);
 
   useEffect(() => {
-    const refreshVisibleData = () => {
-      if (document.visibilityState === 'hidden') return;
-      load();
-    };
+    safeSessionSet(cacheKey, {
+      mode,
+      items,
+      socialItems,
+      selected,
+      selectedSocial,
+      blogPage,
+      blogHasMore,
+      socialPage,
+      socialHasMore
+    });
+  }, [blogHasMore, blogPage, cacheKey, items, mode, selected, selectedSocial, socialHasMore, socialPage, socialItems]);
 
-    window.addEventListener('focus', refreshVisibleData);
-    document.addEventListener('visibilitychange', refreshVisibleData);
-    return () => {
-      window.removeEventListener('focus', refreshVisibleData);
-      document.removeEventListener('visibilitychange', refreshVisibleData);
-    };
-  }, [load]);
+  const blogLoadMoreRef = useInfiniteScroll({
+    enabled: mode === 'blogs',
+    hasMore: blogHasMore,
+    loading: loadingBlogs,
+    onLoadMore: () => loadBlogs({ page: blogPage + 1 })
+  });
+
+  const socialLoadMoreRef = useInfiniteScroll({
+    enabled: mode === 'linkedin',
+    hasMore: socialHasMore,
+    loading: loadingSocial,
+    onLoadMore: () => loadSocial({ page: socialPage + 1 })
+  });
 
   const toggleSelection = (id) => {
     setSelectedIds((prev) => (
@@ -250,7 +320,7 @@ export default function BlogLibrary() {
       }
       setSelectedIds((prev) => prev.filter((id) => !targetIds.includes(id)));
       if (targetIds.includes(selected?._id)) setSelected(null);
-      await load();
+      await loadBlogs({ page: 1, reset: true });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Delete failed');
     } finally {
@@ -274,7 +344,7 @@ export default function BlogLibrary() {
       }
       setSelectedSocialIds((prev) => prev.filter((id) => !targetIds.includes(id)));
       if (targetIds.includes(selectedSocial?._id)) setSelectedSocial(null);
-      await load();
+      await loadSocial({ page: 1, reset: true });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Delete failed');
     } finally {
@@ -332,7 +402,7 @@ export default function BlogLibrary() {
       <div className="ml-auto flex items-center gap-2 sm:hidden">
         <button
           type="button"
-          onClick={load}
+          onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })}
           className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
           aria-label="Refresh content repository"
         >
@@ -375,7 +445,7 @@ export default function BlogLibrary() {
               );
             })}
           </div>
-          <button type="button" onClick={load} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+          <button type="button" onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
@@ -504,7 +574,7 @@ export default function BlogLibrary() {
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
           <section className={`${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
-            {loading ? (
+            {loading && ((mode === 'blogs' && !items.length) || (mode === 'linkedin' && !socialItems.length)) ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3 text-brand-crimson">
                 <Loader2 size={24} className="animate-spin" />
                 <span className="text-sm font-bold text-gray-500">Loading library...</span>
@@ -552,6 +622,11 @@ export default function BlogLibrary() {
                     </div>
                   );
                 })}
+                {socialHasMore ? (
+                  <div ref={socialLoadMoreRef} className="flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                    {loadingSocial ? 'Loading more...' : 'Scroll for more'}
+                  </div>
+                ) : null}
               </div>
               ) : <Empty label="No saved LinkedIn posts yet" />
             ) : items.length ? (
@@ -603,6 +678,11 @@ export default function BlogLibrary() {
                     </div>
                   );
                 })}
+                {blogHasMore ? (
+                  <div ref={blogLoadMoreRef} className="flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                    {loadingBlogs ? 'Loading more...' : 'Scroll for more'}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <Empty />

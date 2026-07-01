@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 const TOKEN_KEY = 'opportunityos_token';
 const USER_KEY = 'opportunityos_user';
 const SESSION_KEY = 'opportunityos_session';
+const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
 
 function readStoredUser() {
   try {
@@ -51,6 +52,7 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   const [runProgress, setRunProgress] = useState(() => {
     try {
@@ -63,6 +65,18 @@ export function AuthProvider({ children }) {
     return null;
   });
 
+  const [genProgress, setGenProgress] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ascentium_gen_progress');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.status === 'running') return parsed;
+      }
+    } catch (_e) { /* ignore */ }
+    return null;
+  });
+
+  // Persist runProgress to localStorage
   useEffect(() => {
     try {
       if (runProgress && ['running', 'queued'].includes(runProgress.status)) {
@@ -73,6 +87,18 @@ export function AuthProvider({ children }) {
     } catch (_e) { /* ignore */ }
   }, [runProgress]);
 
+  // Persist genProgress to localStorage
+  useEffect(() => {
+    try {
+      if (genProgress && genProgress.status === 'running') {
+        localStorage.setItem('ascentium_gen_progress', JSON.stringify(genProgress));
+      } else {
+        localStorage.removeItem('ascentium_gen_progress');
+      }
+    } catch (_e) { /* ignore */ }
+  }, [genProgress]);
+
+  // Poll for fetch run progress
   useEffect(() => {
     const logId = runProgress?.runId || runProgress?.logId;
     if (!logId || !['running', 'queued'].includes(runProgress?.status)) return undefined;
@@ -92,7 +118,7 @@ export function AuthProvider({ children }) {
       }
     };
 
-    const id = window.setInterval(poll, 1500);
+    const id = window.setInterval(poll, 4000);
     poll();
 
     const handleVisibility = () => {
@@ -105,6 +131,38 @@ export function AuthProvider({ children }) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [runProgress?.runId, runProgress?.logId, runProgress?.status]);
+
+  // Poll for generation progress (blog / linkedin) — updates genProgress with backend status
+  useEffect(() => {
+    if (!genProgress || genProgress.status !== 'running') return undefined;
+
+    const poll = async () => {
+      try {
+        const { data } = await api.get('/blogs/generation-status');
+        if (!data || data.status === 'idle') {
+          setGenProgress(null);
+          localStorage.removeItem('ascentium_gen_progress');
+        } else {
+          setGenProgress(data);
+        }
+      } catch {
+        // On auth / network error, leave the state as-is and retry next poll
+      }
+    };
+
+    const id = window.setInterval(poll, 4000);
+    poll();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [genProgress?.status]);
 
   useEffect(() => {
     if (user?.role !== 'super_admin') return undefined;
@@ -134,7 +192,7 @@ export function AuthProvider({ children }) {
       }
     };
 
-    const id = window.setInterval(syncPlatformFetchStatus, 5000);
+    const id = window.setInterval(syncPlatformFetchStatus, 15000);
     syncPlatformFetchStatus();
     return () => window.clearInterval(id);
   }, [user?.role]);
@@ -154,7 +212,14 @@ export function AuthProvider({ children }) {
           localStorage.removeItem(SESSION_KEY);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        try {
+          if (err?.response?.data?.message) {
+            sessionStorage.setItem(AUTH_REDIRECT_NOTICE_KEY, err.response.data.message);
+          }
+        } catch {
+          // Ignore storage failures during auth bootstrap.
+        }
         clearAuthStorage();
         setUser(null);
         setSession(null);
@@ -232,27 +297,19 @@ export function AuthProvider({ children }) {
       refreshMe().catch(() => {});
     };
 
-    const handleFocus = () => {
-      if (document.visibilityState === 'hidden') return;
-      refreshMe().catch(() => {});
-    };
-
     const handleStorage = (event) => {
       if (![TOKEN_KEY, USER_KEY, SESSION_KEY].includes(event.key)) return;
       refreshMe().catch(() => {});
     };
 
-    const id = window.setInterval(heartbeat, 10 * 1000);
-    window.addEventListener('focus', handleFocus);
+    const heartbeatMs = realtimeConnected ? 2 * 60 * 1000 : 60 * 1000;
+    const id = window.setInterval(heartbeat, heartbeatMs);
     window.addEventListener('storage', handleStorage);
-    document.addEventListener('visibilitychange', handleFocus);
     return () => {
       window.clearInterval(id);
-      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('storage', handleStorage);
-      document.removeEventListener('visibilitychange', handleFocus);
     };
-  }, [user, refreshMe]);
+  }, [realtimeConnected, user, refreshMe]);
 
   useEffect(() => {
     if (!user?._id) return undefined;
@@ -260,6 +317,7 @@ export function AuthProvider({ children }) {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
     let stream = null;
     let closed = false;
+    setRealtimeConnected(false);
 
     const connect = async () => {
       try {
@@ -268,6 +326,8 @@ export function AuthProvider({ children }) {
 
         const streamUrl = `${baseUrl}/realtime/stream?token=${encodeURIComponent(data.token)}`;
         stream = new EventSource(streamUrl);
+        stream.addEventListener('ready', () => setRealtimeConnected(true));
+        stream.onerror = () => setRealtimeConnected(false);
 
         const handleContent = (event) => {
           try {
@@ -285,6 +345,7 @@ export function AuthProvider({ children }) {
         stream.addEventListener('content', handleContent);
         stream.addEventListener('auth', handleAuth);
       } catch {
+        setRealtimeConnected(false);
         // Ignore realtime bootstrap failures; polling/refresh paths still work.
       }
     };
@@ -293,6 +354,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       closed = true;
+      setRealtimeConnected(false);
       stream?.close();
     };
   }, [refreshMe, user?._id]);
@@ -325,7 +387,8 @@ export function AuthProvider({ children }) {
         isSuperAdmin: user?.role === 'super_admin',
         login, register, logout, updateProfile, setAuthState, refreshMe,
         listSessions, revokeSession, logoutAllSessions,
-        runProgress, setRunProgress
+        runProgress, setRunProgress,
+        genProgress, setGenProgress
       }}
     >
       {children}
