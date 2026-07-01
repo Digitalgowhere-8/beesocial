@@ -424,13 +424,11 @@ function buildTopicQueryVariants(profile = {}) {
     const categoryVariants = categories.flatMap((category) => (
       buildCategoryQueryVariants(topic, category, { ...profile, competitors })
     )).filter(Boolean);
-    // Keep one broad variant in the mix so admin fetches still discover data
-    // across the approved domains, then let the later relevance/category
-    // filters narrow results to the user's requirement.
-    const broadVariant = broadTopicQueryVariant(topic, { ...profile, competitors });
+    // Only send category-specific queries — no broad generic fallback
+    // that could bring in unrelated articles from outside the configured categories.
     queries[topic] = customQueryOverride
       ? [customQueryOverride]
-      : [broadVariant, ...categoryVariants].filter(Boolean);
+      : categoryVariants.filter(Boolean);
   }
 
   return queries;

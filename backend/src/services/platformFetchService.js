@@ -9,8 +9,10 @@ const progress = require('./profileRunProgress');
 const { publishGlobalEvent } = require('../utils/realtime');
 
 const TOPICS = ['news', 'govt', 'competitor', 'evergreen'];
+const ALL_CATEGORIES = Object.keys(CATEGORIES);
 const DEFAULT_CONFIG = {
   countries: [],
+  categories: ALL_CATEGORIES,
   topics: TOPICS,
   days: 30,
   targetPerTopic: 150,
@@ -42,10 +44,14 @@ function normalizeConfig(value = {}) {
     .filter((topic) => TOPICS.includes(topic));
   const schedule = value.schedule && typeof value.schedule === 'object' ? value.schedule : {};
 
+  const configuredCategories = unique(value.categories || [])
+    .filter((cat) => ALL_CATEGORIES.includes(cat));
+
   return {
     ...DEFAULT_CONFIG,
     ...value,
     countries,
+    categories: configuredCategories.length ? configuredCategories : ALL_CATEGORIES,
     topics: topics.length ? topics : DEFAULT_CONFIG.topics,
     days: Math.max(1, Math.min(365, Number(value.days || DEFAULT_CONFIG.days) || DEFAULT_CONFIG.days)),
     targetPerTopic: Math.max(1, Math.min(150, Number(value.targetPerTopic || DEFAULT_CONFIG.targetPerTopic) || DEFAULT_CONFIG.targetPerTopic)),
@@ -193,7 +199,8 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         userId: String(triggeredByUser || 'platform-scheduler'),
         trigger,
         country,
-        categories,
+        // Use only the configured categories — never fetch all categories blindly
+        categories: config.categories && config.categories.length ? config.categories : Object.keys(CATEGORIES),
         topics: config.topics,
         days: config.days,
         targetPerTopic: config.targetPerTopic,
