@@ -366,6 +366,59 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   });
 }));
 
+// GET /api/articles/counts — returns total counts for all columns after filtering
+router.get('/counts', protect, asyncHandler(async (req, res) => {
+  const baseQuery = await applySavedFilter(
+    req,
+    buildQuery(req)
+  );
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
+
+  const pipeline = [
+    { $match: baseQuery },
+    {
+      $addFields: {
+        fetchedDate: {
+          $convert: {
+            input: '$fetchedAt',
+            to: 'date',
+            onError: new Date(0),
+            onNull: new Date(0)
+          }
+        }
+      }
+    }
+  ];
+
+  if (dateRange) {
+    pipeline.push({ $match: { fetchedDate: dateRange } });
+  }
+
+  pipeline.push({
+    $group: {
+      _id: '$type',
+      count: { $sum: 1 }
+    }
+  });
+
+  const counts = await Article.aggregate(pipeline);
+
+  const response = {
+    news: 0,
+    govt: 0,
+    competitor: 0,
+    evergreen: 0
+  };
+
+  for (const row of counts) {
+    if (response[row._id] !== undefined) {
+      response[row._id] = row.count;
+    }
+  }
+
+  res.json(response);
+}));
+
 // ---------- DASHBOARD endpoint ----------
 // GET /api/articles/dashboard?limit=20&from=...&to=...&category=...
 // Returns 4 buckets in one round-trip.
