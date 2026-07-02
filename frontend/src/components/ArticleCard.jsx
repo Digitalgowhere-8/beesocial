@@ -1,12 +1,14 @@
 import { memo } from 'react';
 import { Bookmark, Check, ExternalLink, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
+import { getDashboardAppearance, scoreBandForValue, sourceTrustTone } from '../utils/feedTheme';
 
 const TYPE_STYLES = {
-  news:       { label: 'News Articles', accent: '#3b82f6' },
-  govt:       { label: 'Government Updates', accent: '#10b981' },
-  competitor: { label: 'Competitor Intel', accent: '#f59e0b' },
-  evergreen:  { label: 'Evergreen Topics',  accent: '#8b5cf6' },
+  news:       { label: 'News Articles' },
+  govt:       { label: 'Government Updates' },
+  competitor: { label: 'Competitor Intel' },
+  evergreen:  { label: 'Evergreen Topics' },
 };
 
 function formatDateTime(value) {
@@ -76,8 +78,12 @@ function ArticleCard({
   saving = false,
   adminActions = null,
 }) {
-  const typeStyle = TYPE_STYLES[item.type] || TYPE_STYLES.news;
+  const { uiSettings } = useAuth();
+  const appearance = getDashboardAppearance(uiSettings);
+  const topicTheme = appearance.topicColors[item.type] || appearance.topicColors.news;
+  const typeStyle = { ...(TYPE_STYLES[item.type] || TYPE_STYLES.news), ...topicTheme };
   const score = Math.round(Number(item.relevanceScore || 0));
+  const scoreBand = scoreBandForValue(score, appearance);
   const effectiveDate = item.fetchedAt || item.publishedAt;
   const when = effectiveDate
     ? formatDistanceToNow(new Date(effectiveDate), { addSuffix: true })
@@ -91,18 +97,19 @@ function ArticleCard({
   const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
+  const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
 
   return (
     <article
       data-analytics-section={`Article: ${item.type || 'signal'} - ${item.category || 'General'}`}
       className={[
-        'group relative isolate flex flex-col overflow-hidden rounded-lg bg-white font-sans fade-in',
+        'group relative isolate flex flex-col overflow-hidden rounded-[22px] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,251,0.94))] font-sans fade-in',
         'transition-all duration-200 hover:-translate-y-0.5',
         compact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5',
         selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
-        boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 0 0 1px rgba(15,23,42,0.08)',
+        boxShadow: '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
         contentVisibility: 'auto',
         containIntrinsicSize: compact ? '320px' : '380px',
         contain: 'layout paint style',
@@ -115,7 +122,7 @@ function ArticleCard({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span
             className="inline-flex items-center rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider"
-            style={{ color: typeStyle.accent, background: `${typeStyle.accent}12`, border: `1px solid ${typeStyle.accent}24` }}
+            style={{ color: typeStyle.text, background: typeStyle.soft, border: `1px solid ${typeStyle.border}` }}
           >
             {typeStyle.label}
           </span>
@@ -125,7 +132,7 @@ function ArticleCard({
           {score > 0 && (
             <span
               className="rounded-md px-2 py-1 text-[10px] font-black tracking-wide"
-              style={{ color: typeStyle.accent, background: `${typeStyle.accent}12`, border: `1px solid ${typeStyle.accent}22` }}
+              style={{ color: scoreBand.text, background: scoreBand.bg, border: `1px solid ${scoreBand.border}` }}
               title="Relevance score"
             >
               {score}
@@ -187,7 +194,7 @@ function ArticleCard({
         </p>
       )}
 
-      <div className="mt-auto border-t border-gray-100 pl-0 pt-3 sm:pl-3">
+      <div className="mt-auto border-t border-gray-100/80 pl-0 pt-3 sm:pl-3">
         <div className={['mb-2 grid grid-cols-1 gap-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
           <MetaPill icon={MapPin} title="Country or region">{[region, country].filter(Boolean).join(', ')}</MetaPill>
           <MetaPill icon={Globe} title={`Source: ${source}`}>{source}</MetaPill>
@@ -199,7 +206,10 @@ function ArticleCard({
           </div>
         )}
         {item.relevanceReason && (
-          <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-[11px] font-semibold leading-snug text-emerald-700 ring-1 ring-emerald-100">
+          <div
+            className="mb-3 rounded-xl px-3 py-2 text-[11px] font-semibold leading-snug"
+            style={{ background: scoreBand.bg, color: scoreBand.text, border: `1px solid ${scoreBand.border}` }}
+          >
             {item.relevanceReason}
           </div>
         )}
@@ -209,32 +219,40 @@ function ArticleCard({
           </MetaPill>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white">
           <a
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-w-0 items-center gap-2 rounded-lg bg-white/90 px-2 py-1.5 ring-1 ring-gray-100 transition-all hover:bg-white hover:ring-brand-crimson/20"
+            className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 transition-all hover:bg-white/90"
             title={sourceDomain}
             data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
             onClick={(event) => event.stopPropagation()}
+            style={{ background: sourceTone.bg, border: `1px solid ${sourceTone.border}` }}
           >
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              style={{ background: `${typeStyle.accent}12`, color: typeStyle.accent }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: '#ffffffcc', color: sourceTone.icon }}
             >
               <Globe size={13} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">Source</span>
+              <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
               <span
               className={[
-                'block text-[11px] font-black text-gray-600',
+                'block text-[11px] font-black',
                 'truncate'
               ].join(' ')}
+              style={{ color: sourceTone.text }}
               >
                 {sourceDomain}
               </span>
+            </span>
+            <span
+              className="hidden rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider sm:inline-flex"
+              style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
+            >
+              {item.sourceCredibility || 'moderate'}
             </span>
           </a>
           {onSaveToggle && (
@@ -269,7 +287,7 @@ function ArticleCard({
               'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
               compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3'
             ].join(' ')}
-            style={{ color: typeStyle.accent }}
+            style={{ color: typeStyle.text }}
             title="Open source article"
             aria-label="Open source article"
             data-analytics-click={`Source open: ${item.title || host || 'Article'}`}

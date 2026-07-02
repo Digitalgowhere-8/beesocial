@@ -9,6 +9,7 @@ import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import useInfiniteScroll from '../hooks/useInfiniteScroll';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
+import { getDashboardAppearance } from '../utils/feedTheme';
 import {
   Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check
 } from 'lucide-react';
@@ -19,10 +20,10 @@ const FEED_PAGE_SIZE = 8;
 const FEED_SCROLL_ROW_SIZE = 4;
 
 const FEED_COLUMNS = [
-  { key: 'govt', label: 'Government Updates', icon: Landmark, dot: 'bg-emerald-500', color: '#10b981', tint: 'rgba(16,185,129,0.08)' },
-  { key: 'news', label: 'News Articles', icon: Newspaper, dot: 'bg-rose-500', color: '#e11d48', tint: 'rgba(225,29,72,0.08)' },
-  { key: 'evergreen', label: 'Evergreen Topics', icon: BookOpen, dot: 'bg-violet-500', color: '#8b5cf6', tint: 'rgba(139,92,246,0.08)' },
-  { key: 'competitor', label: 'Competitor Intel', icon: Building2, dot: 'bg-amber-500', color: '#f59e0b', tint: 'rgba(245,158,11,0.08)' },
+  { key: 'govt', label: 'Government Updates', icon: Landmark },
+  { key: 'news', label: 'News Articles', icon: Newspaper },
+  { key: 'evergreen', label: 'Evergreen Topics', icon: BookOpen },
+  { key: 'competitor', label: 'Competitor Intel', icon: Building2 },
 ];
 const INTEL_DESK_TABS = ['intel', 'tailored', 'saved'];
 
@@ -176,24 +177,28 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
   });
 
   return (
-    <section data-analytics-section={`Intel feed: ${column.label}`} className="min-h-0 rounded-lg border border-gray-100 bg-white shadow-card overflow-hidden flex flex-col">
-      <div className="px-4 py-3.5 border-b border-gray-100 bg-white">
+    <section
+      data-analytics-section={`Intel feed: ${column.label}`}
+      className="min-h-0 overflow-hidden rounded-[26px] border shadow-card flex flex-col"
+      style={{ borderColor: column.border, background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,251,0.94))' }}
+    >
+      <div className="border-b px-4 py-3.5" style={{ borderColor: column.border, background: column.soft }}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: column.tint }}>
-              <Icon size={15} style={{ color: column.color }} />
+            <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#ffffffcc', border: `1px solid ${column.border}` }}>
+              <Icon size={15} style={{ color: column.text }} />
             </span>
             <div className="min-w-0">
               <h2 className="font-black text-[14px] text-gray-900 truncate">{column.label}</h2>
             </div>
           </div>
-          <span className="rounded-md px-2 py-1 text-[11px] font-black" style={{ color: column.color, background: column.tint }}>
+          <span className="rounded-xl px-2.5 py-1 text-[11px] font-black" style={{ color: column.text, background: '#ffffffcc', border: `1px solid ${column.border}` }}>
             {loading ? '...' : totalCount}
           </span>
         </div>
       </div>
 
-      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-gray-50/40 p-4">
+      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto p-4" style={{ background: column.soft }}>
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
@@ -210,7 +215,7 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
 });
 
 export default function Dashboard({ initialTab = 'analytics' }) {
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, uiSettings } = useAuth();
   const navigate = useNavigate();
   const dashTab = initialTab;
   const intelDeskCacheKey = user?._id ? `intel_desk_state_${user._id}` : null;
@@ -245,6 +250,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [savingArticleIds, setSavingArticleIds] = useState(new Set());
   const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
+  const dashboardAppearance = useMemo(() => getDashboardAppearance(uiSettings), [uiSettings]);
+  const feedColumns = useMemo(() => FEED_COLUMNS.map((column) => ({
+    ...column,
+    ...(dashboardAppearance.topicColors[column.key] || dashboardAppearance.topicColors.news)
+  })), [dashboardAppearance]);
   const feedRequestVersionRef = useRef(0);
   const feedScrollRequestRef = useRef(null);
   const feedStateRef = useRef(feedStateByTab);
@@ -599,7 +609,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     };
   }, []);
 
-  const visibleColumns = activeType ? FEED_COLUMNS.filter(c => c.key === activeType) : FEED_COLUMNS;
+  const visibleColumns = activeType ? feedColumns.filter(c => c.key === activeType) : feedColumns;
   const canDeleteTailoredArticles = isIntelDesk && intelDeskTab === 'tailored' && isAdmin;
   const currentFeedState = feedStateByTab[intelDeskTab] || emptyFeedState();
   const isFeedLoading = visibleColumns.some((column) => currentFeedState[column.key]?.loadingInitial);
@@ -1153,11 +1163,13 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                     <>
                       <div className="flex items-center justify-between mb-4 px-0.5">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                          <col.icon size={15} className="text-gray-500" />
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: col.accent }} />
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl" style={{ background: col.soft, border: `1px solid ${col.border}` }}>
+                            <col.icon size={15} style={{ color: col.text }} />
+                          </span>
                           <h2 className="font-bold text-[15px] text-gray-800">{col.label}</h2>
                         </div>
-                        <span className="text-[11px] text-gray-400 uppercase tracking-wider font-mono">
+                        <span className="rounded-full px-2.5 py-1 text-[11px] uppercase tracking-wider font-mono" style={{ color: col.text, background: '#ffffffcc', border: `1px solid ${col.border}` }}>
                           {currentFeedState[col.key]?.loadingInitial ? '...' : currentFeedState[col.key]?.total || 0}
                         </span>
                       </div>

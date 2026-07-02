@@ -53,6 +53,7 @@ export function AuthProvider({ children }) {
     }
   });
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [uiSettings, setUiSettings] = useState(null);
 
   const [runProgress, setRunProgress] = useState(() => {
     try {
@@ -205,6 +206,7 @@ export function AuthProvider({ children }) {
       .then((r) => {
         setUser(r.data.user);
         setSession(r.data.session || null);
+        setUiSettings(r.data.uiSettings || null);
         localStorage.setItem(USER_KEY, JSON.stringify(r.data.user));
         if (r.data.session) {
           localStorage.setItem(SESSION_KEY, JSON.stringify(r.data.session));
@@ -223,11 +225,12 @@ export function AuthProvider({ children }) {
         clearAuthStorage();
         setUser(null);
         setSession(null);
+        setUiSettings(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const persist = useCallback((token, user, activeSession = null) => {
+  const persist = useCallback((token, user, activeSession = null, nextUiSettings = null) => {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     if (activeSession) {
@@ -237,24 +240,25 @@ export function AuthProvider({ children }) {
     }
     setUser(user);
     setSession(activeSession);
+    setUiSettings(nextUiSettings);
     emitAppEvent(APP_EVENT_AUTH_CHANGED, { user, session: activeSession });
   }, []);
 
   const setAuthState = useCallback((payload = {}) => {
     if (!payload?.token || !payload?.user) return;
-    persist(payload.token, payload.user, payload.session || null);
+    persist(payload.token, payload.user, payload.session || null, payload.uiSettings || null);
   }, [persist]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
-    persist(data.token, data.user, data.session || null);
+    persist(data.token, data.user, data.session || null, data.uiSettings || null);
     return data.user;
   }, [persist]);
 
   const register = useCallback(async (payload) => {
     const { data } = await api.post('/auth/register', payload);
     if (data.token && data.user) {
-      persist(data.token, data.user, data.session || null);
+      persist(data.token, data.user, data.session || null, data.uiSettings || null);
     }
     return data.user;
   }, [persist]);
@@ -265,6 +269,7 @@ export function AuthProvider({ children }) {
     clearAuthStorage();
     setUser(null);
     setSession(null);
+    setUiSettings(null);
     emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: null, session: null });
   }, []);
 
@@ -280,6 +285,7 @@ export function AuthProvider({ children }) {
     const { data } = await api.get('/auth/me');
     setUser(data.user);
     setSession(data.session || null);
+    setUiSettings(data.uiSettings || null);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     if (data.session) {
       localStorage.setItem(SESSION_KEY, JSON.stringify(data.session));
@@ -374,6 +380,7 @@ export function AuthProvider({ children }) {
     clearAuthStorage();
     setUser(null);
     setSession(null);
+    setUiSettings(null);
     return data;
   }, []);
 
@@ -383,6 +390,7 @@ export function AuthProvider({ children }) {
         user,
         session,
         loading,
+        uiSettings,
         isAdmin: user?.role === 'admin' || user?.role === 'super_admin',
         isSuperAdmin: user?.role === 'super_admin',
         login, register, logout, updateProfile, setAuthState, refreshMe,

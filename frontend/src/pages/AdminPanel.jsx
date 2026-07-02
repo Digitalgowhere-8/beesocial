@@ -6,6 +6,7 @@ import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardAppearance } from '../utils/feedTheme';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
@@ -4765,11 +4766,126 @@ function SuperAdminMailCenter() {
 
 // =============== SYSTEM SETTINGS (SUPER ADMIN ONLY) ===============
 
+const SOURCE_TRUST_LEVELS = [
+  { key: 'high', label: 'High Credibility', tone: 'emerald' },
+  { key: 'moderate', label: 'Moderate Credibility', tone: 'amber' },
+  { key: 'low', label: 'Low Credibility', tone: 'rose' }
+];
+const SETTINGS_SECTIONS = [
+  { key: 'ai', label: 'AI & Automation', icon: Sparkles, help: 'Model and feature flags' },
+  { key: 'visual', label: 'Visual Theme', icon: Gauge, help: 'Feed colors and scoring' },
+  { key: 'sources', label: 'Source Trust', icon: Database, help: 'Credibility mapping' },
+  { key: 'maintenance', label: 'Maintenance', icon: AlertTriangle, help: 'Access controls' }
+];
+const TOPIC_THEME_OPTIONS = [
+  { key: 'govt', label: 'Government Updates' },
+  { key: 'news', label: 'News Articles' },
+  { key: 'evergreen', label: 'Evergreen Topics' },
+  { key: 'competitor', label: 'Competitor Intel' }
+];
+
+function trustToneClasses(tone) {
+  if (tone === 'emerald') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  if (tone === 'amber') return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-rose-200 bg-rose-50 text-rose-800';
+}
+
+function buildSourceTrustMappingFromRegistry(items = []) {
+  return items.reduce((acc, item) => {
+    const bucket = item?.credibility || 'moderate';
+    if (!acc[bucket]) acc[bucket] = [];
+    if (item?.trustKey) acc[bucket].push(item.trustKey);
+    return acc;
+  }, { high: [], moderate: [], low: [] });
+}
+
+function moveRegistryItem(items = [], trustKey, nextCredibility) {
+  return items.map((item) => (
+    item.trustKey === trustKey
+      ? { ...item, credibility: nextCredibility }
+      : item
+  ));
+}
+
+function ThemeColorField({ label, value, onChange, hint = '' }) {
+  return (
+    <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+      <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
+      <div className="mt-2 flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-14 cursor-pointer rounded-xl border border-gray-200 bg-white p-1"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-black text-gray-900">{value}</div>
+          {hint ? <div className="mt-0.5 text-xs font-medium text-gray-500">{hint}</div> : null}
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function SourceTrustCard({ item, onDragStart, onMove }) {
+  return (
+    <div
+      draggable
+      onDragStart={() => onDragStart(item.trustKey)}
+      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-black text-gray-900">{item.name}</div>
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+            {item.sourceType || item.sourceId || 'Source'}
+          </div>
+        </div>
+        <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-1 text-[10px] font-black ${item.isDefault ? 'border-brand-crimson/20 bg-brand-pink/20 text-brand-crimson' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
+          {item.isDefault ? 'Default High' : 'Dynamic'}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {item.types?.length ? (
+          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+            {item.types.join(', ')}
+          </span>
+        ) : null}
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+          {item.count || 0} items
+        </span>
+        {item.countries?.length ? (
+          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+            {item.countries.length} countries
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {SOURCE_TRUST_LEVELS.map((level) => (
+          <button
+            key={level.key}
+            type="button"
+            onClick={() => onMove(item.trustKey, level.key)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-black transition-all ${item.credibility === level.key ? trustToneClasses(level.tone) : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
+          >
+            {level.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SystemSettingsTab() {
   const [aiModel, setAiModel] = useState('gpt-4o-mini');
   const [aiSummary, setAiSummary] = useState(false);
   const [aiCategory, setAiCategory] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [dashboardAppearance, setDashboardAppearance] = useState(() => getDashboardAppearance());
+  const [sourceTrustRegistry, setSourceTrustRegistry] = useState([]);
+  const [draggedTrustKey, setDraggedTrustKey] = useState('');
+  const [activeSection, setActiveSection] = useState('ai');
+  const [sourceTrustSearch, setSourceTrustSearch] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -4785,6 +4901,8 @@ function SystemSettingsTab() {
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setDashboardAppearance(getDashboardAppearance(settings));
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : []);
     } catch (e) {
       setSettingsError(e.response?.data?.message || e.message || 'Failed to load system settings');
     } finally {
@@ -4804,13 +4922,17 @@ function SystemSettingsTab() {
         aiModel,
         aiSummary,
         aiCategory,
-        maintenanceMode
+        maintenanceMode,
+        dashboardAppearance,
+        sourceTrustMapping: buildSourceTrustMappingFromRegistry(sourceTrustRegistry)
       });
       const settings = data.settings || {};
       setAiModel(settings.aiModel || aiModel);
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setDashboardAppearance(getDashboardAppearance(settings));
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : sourceTrustRegistry);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -4824,59 +4946,114 @@ function SystemSettingsTab() {
     { label: 'AI Article Summarization',   help: 'Auto-generate AI summaries for fetched articles',       val: aiSummary,  set: setAiSummary },
     { label: 'AI Category Classification', help: 'Use AI to auto-classify article categories on fetch',    val: aiCategory, set: setAiCategory },
   ];
+  const normalizedTrustSearch = sourceTrustSearch.trim().toLowerCase();
+  const sourceTrustGroups = useMemo(() => (
+    SOURCE_TRUST_LEVELS.reduce((acc, level) => {
+      acc[level.key] = sourceTrustRegistry
+        .filter((item) => (
+          !normalizedTrustSearch
+          || item.name?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceId?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceType?.toLowerCase().includes(normalizedTrustSearch)
+        ))
+        .filter((item) => item.credibility === level.key)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return acc;
+    }, {})
+  ), [sourceTrustRegistry, normalizedTrustSearch]);
+  const moveSourceTrustItem = useCallback((trustKey, nextCredibility) => {
+    setSourceTrustRegistry((current) => moveRegistryItem(current, trustKey, nextCredibility));
+  }, []);
+  const visibleSourceTrustCount = sourceTrustGroups.high.length + sourceTrustGroups.moderate.length + sourceTrustGroups.low.length;
+  const updateTopicColor = useCallback((topic, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      topicColors: {
+        ...current.topicColors,
+        [topic]: {
+          ...current.topicColors[topic],
+          [field]: value
+        }
+      }
+    }));
+  }, []);
+  const updateTrustColor = useCallback((level, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      sourceTrustColors: {
+        ...current.sourceTrustColors,
+        [level]: {
+          ...current.sourceTrustColors[level],
+          [field]: value
+        }
+      }
+    }));
+  }, []);
+  const updateScoreBand = useCallback((key, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      relevanceScoreBands: current.relevanceScoreBands.map((band) => (
+        band.key === key
+          ? { ...band, [field]: field === 'min' ? Number(value) : value }
+          : band
+      )).sort((a, b) => Number(b.min || 0) - Number(a.min || 0))
+    }));
+  }, []);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {/* AI Model & Flags */}
-        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">AI Engine</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">AI Model Settings</h3>
-          <div className="space-y-5">
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,245,247,0.95)_45%,rgba(248,251,255,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Active AI Model</label>
-              <select
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
-                value={aiModel}
-                onChange={e => setAiModel(e.target.value)}
-              >
-                <option value="gpt-4o-mini">GPT-4o Mini &mdash; Fast &amp; Cost Efficient (Recommended)</option>
-                <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
-                <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
-              </select>
-              <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">System Settings</div>
+              <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Platform Control Center</h3>
+              <p className="mt-1 text-sm font-medium text-gray-500">Open a focused settings tab instead of scrolling through one long page.</p>
             </div>
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Feature Flags</div>
-              <div className="space-y-2.5">
-                {aiToggles.map(({ label, help, val, set }, i) => (
-                  <div key={i} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all ${val ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
-                    <div>
-                      <div className={`text-sm font-black ${val ? 'text-blue-800' : 'text-gray-700'}`}>{label}</div>
-                      <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
-                    </div>
-                    <button
-                      onClick={() => set(!val)}
-                      className={`flex-shrink-0 h-6 w-11 rounded-full flex items-center transition-all ${val ? 'bg-blue-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-                ))}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Model</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{aiModel || 'Not set'}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">AI Flags</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{[aiSummary, aiCategory].filter(Boolean).length}/2 active</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Mapped Sources</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustRegistry.length}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Access Mode</div>
+                <div className={`mt-1 text-sm font-black ${maintenanceMode ? 'text-red-600' : 'text-emerald-600'}`}>{maintenanceMode ? 'Maintenance' : 'Live'}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Current Configuration */}
-        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Platform Snapshot</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">Current Configuration</h3>
-          <div className="space-y-3">
-            <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
-            <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
-            <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
-            <ConfigStatusRow icon={AlertTriangle} label="Maintenance mode" value={maintenanceMode ? 'Enabled' : 'Disabled'} tone={maintenanceMode ? 'amber' : 'gray'} />
+        <div className="px-3 py-3 sm:px-4">
+          <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(180px,1fr)] gap-3 overflow-x-auto">
+            {SETTINGS_SECTIONS.map((section) => {
+              const active = activeSection === section.key;
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => setActiveSection(section.key)}
+                  className={`rounded-[24px] border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson/20 bg-brand-pink/20 shadow-sm' : 'border-gray-200 bg-white/80 hover:bg-white hover:shadow-sm'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${active ? 'bg-brand-crimson text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      <section.icon size={17} />
+                    </span>
+                    <div>
+                      <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-900'}`}>{section.label}</div>
+                      <div className="mt-0.5 text-xs font-medium text-gray-500">{section.help}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -4887,29 +5064,299 @@ function SystemSettingsTab() {
         </div>
       )}
 
-      {/* Maintenance Mode */}
-      <div className={`bg-white rounded-2xl ring-1 shadow-sm p-6 border-2 transition-all ${maintenanceMode ? 'border-red-300 ring-red-100' : 'border-gray-200 ring-gray-100'}`}>
-        <div className="flex items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
-              <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
+      {activeSection === 'ai' && (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">AI Engine</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">AI Model Settings</h3>
+            <div className="space-y-5">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Active AI Model</label>
+                <select
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
+                  value={aiModel}
+                  onChange={e => setAiModel(e.target.value)}
+                >
+                  <option value="gpt-4o-mini">GPT-4o Mini &mdash; Fast &amp; Cost Efficient (Recommended)</option>
+                  <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
+                </select>
+                <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Feature Flags</div>
+                <div className="space-y-2.5">
+                  {aiToggles.map(({ label, help, val, set }, i) => (
+                    <div key={i} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all ${val ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
+                      <div>
+                        <div className={`text-sm font-black ${val ? 'text-blue-800' : 'text-gray-700'}`}>{label}</div>
+                        <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
+                      </div>
+                      <button
+                        onClick={() => set(!val)}
+                        className={`flex-shrink-0 h-6 w-11 rounded-full flex items-center transition-all ${val ? 'bg-blue-500' : 'bg-gray-200'}`}
+                      >
+                        <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <p className="text-sm font-medium text-gray-500">When enabled, all users (except Super Admin) see a maintenance screen. Use during major updates or deployments.</p>
           </div>
-          <button
-            onClick={() => setMaintenanceMode(!maintenanceMode)}
-            className={`flex-shrink-0 h-7 w-14 rounded-full flex items-center transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
-          >
-            <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
-          </button>
+
+          <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Platform Snapshot</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">Current Configuration</h3>
+            <div className="space-y-3">
+              <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
+              <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
+              <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
+              <ConfigStatusRow icon={Database} label="Source trust rules" value={`${sourceTrustRegistry.length} mapped sources`} tone="neutral" />
+            </div>
+          </div>
         </div>
-        {maintenanceMode && (
-          <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-700">
-            Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
+      )}
+
+      {activeSection === 'visual' && (
+        <div className="space-y-6">
+          <div className="rounded-[30px] border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Visual Theme</div>
+                <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Feed Palette Controls</h3>
+                <p className="mt-1 text-sm font-medium text-gray-500">Set premium colors for topic columns, source trust badges, and relevance score pills from one place.</p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
+                Keep topic colors soft. Let score and source trust colors carry the stronger emphasis.
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Topic Colors</div>
+              <h4 className="mt-1 text-xl font-black text-gray-900">Four Intel Topic Palettes</h4>
+            </div>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              {TOPIC_THEME_OPTIONS.map((column) => {
+                const theme = dashboardAppearance.topicColors[column.key];
+                return (
+                  <div key={column.key} className="rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-gray-900">{column.label}</div>
+                        <div className="mt-1 text-xs font-medium text-gray-500">Column header, article accent, and CTA tone</div>
+                      </div>
+                      <div className="rounded-2xl px-4 py-2" style={{ background: theme.soft, border: `1px solid ${theme.border}`, color: theme.text }}>
+                        <div className="text-[11px] font-black uppercase tracking-wider">{column.label}</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <ThemeColorField label="Accent" value={theme.accent} onChange={(value) => updateTopicColor(column.key, 'accent', value)} hint="Thin rail and key icon tint" />
+                      <ThemeColorField label="Text" value={theme.text} onChange={(value) => updateTopicColor(column.key, 'text', value)} hint="Readable heading/pill text" />
+                      <ThemeColorField label="Soft" value={theme.soft} onChange={(value) => updateTopicColor(column.key, 'soft', value)} hint="Soft fill for header backgrounds" />
+                      <ThemeColorField label="Border" value={theme.border} onChange={(value) => updateTopicColor(column.key, 'border', value)} hint="Subtle premium outline" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Source Trust</div>
+                <h4 className="mt-1 text-xl font-black text-gray-900">Source Box Colors</h4>
+              </div>
+              <div className="space-y-4">
+                {SOURCE_TRUST_LEVELS.map((level) => {
+                  const tone = dashboardAppearance.sourceTrustColors[level.key];
+                  return (
+                    <div key={level.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-gray-900">{level.label}</div>
+                          <div className="mt-1 text-xs font-medium text-gray-500">Used on the source panel inside article cards</div>
+                        </div>
+                        <div className="rounded-2xl px-4 py-2" style={{ background: tone.bg, border: `1px solid ${tone.border}`, color: tone.text }}>
+                          <div className="text-[11px] font-black uppercase tracking-wider">{level.label}</div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <ThemeColorField label="Background" value={tone.bg} onChange={(value) => updateTrustColor(level.key, 'bg', value)} />
+                        <ThemeColorField label="Border" value={tone.border} onChange={(value) => updateTrustColor(level.key, 'border', value)} />
+                        <ThemeColorField label="Text" value={tone.text} onChange={(value) => updateTrustColor(level.key, 'text', value)} />
+                        <ThemeColorField label="Icon" value={tone.icon} onChange={(value) => updateTrustColor(level.key, 'icon', value)} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Relevance Score</div>
+                <h4 className="mt-1 text-xl font-black text-gray-900">Score Color Coding</h4>
+              </div>
+              <div className="space-y-4">
+                {dashboardAppearance.relevanceScoreBands.map((band) => (
+                  <div key={band.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-gray-900">{band.label}</div>
+                        <div className="mt-1 text-xs font-medium text-gray-500">Articles with score {band.min}+ use this style</div>
+                      </div>
+                      <div className="rounded-2xl px-4 py-2" style={{ background: band.bg, border: `1px solid ${band.border}`, color: band.text }}>
+                        <div className="text-[11px] font-black uppercase tracking-wider">{band.min}+</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Minimum Score</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          className="input mt-2 min-h-[44px] rounded-xl"
+                          value={band.min}
+                          onChange={(e) => updateScoreBand(band.key, 'min', e.target.value)}
+                        />
+                      </label>
+                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Label</span>
+                        <input
+                          className="input mt-2 min-h-[44px] rounded-xl"
+                          value={band.label}
+                          onChange={(e) => updateScoreBand(band.key, 'label', e.target.value)}
+                        />
+                      </label>
+                      <ThemeColorField label="Background" value={band.bg} onChange={(value) => updateScoreBand(band.key, 'bg', value)} />
+                      <ThemeColorField label="Border" value={band.border} onChange={(value) => updateScoreBand(band.key, 'border', value)} />
+                      <ThemeColorField label="Text" value={band.text} onChange={(value) => updateScoreBand(band.key, 'text', value)} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'sources' && (
+        <div className="rounded-[30px] border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Source Trust</div>
+              <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Dynamic Source Credibility Mapping</h3>
+              <p className="mt-1 text-sm font-medium text-gray-500">
+                Default configured sources stay in High Credibility. Dynamic sources disappear automatically when their article data is deleted.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Visible sources</div>
+                <div className="mt-1 text-lg font-black text-gray-900">{visibleSourceTrustCount}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Search</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustSearch.trim() ? 'Filtered' : 'All sources'}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
+                Drag source cards between columns or use the quick trust buttons inside each card.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full max-w-md">
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input min-h-[46px] rounded-2xl pl-11"
+                value={sourceTrustSearch}
+                onChange={(e) => setSourceTrustSearch(e.target.value)}
+                placeholder="Search source name, domain, or source id"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SOURCE_TRUST_LEVELS.map((level) => (
+                <span key={level.key} className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-black ${trustToneClasses(level.tone)}`}>
+                  {level.label}: {sourceTrustGroups[level.key]?.length || 0}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+            {SOURCE_TRUST_LEVELS.map((level) => (
+              <div
+                key={level.key}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggedTrustKey) moveSourceTrustItem(draggedTrustKey, level.key);
+                  setDraggedTrustKey('');
+                }}
+                className={`rounded-[28px] border p-4 transition-all ${trustToneClasses(level.tone)}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black">{level.label}</div>
+                    <div className="mt-1 text-xs font-semibold opacity-80">
+                      {sourceTrustGroups[level.key]?.length || 0} source{sourceTrustGroups[level.key]?.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-black">
+                    {level.key === 'high' ? 'All high' : level.key === 'moderate' ? 'All moderate' : 'All low'}
+                  </span>
+                </div>
+
+                <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
+                  {(sourceTrustGroups[level.key] || []).map((item) => (
+                    <SourceTrustCard
+                      key={item.trustKey}
+                      item={item}
+                      onDragStart={setDraggedTrustKey}
+                      onMove={moveSourceTrustItem}
+                    />
+                  ))}
+                  {!(sourceTrustGroups[level.key] || []).length ? (
+                    <div className="rounded-2xl border border-dashed border-current/30 bg-white/60 px-4 py-10 text-center text-sm font-semibold text-current/70">
+                      {normalizedTrustSearch ? 'No matching sources in this trust level' : 'Drop sources here'}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'maintenance' && (
+        <div className={`bg-white rounded-2xl ring-1 shadow-sm p-6 border-2 transition-all ${maintenanceMode ? 'border-red-300 ring-red-100' : 'border-gray-200 ring-gray-100'}`}>
+          <div className="flex items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
+                <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
+              </div>
+              <p className="text-sm font-medium text-gray-500">When enabled, all users except Super Admin see a maintenance screen. Use this during deployments or platform repair work.</p>
+            </div>
+            <button
+              onClick={() => setMaintenanceMode(!maintenanceMode)}
+              className={`flex-shrink-0 h-7 w-14 rounded-full flex items-center transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+            >
+              <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
+            </button>
+          </div>
+          {maintenanceMode && (
+            <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-700">
+              Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button

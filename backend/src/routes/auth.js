@@ -6,6 +6,7 @@ const Plan = require('../models/Plan');
 const UserSession = require('../models/UserSession');
 const { protect, signToken, signRealtimeToken } = require('../middleware/auth');
 const { buildPasswordResetEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { getSystemSettings, publicUiSettings } = require('../services/systemSettings');
 
 const router = express.Router();
 const JWT_SESSION_DAYS = Math.max(1, Number(process.env.JWT_SESSION_DAYS || 7));
@@ -272,7 +273,8 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const token = signToken(user, session.sessionId);
-  res.json({ token, user: user.toPublicJSON(), session: session.toObject() });
+  const settings = await getSystemSettings();
+  res.json({ token, user: user.toPublicJSON(), session: session.toObject(), uiSettings: publicUiSettings(settings) });
 }));
 
 // POST /api/auth/forgot-password
@@ -356,9 +358,10 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/auth/me
-router.get('/me', protect, (req, res) => {
-  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null });
-});
+router.get('/me', protect, asyncHandler(async (req, res) => {
+  const settings = await getSystemSettings();
+  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null, uiSettings: publicUiSettings(settings) });
+}));
 
 function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata') {
   return [

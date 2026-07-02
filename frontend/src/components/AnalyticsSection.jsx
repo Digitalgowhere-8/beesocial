@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe, Sparkles, ExternalLink, Clock3, MapPin, Tag, Flame } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { getDashboardAppearance, scoreBandForValue } from '../utils/feedTheme';
 
 const CRIMSON = '#D11243';
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
@@ -355,7 +357,10 @@ function formatCompactDateTime(value) {
 }
 
 function InsightItem({ item, color }) {
+  const { uiSettings } = useAuth();
+  const appearance = getDashboardAppearance(uiSettings);
   const score = Math.round(Number(item.relevanceScore || 0));
+  const scoreBand = scoreBandForValue(score, appearance);
   const when = item.fetchedAt || item.publishedAt
     ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
     : '';
@@ -388,7 +393,7 @@ function InsightItem({ item, color }) {
         {score > 0 && (
           <span
             className="shrink-0 rounded-md px-2 py-1 text-[10px] font-black"
-            style={{ color, background: `${color}12`, border: `1px solid ${color}22` }}
+            style={{ color: scoreBand.text, background: scoreBand.bg, border: `1px solid ${scoreBand.border}` }}
             title="Relevance score"
           >
             {score}

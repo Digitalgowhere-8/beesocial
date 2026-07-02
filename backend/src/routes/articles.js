@@ -4,6 +4,8 @@ const UserResult = require('../models/UserResult');
 const { protect } = require('../middleware/auth');
 const { asTree } = require('../config/categories');
 const { configuredFetchCountries } = require('../config/fetchSources');
+const { getSystemSettings } = require('../services/systemSettings');
+const { buildSourceTrustRegistry, groupRegistryByCredibility, resolveSourceCredibility } = require('../services/sourceTrust');
 
 const router = express.Router();
 const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
@@ -263,6 +265,71 @@ async function applySavedFilter(req, query) {
   return { ...query, _id: { $in: ids } };
 }
 
+async function sourceRowsForQuery(match = {}) {
+  return Article.aggregate([
+    {
+      $match: {
+        ...match,
+        sourceId: { $nin: ['', null] },
+        source: { $nin: ['', null] },
+        type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          type: '$type',
+          id: '$sourceId',
+          name: '$source',
+          sourceType: '$sourceType'
+        },
+        countries: { $addToSet: '$country' },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { '_id.type': 1, '_id.name': 1 } }
+  ]);
+}
+
+async function applySourceCredibilityFilter(req, query) {
+  const selectedCredibility = String(req.query.sourceCredibility || '').trim().toLowerCase();
+  if (!selectedCredibility) return query;
+
+  const settings = await getSystemSettings();
+  const rows = await sourceRowsForQuery(query);
+  const registry = buildSourceTrustRegistry(rows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), settings.sourceTrustMapping);
+  const matchingIds = registry
+    .filter((item) => item.credibility === selectedCredibility)
+    .map((item) => item.sourceId)
+    .filter(Boolean);
+
+  const allowedIds = [...new Set(matchingIds)];
+  const currentSourceFilter = query.sourceId;
+  let nextSourceFilter = { $in: allowedIds };
+
+  if (typeof currentSourceFilter === 'string' && currentSourceFilter) {
+    nextSourceFilter = allowedIds.includes(currentSourceFilter)
+      ? currentSourceFilter
+      : { $in: [] };
+  } else if (currentSourceFilter && Array.isArray(currentSourceFilter.$in)) {
+    nextSourceFilter = {
+      $in: currentSourceFilter.$in.filter((value) => allowedIds.includes(value))
+    };
+  }
+
+  return {
+    ...query,
+    sourceId: nextSourceFilter
+  };
+}
+
 async function annotateSaved(req, items = []) {
   if (!req.user?._id || !items.length) return items;
   const ids = items.map((item) => item._id).filter(Boolean);
@@ -272,6 +339,19 @@ async function annotateSaved(req, items = []) {
   ).lean();
   const savedIds = new Set(rows.map((row) => String(row.articleId)));
   return items.map((item) => ({ ...item, isSaved: savedIds.has(String(item._id)) }));
+}
+
+async function decorateArticles(items = []) {
+  if (!items.length) return items;
+  const settings = await getSystemSettings();
+  return items.map((item) => ({
+    ...item,
+    sourceCredibility: resolveSourceCredibility({
+      sourceId: item.sourceId,
+      source: item.source,
+      sourceType: item.sourceType
+    }, settings.sourceTrustMapping)
+  }));
 }
 
 function canAccessArticle(user, article) {
@@ -287,33 +367,12 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   const ownerIds = tenantOwnerIds(req.user);
   const scope = scopedOwnerQuery(ownerIds);
   const visibleScope = scope;
-  const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows] = await Promise.all([
+  const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows, settings] = await Promise.all([
     Article.distinct('country', { ...visibleScope, country: { $nin: ['', null] } }),
     Article.distinct('region', { ...visibleScope, region: { $nin: ['', null] } }),
     Article.distinct('sector', { ...visibleScope, sector: { $nin: ['', null] } }),
     Article.distinct('opportunityType', { ...visibleScope, opportunityType: { $nin: ['', null] } }),
-    Article.aggregate([
-      {
-        $match: {
-          ...visibleScope,
-          sourceId: { $nin: ['', null] },
-          source: { $nin: ['', null] },
-          type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            type: '$type',
-            id: '$sourceId',
-            name: '$source'
-          },
-          countries: { $addToSet: '$country' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.type': 1, '_id.name': 1 } }
-    ]),
+    sourceRowsForQuery(visibleScope),
     Article.aggregate([
       {
         $match: {
@@ -330,22 +389,45 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
           count: { $sum: 1 }
         }
       }
-    ])
+    ]),
+    getSystemSettings()
   ]);
 
   const sources = emptySourcesByType();
-  for (const row of sourceRows) {
-    const type = row._id?.type;
-    if (!sources[type]) continue;
-    sources[type].push({
-      id: optionLabel(row._id?.id),
-      name: optionLabel(row._id?.name),
-      countries: (row.countries || []).map(optionLabel).filter(Boolean),
-      count: row.count
-    });
+  const registry = buildSourceTrustRegistry(sourceRows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), settings.sourceTrustMapping);
+  for (const item of registry) {
+    const types = Array.isArray(item.types) && item.types.length ? item.types : [];
+    const targetTypes = types.length ? types : ['news'];
+    for (const type of targetTypes) {
+      if (!sources[type]) continue;
+      sources[type].push({
+        id: optionLabel(item.sourceId),
+        name: optionLabel(item.name),
+        sourceType: optionLabel(item.sourceType),
+        credibility: item.credibility || 'moderate',
+        credibilityLabel: item.credibility ? `${item.credibility[0].toUpperCase()}${item.credibility.slice(1)} Credibility` : 'Moderate Credibility',
+        countries: (item.countries || []).map(optionLabel).filter(Boolean),
+        count: Number(item.count || 0)
+      });
+    }
   }
   for (const type of Object.keys(sources)) {
-    sources[type] = sources[type].filter((source) => source.id && source.name).sort(sortByName);
+    const seen = new Set();
+    sources[type] = sources[type]
+      .filter((source) => {
+        const key = `${source.id}::${source.name}`;
+        if (!source.id || !source.name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(sortByName);
   }
 
   res.json({
@@ -357,6 +439,10 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
     sectors: sectors.map(optionLabel).filter(Boolean).sort(),
     opportunityTypes: opportunityTypes.map(optionLabel).filter(Boolean).sort(),
     sources,
+    sourceTrust: {
+      groups: groupRegistryByCredibility(registry),
+      registry
+    },
     types: [
       { id: 'news',       label: 'News Articles' },
       { id: 'govt',       label: 'Government Updates' },
@@ -368,9 +454,12 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
 
 // GET /api/articles/counts — returns total counts for all columns after filtering
 router.get('/counts', protect, asyncHandler(async (req, res) => {
-  const baseQuery = await applySavedFilter(
+  const baseQuery = await applySourceCredibilityFilter(
     req,
-    buildQuery(req)
+    await applySavedFilter(
+      req,
+      buildQuery(req)
+    )
   );
   const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
@@ -423,9 +512,12 @@ router.get('/counts', protect, asyncHandler(async (req, res) => {
 // GET /api/articles/dashboard?limit=20&from=...&to=...&category=...
 // Returns 4 buckets in one round-trip.
 router.get('/dashboard', protect, asyncHandler(async (req, res) => {
-  const baseQuery = await applySavedFilter(
+  const baseQuery = await applySourceCredibilityFilter(
     req,
-    buildQuery(req)
+    await applySavedFilter(
+      req,
+      buildQuery(req)
+    )
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
   const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
@@ -448,7 +540,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     })
   );
 
-  const annotated = await Promise.all(results.map((items) => annotateSaved(req, items)));
+  const annotated = await Promise.all(results.map(async (items) => decorateArticles(await annotateSaved(req, items))));
 
   res.json({
     news: annotated[0],
@@ -461,7 +553,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
 // GET /api/articles/velocity
 // Returns real signal counts for the last 7 days using fetchedAt.
 router.get('/velocity', protect, asyncHandler(async (req, res) => {
-  const baseQuery = buildQuery(req);
+  const baseQuery = await applySourceCredibilityFilter(req, buildQuery(req));
   const datasetScope = req.query.scope === 'dataset';
   const now = new Date();
   const todayStart = parseFilterDateStart(formatDashboardDate(now)) || now;
@@ -540,7 +632,10 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 // ---------- LIST endpoint (paginated) ----------
 // GET /api/articles?type=news&category=...&page=1&limit=20
 router.get('/', protect, asyncHandler(async (req, res) => {
-  const q = await applySavedFilter(req, buildQuery(req));
+  const q = await applySourceCredibilityFilter(
+    req,
+    await applySavedFilter(req, buildQuery(req))
+  );
   const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -579,7 +674,7 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   const totalCount = total[0]?.total || 0;
 
   res.json({
-    items: await annotateSaved(req, items),
+    items: await decorateArticles(await annotateSaved(req, items)),
     page,
     limit,
     total: totalCount,
@@ -634,7 +729,8 @@ router.get('/:id', protect, asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Not found' });
   }
   const [annotated] = await annotateSaved(req, [item]);
-  res.json({ item: annotated });
+  const [decorated] = await decorateArticles([annotated]);
+  res.json({ item: decorated });
 }));
 
 module.exports = router;

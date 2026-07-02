@@ -13,6 +13,7 @@ const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
+const { buildSourceTrustRegistry, groupRegistryByCredibility } = require('../services/sourceTrust');
 const {
   getPlatformFetchConfig,
   savePlatformFetchConfig,
@@ -70,6 +71,39 @@ const DEFAULT_MEMBER_ACCESS = {
   canUseScheduler: false
 };
 const MAIL_AUDIENCE_OPTIONS = ['all', 'admins', 'members', 'inactive', 'custom'];
+
+async function sourceRegistryForSettings(mapping = {}) {
+  const sourceRows = await Article.aggregate([
+    {
+      $match: {
+        sourceId: { $nin: ['', null] },
+        source: { $nin: ['', null] },
+        type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          type: '$type',
+          id: '$sourceId',
+          name: '$source',
+          sourceType: '$sourceType'
+        },
+        countries: { $addToSet: '$country' },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  return buildSourceTrustRegistry(sourceRows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), mapping);
+}
 
 function startOfDay(days = 30) {
   const date = new Date();
@@ -1068,11 +1102,18 @@ router.post('/super/fetch/run', requireRole('super_admin'), asyncHandler(async (
 
 router.get('/settings', requireRole('super_admin'), asyncHandler(async (_req, res) => {
   const settings = await getSystemSettings({ useCache: false });
-  res.json({ settings });
+  const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
+  res.json({
+    settings,
+    sourceTrust: {
+      registry: sourceRegistry,
+      groups: groupRegistryByCredibility(sourceRegistry)
+    }
+  });
 }));
 
 router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res) => {
-  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'maintenanceMode'];
+  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'maintenanceMode', 'sourceTrustMapping', 'dashboardAppearance'];
   const patch = {};
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
@@ -1080,7 +1121,14 @@ router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res
     }
   }
   const settings = await saveSystemSettings(patch);
-  res.json({ settings });
+  const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
+  res.json({
+    settings,
+    sourceTrust: {
+      registry: sourceRegistry,
+      groups: groupRegistryByCredibility(sourceRegistry)
+    }
+  });
 }));
 
 // ============== SUPER ADMIN MAIL CENTER ==============
