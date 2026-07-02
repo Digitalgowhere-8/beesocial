@@ -8,7 +8,7 @@ import { Skeleton } from '../components/Loader';
 import AnalyticsSection from '../components/AnalyticsSection';
 import Layout from '../components/Layout';
 import useInfiniteScroll from '../hooks/useInfiniteScroll';
-import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
+import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import { getDashboardAppearance } from '../utils/feedTheme';
 import {
   Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check
@@ -218,13 +218,18 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const { user, isAdmin, isSuperAdmin, uiSettings } = useAuth();
   const navigate = useNavigate();
   const dashTab = initialTab;
+  const analyticsCacheKey = user?._id ? `dashboard_analytics_state_${user._id}` : null;
+  const cachedAnalyticsState = useMemo(
+    () => (analyticsCacheKey ? safeSessionGet(analyticsCacheKey, null) : null),
+    [analyticsCacheKey]
+  );
   const intelDeskCacheKey = user?._id ? `intel_desk_state_${user._id}` : null;
   const cachedIntelDeskState = useMemo(
     () => (intelDeskCacheKey ? safeSessionGet(intelDeskCacheKey, null) : null),
     [intelDeskCacheKey]
   );
-  const [analyticsData, setAnalyticsData] = useState(() => normalizeBuckets());
-  const [analyticsVelocityData, setAnalyticsVelocityData] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(() => normalizeBuckets(cachedAnalyticsState?.analyticsData));
+  const [analyticsVelocityData, setAnalyticsVelocityData] = useState(() => Array.isArray(cachedAnalyticsState?.analyticsVelocityData) ? cachedAnalyticsState.analyticsVelocityData : []);
   const [feedStateByTab, setFeedStateByTab] = useState(() => ({
     intel: cachedIntelDeskState?.feedStateByTab?.intel ? normalizeCachedFeedState(cachedIntelDeskState.feedStateByTab.intel) : emptyFeedState(),
     tailored: cachedIntelDeskState?.feedStateByTab?.tailored ? normalizeCachedFeedState(cachedIntelDeskState.feedStateByTab.tailored) : emptyFeedState(),
@@ -237,10 +242,10 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [analyticsViewMode, setAnalyticsViewMode] = useState('today');
   const [mobileIntelMenuOpen, setMobileIntelMenuOpen] = useState(false);
   const [mobileAnalyticsMenuOpen, setMobileAnalyticsMenuOpen] = useState(false);
-  const [filters, setFilters] = useState(() => {
+  const [intelFilters, setIntelFilters] = useState(() => {
     if (!user?._id) return {};
     try {
-      const saved = localStorage.getItem(`dashboard_filters_${user._id}`);
+      const saved = localStorage.getItem(`intel_desk_filters_${user._id}`);
       return saved ? withoutRegion(JSON.parse(saved)) : {};
     } catch { return {}; }
   });
@@ -259,6 +264,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const feedScrollRequestRef = useRef(null);
   const feedStateRef = useRef(feedStateByTab);
   const feedLoadedSignatureRef = useRef(cachedIntelDeskState?.feedLoadedSignatures || {});
+  const analyticsLoadedSignatureRef = useRef(cachedAnalyticsState?.signature || '');
+  const analyticsCacheReadyRef = useRef(Boolean(cachedAnalyticsState?.loaded));
 
   useEffect(() => {
     feedStateRef.current = feedStateByTab;
@@ -274,30 +281,44 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   }, [feedStateByTab, intelDeskCacheKey, intelDeskTab]);
 
   useEffect(() => {
-    if (user?._id)
-      localStorage.setItem(`dashboard_filters_${user._id}`, JSON.stringify(withoutRegion(filters)));
-  }, [filters, user?._id]);
+    if (!analyticsCacheKey) return;
+    safeSessionSet(analyticsCacheKey, {
+      analyticsData,
+      analyticsVelocityData,
+      signature: analyticsLoadedSignatureRef.current,
+      loaded: analyticsCacheReadyRef.current
+    });
+  }, [analyticsCacheKey, analyticsData, analyticsVelocityData]);
 
-  const effectiveFilters = useMemo(() => {
-    const next = withoutRegion(filters);
+  useEffect(() => {
+    if (user?._id)
+      localStorage.setItem(`intel_desk_filters_${user._id}`, JSON.stringify(withoutRegion(intelFilters)));
+  }, [intelFilters, user?._id]);
+
+  const effectiveIntelFilters = useMemo(() => {
+    const next = withoutRegion(intelFilters);
     delete next.saved;
     delete next.publishedOnly;
     delete next.ownerOnly;
     delete next.sharedOnly;
     return next;
-  }, [filters]);
-  const [debouncedFilters, setDebouncedFilters] = useState(effectiveFilters);
+  }, [intelFilters]);
+  const [debouncedIntelFilters, setDebouncedIntelFilters] = useState(effectiveIntelFilters);
+  const analyticsQuerySignature = useMemo(
+    () => JSON.stringify({ refreshKey }),
+    [refreshKey]
+  );
   const feedQuerySignature = useMemo(
-    () => JSON.stringify({ filters: withoutRegion(debouncedFilters), refreshKey }),
-    [debouncedFilters, refreshKey]
+    () => JSON.stringify({ filters: withoutRegion(debouncedIntelFilters), refreshKey }),
+    [debouncedIntelFilters, refreshKey]
   );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      setDebouncedFilters(effectiveFilters);
+      setDebouncedIntelFilters(effectiveIntelFilters);
     }, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [effectiveFilters]);
+  }, [effectiveIntelFilters]);
 
   const scopeParamsForTab = useCallback((tabKey) => {
     if (tabKey === 'tailored') return { ownerOnly: 'true' };
@@ -308,13 +329,12 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     personalized: 'true',
     ...scopeParamsForTab(intelDeskTab)
   }), [intelDeskTab, scopeParamsForTab]);
-  const activeType = filters.type;
+  const activeType = intelFilters.type;
 
-  const load = useCallback(async (f) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = { personalized: 'true' };
-      for (const [k, v] of Object.entries(withoutRegion(f))) if (v) params[k] = v;
       const [analyticsRes, analyticsVelocityRes] = await Promise.all([
         api.get('/articles/dashboard', { params }),
         api.get('/articles/velocity', { params })
@@ -329,7 +349,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const loadFeedCounts = useCallback(async (tabKey, requestVersion = feedRequestVersionRef.current) => {
       const params = {
         personalized: 'true',
-        ...withoutRegion(debouncedFilters),
+        ...withoutRegion(debouncedIntelFilters),
         ...scopeParamsForTab(tabKey)
       };
 
@@ -351,7 +371,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     } catch (error) {
       console.error(error);
     }
-  }, [debouncedFilters, scopeParamsForTab]);
+  }, [debouncedIntelFilters, scopeParamsForTab]);
 
   const loadFeedSnapshot = useCallback(async ({ tabKey, offset = 0, limit = FEED_PAGE_SIZE, reset = false, requestVersion = feedRequestVersionRef.current }) => {
     const isScrollPage = !reset && offset > 0;
@@ -367,7 +387,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       personalized: 'true',
       offset,
       limit,
-      ...withoutRegion(debouncedFilters),
+      ...withoutRegion(debouncedIntelFilters),
       ...scopeParamsForTab(tabKey)
     };
 
@@ -440,7 +460,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         feedScrollRequestRef.current = null;
       }
     }
-  }, [debouncedFilters, scopeParamsForTab]);
+  }, [debouncedIntelFilters, scopeParamsForTab]);
 
   const loadFeedPage = useCallback(async ({ tabKey, type, page = 1, reset = false, requestVersion = feedRequestVersionRef.current }) => {
     const isScrollPage = !reset && page > 1;
@@ -457,7 +477,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
       type,
       page,
       limit: FEED_PAGE_SIZE,
-      ...withoutRegion(debouncedFilters),
+      ...withoutRegion(debouncedIntelFilters),
       ...scopeParamsForTab(tabKey)
     };
 
@@ -520,12 +540,23 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         feedScrollRequestRef.current = null;
       }
     }
-  }, [debouncedFilters, scopeParamsForTab]);
+  }, [debouncedIntelFilters, scopeParamsForTab]);
 
   useEffect(() => {
     if (dashTab !== 'analytics') return;
-    load({});
-  }, [dashTab, load, refreshKey]);
+    const hasCachedAnalytics = (
+      analyticsLoadedSignatureRef.current === analyticsQuerySignature &&
+      analyticsCacheReadyRef.current
+    );
+    if (hasCachedAnalytics) {
+      setLoading(false);
+      return;
+    }
+    load().then(() => {
+      analyticsLoadedSignatureRef.current = analyticsQuerySignature;
+      analyticsCacheReadyRef.current = true;
+    });
+  }, [analyticsQuerySignature, dashTab, load]);
 
   useEffect(() => {
     if (dashTab === 'analytics') return;
@@ -594,7 +625,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           setFeedRefreshing(false);
         }
       });
-  }, [activeType, dashTab, debouncedFilters, feedQuerySignature, intelDeskTab, loadFeedCounts, loadFeedPage, loadFeedSnapshot]);
+  }, [activeType, dashTab, debouncedIntelFilters, feedQuerySignature, intelDeskTab, loadFeedCounts, loadFeedPage, loadFeedSnapshot]);
 
   useEffect(() => {
     const invalidateDashboardCache = () => {
@@ -602,10 +633,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
     };
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, invalidateDashboardCache);
-    window.addEventListener(APP_EVENT_AUTH_CHANGED, invalidateDashboardCache);
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, invalidateDashboardCache);
-      window.removeEventListener(APP_EVENT_AUTH_CHANGED, invalidateDashboardCache);
     };
   }, []);
 
@@ -676,7 +705,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   });
   useEffect(() => {
     setSelectedArticleIds(new Set());
-  }, [canDeleteTailoredArticles, filters.type, intelDeskTab]);
+  }, [canDeleteTailoredArticles, intelFilters.type, intelDeskTab]);
 
   const startArticleDrag = (event, item) => {
     event.dataTransfer.effectAllowed = 'copy';
@@ -1122,7 +1151,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalized intelligence feed">
             <div className="mb-4 shrink-0" data-tour="intel-filters">
-              <Filters initial={filters} onChange={setFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} metaParams={filterMetaParams} />
+              <Filters initial={intelFilters} onChange={setIntelFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} metaParams={filterMetaParams} />
             </div>
 
             {canDeleteTailoredArticles && selectedArticleIds.size > 0 && (

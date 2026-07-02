@@ -14,6 +14,7 @@ const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
 const { buildSourceTrustRegistry, groupRegistryByCredibility } = require('../services/sourceTrust');
+const { fetchSourceCatalog } = require('../config/fetchSources');
 const {
   getPlatformFetchConfig,
   savePlatformFetchConfig,
@@ -1069,7 +1070,19 @@ router.delete('/super/analytics/cleanup', requireRole('super_admin'), asyncHandl
 
 router.get('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (_req, res) => {
   const config = await getPlatformFetchConfig();
-  res.json({ config });
+  const defaultCatalog = fetchSourceCatalog();
+  const customCountries = Object.keys(config.sourceDomainsByCountry || {}).reduce((out, country) => {
+    if (defaultCatalog[country]) return out;
+    out[country] = { news: [], govt: [], competitor: [], evergreen: [] };
+    return out;
+  }, {});
+  res.json({
+    config,
+    sourceCatalog: {
+      ...defaultCatalog,
+      ...customCountries
+    }
+  });
 }));
 
 router.put('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (req, res) => {

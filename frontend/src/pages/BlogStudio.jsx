@@ -25,6 +25,10 @@ const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: T
 const CONTENT_STUDIO_UPCOMING_MODE = false;
 const CONTENT_STUDIO_CACHE_VERSION = 'v1';
 const STUDIO_PAGE_SIZE = 12;
+const GENERATED_DRAFT_RETRY_COUNT = 10;
+const GENERATED_DRAFT_RETRY_DELAY_MS = 500;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function safeSessionGet(key, fallback) {
   try {
@@ -136,6 +140,24 @@ const DEFAULT_LINKEDIN_FORM = {
   customInstructions: ''
 };
 
+const BLOG_STEPS = [
+  'Analyzing source topic & context...',
+  'Synthesizing intelligence & key takeaways...',
+  'Structuring outline & SEO heading layout...',
+  'Drafting blog sections & content blocks...',
+  'Optimizing meta tags & target keywords...',
+  'Polishing brand voice & readability...'
+];
+
+const LINKEDIN_STEPS = [
+  'Analyzing source topic intelligence...',
+  'Extracting core points & statistics...',
+  'Structuring post hook & template layout...',
+  'Drafting post paragraphs & tone...',
+  'Applying spacing constraints & readability...',
+  'Refining soft authority line & CTA details...'
+];
+
 export default function BlogStudio() {
   const { user, refreshMe, genProgress, setGenProgress } = useAuth();
   const location = useLocation();
@@ -195,10 +217,29 @@ export default function BlogStudio() {
   const [socialPreviewOpen, setSocialPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
+  const [generationFinalizing, setGenerationFinalizing] = useState(false);
 
   // Derive generating flags from global genProgress so they survive tab switches
   const isGenerating = generating || (genProgress?.status === 'running' && genProgress?.type === 'blog');
   const isGeneratingLinkedin = generatingLinkedin || (genProgress?.status === 'running' && genProgress?.type === 'linkedin');
+  const generationLocked = isGenerating || isGeneratingLinkedin;
+
+  const [generationStepIndex, setGenerationStepIndex] = useState(0);
+
+  useEffect(() => {
+    if (!generationLocked) {
+      setGenerationStepIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setGenerationStepIndex((prev) => {
+        if (prev < 5) return prev + 1;
+        return prev;
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [generationLocked]);
 
   const cancelGeneration = async () => {
     try {
@@ -230,6 +271,10 @@ export default function BlogStudio() {
     [topicFilters]
   );
   const hasBlogSearch = Boolean(String(blogQuery || '').trim());
+
+  const showGenerationLockMessage = useCallback(() => {
+    setError('Generation is running. Please wait until it finishes before changing sections or refreshing.');
+  }, []);
 
   const keywordList = useMemo(() => cleanList(keywords), [keywords]);
   const categoryTree = useMemo(() => {
@@ -272,6 +317,17 @@ export default function BlogStudio() {
     selectedBlogRef.current = selectedBlog;
   }, [selectedBlog]);
 
+  const generatingRef = useRef(generating);
+  useEffect(() => {
+    generatingRef.current = generating;
+  }, [generating]);
+
+  const genProgressRef = useRef(genProgress);
+  useEffect(() => {
+    genProgressRef.current = genProgress;
+  }, [genProgress]);
+
+
   const selectArticleById = useCallback((articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
@@ -301,11 +357,11 @@ export default function BlogStudio() {
     }
   }, [inboundState.articleId, topicFilters]);
 
-  const loadBlogs = useCallback(async ({ page = 1, reset = false } = {}) => {
+  const loadBlogs = useCallback(async ({ page = 1, reset = false, q = blogQuery } = {}) => {
     setLoadingBlogs(true);
     try {
       const params = { limit: STUDIO_PAGE_SIZE, page };
-      if (blogQuery) params.q = blogQuery;
+      if (q) params.q = q;
       const { data } = await api.get('/blogs', { params });
       const nextBlogs = data.items || [];
       setBlogs((prev) => reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]);
@@ -331,43 +387,104 @@ export default function BlogStudio() {
     }
   }, []);
 
+  const loadBlogsRef = useRef(null);
+  useEffect(() => {
+    loadBlogsRef.current = loadBlogs;
+  }, [loadBlogs]);
+
+  const loadSocialPostsRef = useRef(null);
+  useEffect(() => {
+    loadSocialPostsRef.current = loadSocialPosts;
+  }, [loadSocialPosts]);
+
+  const openGeneratedDraft = useCallback(async (draftId) => {
+    if (!draftId) return null;
+    let item = null;
+    let lastError = null;
+
+    setBlogQuery('');
+    setDraftDrawerOpen(true);
+    setDraftEditorOpen(false);
+
+    for (let attempt = 0; attempt < GENERATED_DRAFT_RETRY_COUNT; attempt += 1) {
+      try {
+        const { data } = await api.get(`/blogs/${draftId}`);
+        item = data.item || null;
+        if (item) break;
+      } catch (err) {
+        lastError = err;
+      }
+      await delay(GENERATED_DRAFT_RETRY_DELAY_MS);
+    }
+
+    if (!item) {
+      if (lastError) throw lastError;
+      throw new Error('Generated draft is not ready yet. Please open Drafts & Publishing again.');
+    }
+
+    setContentType('blog');
+    setBlogQuery('');
+    setSelectedBlog(item);
+    setDraftForm({
+      title: item.title || '',
+      excerpt: item.excerpt || '',
+      bodyMarkdown: item.bodyMarkdown || ''
+    });
+    setPendingDraftId(item._id || '');
+    setDraftDrawerOpen(true);
+    setDraftEditorOpen(true);
+    setBlogs((prev) => [item, ...prev.filter((blog) => blog._id !== item._id)]);
+    setSelectedBlog(item);
+    setDraftEditorOpen(true);
+    setDraftDrawerOpen(true);
+    loadBlogs({ page: 1, reset: true, q: '' }); // background refresh
+    return item;
+  }, [loadBlogs]);
+
   // Listen to global generation progress updates to handle background success, failure or cancellation
   useEffect(() => {
     if (!genProgress) return;
 
     if (genProgress.status === 'completed') {
       const handleCompleted = async () => {
+        // Clear overlay states FIRST so the modal disappears immediately
+        api.post('/blogs/generation-clear').catch(() => {});
+        setGenerating(false);
+        setGeneratingLinkedin(false);
+        setGenProgress(null);
+
+        setGenerationFinalizing(true);
         try {
           if (genProgress.type === 'blog') {
-            const { data } = await api.get(`/blogs/${genProgress.resultId}`);
-            setSelectedBlog(data.item);
-            setPendingDraftId(data.item?._id || '');
-            setDraftDrawerOpen(true);
-            setDraftEditorOpen(true);
-            await loadBlogs({ page: 1, reset: true });
-            emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
+            const item = await openGeneratedDraft(genProgress.resultId);
+            emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || genProgress.resultId || '' });
           } else if (genProgress.type === 'linkedin') {
             setLinkedinOutput(genProgress.data);
-            await loadSocialPosts();
+            loadSocialPosts();
           }
         } catch (err) {
           setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
         } finally {
-          await api.post('/blogs/generation-clear').catch(() => {});
-          setGenProgress(null);
+          setGenerationFinalizing(false);
         }
       };
       handleCompleted();
     } else if (genProgress.status === 'failed') {
       setError(genProgress.error || 'Generation failed');
       api.post('/blogs/generation-clear').catch(() => {});
+      setGenerationFinalizing(false);
+      setGenerating(false);
+      setGeneratingLinkedin(false);
       setGenProgress(null);
     } else if (genProgress.status === 'cancelled') {
       setError('Generation was cancelled');
       api.post('/blogs/generation-clear').catch(() => {});
+      setGenerationFinalizing(false);
+      setGenerating(false);
+      setGeneratingLinkedin(false);
       setGenProgress(null);
     }
-  }, [genProgress, setGenProgress, loadBlogs, loadSocialPosts, setSelectedBlog, setPendingDraftId, setDraftDrawerOpen, setDraftEditorOpen, setLinkedinOutput]);
+  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, setLinkedinOutput]);
 
   // Real-time listener: handles updates pushed to other tabs/users in real-time
   useEffect(() => {
@@ -378,20 +495,44 @@ export default function BlogStudio() {
           // Fetch the updated blog post
           api.get(`/blogs/${detail.id}`).then(({ data }) => {
             if (data.item) {
-              // Update in local state in-memory
+              // Prepend or update in local state in-memory
               setBlogs((prev) => {
                 const exists = prev.some((b) => b._id === data.item._id);
                 if (exists) {
                   return prev.map((b) => b._id === data.item._id ? data.item : b);
                 }
-                return prev;
+                return [data.item, ...prev]; // PREPEND new drafts!
               });
               
-              // Also update selected blog if it matches
-              if (selectedBlogRef.current?._id === data.item._id) {
-                if (selectedBlogRef.current.status !== data.item.status || 
-                    selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
-                  setSelectedBlog(data.item);
+              // If this user was actively generating, open the draft and close overlay instantly!
+              const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
+              if (detail.action === 'generated' && isActivelyGenerating) {
+                // Instantly close the overlay
+                setGenerating(false);
+                setGeneratingLinkedin(false);
+                setGenProgress(null);
+                api.post('/blogs/generation-clear').catch(() => {});
+
+                // Open the draft drawer
+                setContentType('blog');
+                setBlogQuery('');
+                setSelectedBlog(data.item);
+                setDraftForm({
+                  title: data.item.title || '',
+                  excerpt: data.item.excerpt || '',
+                  bodyMarkdown: data.item.bodyMarkdown || ''
+                });
+                setPendingDraftId(data.item._id || '');
+                setDraftDrawerOpen(true);
+                setDraftEditorOpen(true);
+                loadBlogsRef.current?.({ page: 1, reset: true, q: '' });
+              } else {
+                // Also update selected blog if it matches
+                if (selectedBlogRef.current?._id === data.item._id) {
+                  if (selectedBlogRef.current.status !== data.item.status || 
+                      selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
+                    setSelectedBlog(data.item);
+                  }
                 }
               }
             }
@@ -406,11 +547,11 @@ export default function BlogStudio() {
           });
         } else {
           // Fallback to full load if no specific ID is provided
-          loadBlogs({ page: 1, reset: true });
+          loadBlogsRef.current?.({ page: 1, reset: true });
         }
       }
       if (!detail.scope || detail.scope === 'social') {
-        loadSocialPosts();
+        loadSocialPostsRef.current?.();
       }
     };
 
@@ -418,7 +559,7 @@ export default function BlogStudio() {
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     };
-  }, [loadBlogs, loadSocialPosts, setSelectedBlog]);
+  }, []);
 
   useEffect(() => {
     if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
@@ -560,23 +701,18 @@ export default function BlogStudio() {
     setGenerating(true);
     setGenProgress({ type: 'blog', status: 'running', startedAt: new Date().toISOString() });
     try {
-      const { data } = await api.post('/blogs/generate', {
+      await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
         style,
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
         status: 'draft'
       });
-      setSelectedBlog(data.item);
-      setPendingDraftId(data.item?._id || '');
-      setDraftDrawerOpen(true);
-      setDraftEditorOpen(true);
-      await loadBlogs({ page: 1, reset: true });
-      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
-    } finally {
-      setGenerating(false);
       setGenProgress(null);
+      setGenerating(false);
+    } finally {
+      // The backend completes generation in the background; AuthContext polling opens the finished draft.
     }
   };
 
@@ -715,12 +851,35 @@ export default function BlogStudio() {
     loadSocialPosts();
   }, [contentType, loadArticles, loadBlogs, loadSocialPosts]);
 
+  const switchContentType = useCallback((nextType) => {
+    if (nextType === contentType) return true;
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return false;
+    }
+    setContentType(nextType);
+    return true;
+  }, [contentType, generationLocked, showGenerationLockMessage]);
+
+  const refreshStudioSafely = useCallback(() => {
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
+    refreshStudio();
+  }, [generationLocked, refreshStudio, showGenerationLockMessage]);
+
   useEffect(() => {
     setMobileHeaderMenuOpen(false);
   }, [contentType, socialPreviewOpen]);
 
   const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
   const ActiveContentIcon = activeContentTab.icon;
+  const generationOverlayTitle = isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft';
+  const generationOverlaySubtitle = isGeneratingLinkedin
+    ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
+    : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.';
+  const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
     <>
@@ -738,9 +897,10 @@ export default function BlogStudio() {
       <div className="ml-auto flex items-center gap-2 xl:hidden">
         <button
           type="button"
-          onClick={refreshStudio}
-          className="inline-flex h-[42px] min-w-[42px] items-center justify-center gap-2 rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+          onClick={refreshStudioSafely}
+          className={`inline-flex h-[42px] min-w-[42px] items-center justify-center gap-2 rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30 ${generationLocked ? 'cursor-not-allowed opacity-60' : ''}`}
           aria-label="Refresh content studio"
+          title={generationLocked ? 'Generation is running. Please wait before refreshing.' : 'Refresh content studio'}
         >
           <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
         </button>
@@ -762,8 +922,9 @@ export default function BlogStudio() {
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setContentType(tab.key)}
-                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+                onClick={() => switchContentType(tab.key)}
+                aria-disabled={generationLocked && !active}
+                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 <Icon size={14} />
                 <span className="xl:hidden">{tab.label}</span>
@@ -772,7 +933,7 @@ export default function BlogStudio() {
             );
           })}
         </div>
-        <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 xl:w-auto">
+        <button type="button" onClick={refreshStudioSafely} title={generationLocked ? 'Generation is running. Please wait before refreshing.' : 'Refresh'} className={`inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 xl:w-auto ${generationLocked ? 'cursor-not-allowed opacity-60' : ''}`}>
           <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           Refresh
         </button>
@@ -810,10 +971,11 @@ export default function BlogStudio() {
                   key={tab.key}
                   type="button"
                   onClick={() => {
-                    setContentType(tab.key);
-                    setMobileHeaderMenuOpen(false);
+                    const switched = switchContentType(tab.key);
+                    if (switched || active) setMobileHeaderMenuOpen(false);
                   }}
-                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                  aria-disabled={generationLocked && !active}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
                 >
                   <span className="flex items-center gap-3 text-sm font-black">
                     <Icon size={15} />
@@ -833,7 +995,7 @@ export default function BlogStudio() {
   return (
     <Layout headerActions={headerActions}>
       <div className="relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
-        <div className={CONTENT_STUDIO_UPCOMING_MODE ? 'pointer-events-none select-none blur-[5px] saturate-[0.82]' : ''}>
+        <div className={(CONTENT_STUDIO_UPCOMING_MODE || generationLocked) ? 'pointer-events-none select-none blur-[5px] saturate-[0.82] transition-all duration-300' : 'transition-all duration-300'}>
         {error && (
           <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
             {error}
@@ -1166,6 +1328,79 @@ export default function BlogStudio() {
         </>
         )}
         </div>
+        {generationLocked ? (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-gray-950/40 px-4 backdrop-blur-sm">
+            {/* Ambient pulsing glow behind the card */}
+            <div className="absolute -inset-10 bg-[radial-gradient(circle_at_center,rgba(209,18,67,0.12),transparent_60%)] blur-3xl opacity-75 animate-pulse pointer-events-none" />
+            
+            <div className="relative w-full max-w-[440px] overflow-hidden rounded-[32px] border border-gray-200 bg-white p-8 text-center shadow-[0_32px_96px_rgba(15,23,42,0.16)] relative overflow-hidden">
+              {/* Top brand accent stripe */}
+              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-brand-crimson via-brand-hoverred to-brand-crimson" />
+              
+              <div className="relative flex flex-col items-center">
+                {/* Concentric rotating glowing spinner */}
+                <div className="relative mb-6 flex h-24 w-24 items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-brand-crimson/5 blur-md animate-pulse" />
+                  <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-brand-crimson border-r-brand-hoverred animate-spin" style={{ animationDuration: '2s' }} />
+                  <div className="absolute inset-2.5 rounded-full border-2 border-transparent border-b-brand-crimson/60 border-l-brand-hoverred animate-spin" style={{ animationDuration: '1.4s', animationDirection: 'reverse' }} />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-pink to-white shadow-md border border-brand-crimson/10 animate-pulse">
+                    {isGeneratingLinkedin ? (
+                      <MessageSquareText size={22} className="text-brand-crimson" />
+                    ) : (
+                      <BookOpenText size={22} className="text-brand-crimson" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-pink border border-brand-crimson/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson shadow-sm mb-3">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-crimson animate-ping" />
+                  AI Writer Engine
+                </div>
+
+                <div className="text-[10px] font-black uppercase tracking-[0.26em] text-brand-crimson/70">AI Generation In Progress</div>
+                <h2 className="mt-1.5 text-xl font-black tracking-tight text-gray-900">{generationOverlayTitle}</h2>
+                <p className="mx-auto mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500 px-2">
+                  {generationOverlaySubtitle}
+                </p>
+
+                {/* Sleek Progress Indicator Bar */}
+                <div className="w-full mt-6 h-2 bg-gray-50 border border-gray-100 rounded-full overflow-hidden relative">
+                  <div 
+                    className="h-full bg-gradient-to-r from-brand-crimson via-brand-hoverred to-rose-500 rounded-full transition-all duration-[1200ms] ease-out shadow-[0_1px_4px_rgba(209,18,67,0.3)]" 
+                    style={{ width: `${Math.min((generationStepIndex + 1) * 16.6, 99)}%` }} 
+                  />
+                </div>
+
+                <div className="mt-4 text-xs font-bold text-brand-crimson/90 animate-pulse tracking-wide flex items-center justify-center gap-1.5">
+                  <Loader2 size={12} className="animate-spin" />
+                  {isGeneratingLinkedin ? LINKEDIN_STEPS[generationStepIndex] : BLOG_STEPS[generationStepIndex]}
+                </div>
+
+                {/* Selected Topic Box with left accent */}
+                <div className="mt-6 w-full rounded-2xl border-l-4 border-brand-crimson border border-gray-200/50 bg-gray-50/50 p-4 text-left shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] transition-all">
+                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400">Selected Topic</div>
+                  <div className="mt-1.5 line-clamp-2 text-xs font-bold leading-relaxed text-gray-800">{generationOverlayTopic}</div>
+                </div>
+
+                {/* Footer bar */}
+                <div className="w-full mt-6 flex items-center justify-between gap-4 border-t border-gray-150 pt-5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand-crimson animate-pulse" />
+                    Do not refresh this page
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelGeneration}
+                    className="inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-[11px] font-black uppercase tracking-wider text-gray-500 shadow-sm transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200/60"
+                  >
+                    <Ban size={12} />
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {CONTENT_STUDIO_UPCOMING_MODE ? <UpcomingStudioOverlay /> : null}
       </div>
     </Layout>

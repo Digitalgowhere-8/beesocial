@@ -436,7 +436,7 @@ function canonicalCountry(country) {
 function defaultSourceDomainsForCountry(country, type = 'news') {
   const selected = canonicalCountry(country);
   if (type === 'govt') return GOVT_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
-  if (type === 'competitor') return DEFAULT_COMPETITOR_SOURCE_DOMAINS;
+  if (type === 'competitor') return COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY[selected] || DEFAULT_COMPETITOR_SOURCE_DOMAINS;
   return [...new Set([...(NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || []), ...GLOBAL_NEWS_SOURCE_DOMAINS])];
 }
 
@@ -444,14 +444,23 @@ function configuredFetchCountries() {
   return Object.keys(NEWS_SOURCE_DOMAINS_BY_COUNTRY).sort();
 }
 
+function fetchSourceCatalog() {
+  return configuredFetchCountries().reduce((out, country) => {
+    out[country] = {
+      news: defaultSourceDomainsForCountry(country, 'news'),
+      govt: defaultSourceDomainsForCountry(country, 'govt'),
+      competitor: defaultSourceDomainsForCountry(country, 'competitor'),
+      evergreen: defaultSourceDomainsForCountry(country, 'news')
+    };
+    return out;
+  }, {});
+}
+
 function mergeSourceDomains({ country, type = 'news', userSources = [], strictSources = false }) {
   const defaults = defaultSourceDomainsForCountry(country, type);
   const defaultDomains = [...new Set(defaults.map(cleanDomain).filter(Boolean))];
   const userDomains = cleanList(userSources).map(cleanDomain).filter(Boolean);
-  const lockedToDefaultSources = type === 'govt' || type === 'competitor';
-  const includeDomains = lockedToDefaultSources
-    ? defaultDomains
-    : [...new Set([...defaultDomains, ...userDomains])];
+  const includeDomains = [...new Set([...defaultDomains, ...userDomains])];
 
   return {
     includeDomains,
@@ -471,5 +480,6 @@ module.exports = {
   canonicalCountry,
   configuredFetchCountries,
   defaultSourceDomainsForCountry,
+  fetchSourceCatalog,
   mergeSourceDomains
 };

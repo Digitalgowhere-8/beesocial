@@ -90,6 +90,13 @@ const TOPIC_OPTIONS = [
   { key: 'evergreen', label: 'Evergreen guides', help: 'Guides, explainers and reference content' }
 ];
 
+const SOURCE_TYPE_OPTIONS = [
+  { key: 'news', label: 'News sources', help: 'Business, market and publisher domains', icon: Globe2, accent: 'from-sky-500/15 via-blue-500/10 to-cyan-500/10', ring: 'ring-sky-100', tint: 'text-sky-700' },
+  { key: 'govt', label: 'Government sources', help: 'Regulatory, ministry and official domains', icon: ShieldCheck, accent: 'from-emerald-500/15 via-green-500/10 to-teal-500/10', ring: 'ring-emerald-100', tint: 'text-emerald-700' },
+  { key: 'competitor', label: 'Competitor sources', help: 'Firm websites and competitor intelligence domains', icon: Building2, accent: 'from-amber-500/15 via-orange-500/10 to-yellow-500/10', ring: 'ring-amber-100', tint: 'text-amber-700' },
+  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-violet-500/15 via-fuchsia-500/10 to-pink-500/10', ring: 'ring-violet-100', tint: 'text-violet-700' }
+];
+
 const COUNTRY_TIMEZONES = {
   India: ['Asia/Kolkata'],
   Singapore: ['Asia/Singapore'],
@@ -372,7 +379,7 @@ export default function AdminPanel() {
   return (
     <Layout headerActions={headerActions}>
       <div data-tour="admin-shell" className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
-        <div className="w-full space-y-5 pb-10">
+        <div className="w-full space-y-5 pb-5">
           {isSuperAdmin ? (
             <SuperAdminWorkspace
               tabs={tabs}
@@ -1465,12 +1472,20 @@ function SuperAdminFetchTab() {
   const { runProgress, setRunProgress } = useAuth();
   const [profileMeta, setProfileMeta] = useState(null);
   const [config, setConfig] = useState(null);
+  const [sourceCatalog, setSourceCatalog] = useState({});
   const [status, setStatus] = useState({ running: false, logId: '' });
   const [lastLog, setLastLog] = useState(null);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
   const [autosaveStatus, setAutosaveStatus] = useState('saved');
+  const [managerTab, setManagerTab] = useState('setup');
+  const [sourceCountry, setSourceCountry] = useState('');
+  const [sourceType, setSourceType] = useState('news');
+  const [customCountryInput, setCustomCountryInput] = useState('');
+  const [draftCountries, setDraftCountries] = useState([]);
+  const [sourceInput, setSourceInput] = useState('');
+  const [sourceManagerNotice, setSourceManagerNotice] = useState('');
   const hasLocalEditsRef = useRef(false);
   const saveTimerRef = useRef(null);
   const saveVersionRef = useRef(0);
@@ -1487,6 +1502,7 @@ function SuperAdminFetchTab() {
     if (!hasLocalEditsRef.current) {
       setConfig(cfg.data.config);
     }
+    setSourceCatalog(cfg.data.sourceCatalog || {});
     setStatus(stat.data);
     setLastLog(logs.data.items?.[0] || null);
   }, []);
@@ -1510,6 +1526,17 @@ function SuperAdminFetchTab() {
   const countries = profileMeta?.fetchCountries || [];
   const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
   const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
+  const customSourceCountries = Object.keys(config?.sourceDomainsByCountry || {});
+  const sourceCountries = Array.from(new Set([
+    ...countries,
+    ...Object.keys(sourceCatalog || {}),
+    ...customSourceCountries,
+    ...draftCountries
+  ])).sort((a, b) => a.localeCompare(b));
+  const fetchSetupCountries = Array.from(new Set([
+    ...countries,
+    ...customSourceCountries
+  ])).sort((a, b) => a.localeCompare(b));
   const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
   const scheduleEnabled = Boolean(config?.schedule?.enabled);
   const scheduleTimezone = config?.schedule?.timezone || config?.timezone || 'Asia/Kolkata';
@@ -1543,6 +1570,12 @@ function SuperAdminFetchTab() {
         }
       : null
   );
+
+  useEffect(() => {
+    if (!sourceCountries.length) return;
+    if (sourceCountry && sourceCountries.includes(sourceCountry)) return;
+    setSourceCountry(selectedCountries[0] || sourceCountries[0] || '');
+  }, [sourceCountry, sourceCountries, selectedCountries]);
 
   const persistConfig = useCallback(async (configToSave, { manual = false, version: providedVersion } = {}) => {
     if (!configToSave) return configToSave;
@@ -1596,6 +1629,64 @@ function SuperAdminFetchTab() {
     ...(prev || {}),
     schedule: { ...((prev || {}).schedule || {}), [key]: value }
   }));
+  const updateCountrySources = useCallback((country, type, value) => {
+    const items = Array.from(new Set(
+      Array.isArray(value)
+        ? value
+        : String(value || '')
+          .split(/[\n,]+/)
+          .map((item) => item.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase())
+          .filter(Boolean)
+    ));
+
+    changeConfig((prev) => {
+      const current = prev || {};
+      const existing = { ...(current.sourceDomainsByCountry || {}) };
+      const nextCountry = {
+        ...(existing[country] || {}),
+        [type]: items
+      };
+      if (!nextCountry.news?.length && !nextCountry.govt?.length && !nextCountry.competitor?.length && !nextCountry.evergreen?.length) {
+        delete existing[country];
+      } else {
+        existing[country] = nextCountry;
+      }
+      const hasCountrySources = Boolean(existing[country]);
+      const isDefaultCountry = countries.includes(country);
+      const nextCountries = hasCountrySources
+        ? Array.from(new Set([...(current.countries || []), country]))
+        : isDefaultCountry
+          ? (current.countries || [])
+          : (current.countries || []).filter((item) => item !== country);
+
+      return {
+        ...current,
+        countries: nextCountries,
+        sourceDomainsByCountry: existing
+      };
+    });
+  }, [changeConfig, countries]);
+
+  const addCustomCountry = useCallback(() => {
+    const countriesToAdd = Array.from(new Set(
+      String(customCountryInput || '')
+        .split(/[\n,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ));
+    if (!countriesToAdd.length) return;
+    setDraftCountries((prev) => Array.from(new Set([...(prev || []), ...countriesToAdd])));
+    setSourceCountry(countriesToAdd[0] || '');
+    setSourceManagerNotice(`${countriesToAdd.length} countr${countriesToAdd.length === 1 ? 'y is' : 'ies are'} ready. Add at least one source to save.`);
+    setCustomCountryInput('');
+  }, [customCountryInput]);
+
+  const removeCustomSource = useCallback((country, type, domain) => {
+    if (!country || !type || !domain) return;
+    const nextItems = (config?.sourceDomainsByCountry?.[country]?.[type] || []).filter((item) => item !== domain);
+    updateCountrySources(country, type, nextItems);
+    setSourceManagerNotice(`${domain} removed.`);
+  }, [config?.sourceDomainsByCountry, updateCountrySources]);
 
   const toggleCountry = (country) => {
     const next = selectedCountries.includes(country)
@@ -1646,10 +1737,54 @@ function SuperAdminFetchTab() {
     }
   };
 
+  const selectedSourceDefaults = sourceCatalog?.[sourceCountry]?.[sourceType] || [];
+  const selectedSourceCustom = config?.sourceDomainsByCountry?.[sourceCountry]?.[sourceType] || [];
+  const selectedSourceEffective = Array.from(new Set([...(selectedSourceDefaults || []), ...(selectedSourceCustom || [])]));
+  const showFetchActivity = managerTab === 'setup';
+
+  const addSourceEntries = useCallback((rawValue) => {
+    if (!sourceCountry) {
+      setSourceManagerNotice('Select or add a country before adding sources.');
+      return;
+    }
+    const parsed = parseSourceDomains(rawValue);
+    if (!parsed.length) {
+      setSourceManagerNotice('Enter at least one valid domain, for example example.com.');
+      return;
+    }
+
+    const defaultSet = new Set(selectedSourceDefaults);
+    const existingSet = new Set(selectedSourceCustom);
+    const nextItems = [...selectedSourceCustom];
+    let added = 0;
+    let skipped = 0;
+
+    parsed.forEach((domain) => {
+      if (defaultSet.has(domain) || existingSet.has(domain)) {
+        skipped += 1;
+        return;
+      }
+      existingSet.add(domain);
+      nextItems.push(domain);
+      added += 1;
+    });
+
+    if (added) {
+      updateCountrySources(sourceCountry, sourceType, nextItems);
+      setDraftCountries((prev) => (prev || []).filter((country) => country !== sourceCountry));
+      setSourceInput('');
+    }
+    setSourceManagerNotice(
+      added
+        ? `${added} source${added === 1 ? '' : 's'} added${skipped ? `, ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`
+        : `${skipped} duplicate source${skipped === 1 ? '' : 's'} skipped.`
+    );
+  }, [selectedSourceCustom, selectedSourceDefaults, sourceCountry, sourceType, updateCountrySources]);
+
   if (!config || !profileMeta) return <Loader />;
 
   return (
-    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className={showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}>
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -1671,20 +1806,246 @@ function SuperAdminFetchTab() {
           </span>
         </div>
 
-        <FetchField label="Countries">
-          <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
-            {countries.map((country) => {
-              const checked = selectedCountries.includes(country);
-              return (
-                <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
-                  <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
-                  <span className="min-w-0 truncate">{country}</span>
-                </label>
-              );
-            })}
+        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">
+            {[
+              { key: 'setup', label: 'Fetch Setup' },
+              { key: 'sources', label: 'Source Manager' }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setManagerTab(tab.key)}
+                className={`rounded-xl px-4 py-2 text-sm font-black transition ${managerTab === tab.key ? 'bg-brand-crimson text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </FetchField>
 
+          {managerTab === 'setup' ? (
+            <div className="mt-4">
+              <FetchField label="Countries">
+                <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {fetchSetupCountries.map((country) => {
+                    const checked = selectedCountries.includes(country);
+                    const isCustom = !countries.includes(country);
+                    return (
+                      <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                        <span className="min-w-0 truncate">{country}</span>
+                        {isCustom && <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Custom</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </FetchField>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-5">
+              <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff,_#f8fafc_60%,_#fff1f2)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-2xl">
+                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">Source Manager</div>
+                    <h4 className="mt-2 text-[28px] font-black leading-tight tracking-[-0.03em] text-slate-950">Manage country sources</h4>
+                    <p className="mt-2 text-[15px] leading-7 text-slate-500">Choose a country, select the source type, add domains in bulk, and remove any incorrect source with one click.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Default</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceDefaults.length}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Custom</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceCustom.length}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Total</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceEffective.length}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+                <div className="space-y-4">
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                    <FetchField label="Country">
+                      <select className="select min-h-[48px] rounded-2xl border-slate-200 bg-white" value={sourceCountry} onChange={(e) => setSourceCountry(e.target.value)}>
+                        {sourceCountries.map((country) => (
+                          <option key={country} value={country}>{country}</option>
+                        ))}
+                      </select>
+                    </FetchField>
+                    <div className="mt-3 text-xs font-medium leading-6 text-slate-500">
+                      Countries added here will also be available in the Fetch Setup tab.
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <FetchField label="Add new countries">
+                      <textarea
+                        className="input min-h-[140px] rounded-2xl !py-3"
+                        value={customCountryInput}
+                        onChange={(e) => setCustomCountryInput(e.target.value)}
+                        placeholder={'Add one or many countries\n\nExample:\nAbu Dhabi (UAE)\nDoha (Qatar)\nKenya'}
+                      />
+                    </FetchField>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs font-medium leading-5 text-slate-500">Use one country per line or separate by commas.</div>
+                      <button
+                        type="button"
+                        onClick={addCustomCountry}
+                        disabled={!customCountryInput.trim()}
+                        className="rounded-2xl bg-brand-crimson px-4 py-2 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+                      >
+                        Add Countries
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <FetchField label="Source type">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {SOURCE_TYPE_OPTIONS.map((item) => {
+                        const active = sourceType === item.key;
+                        const total = (sourceCatalog?.[sourceCountry]?.[item.key]?.length || 0) + (config?.sourceDomainsByCountry?.[sourceCountry]?.[item.key]?.length || 0);
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setSourceType(item.key)}
+                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
+                          >
+                            <div className="text-sm font-black">{item.label}</div>
+                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{total} sources</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FetchField>
+
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+                    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Bulk add sources</div>
+                          <div className="mt-2 text-lg font-black text-slate-950">{sourceCountry || 'Select a country'}</div>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{sourceType}</span>
+                      </div>
+                      <textarea
+                        className="input mt-4 min-h-[260px] rounded-2xl !py-3"
+                        value={sourceInput}
+                        onChange={(e) => setSourceInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            addSourceEntries(sourceInput);
+                          }
+                        }}
+                        placeholder={'Add one domain per line\n\nexample.com\ngov.example\nnews.example.org'}
+                        disabled={!sourceCountry}
+                      />
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-xs font-medium leading-6 text-slate-500">
+                          Press Enter to add. Use Shift+Enter for a new line, or paste comma-separated domains.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addSourceEntries(sourceInput)}
+                          disabled={!sourceInput.trim() || !sourceCountry}
+                          className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          Add Sources
+                        </button>
+                      </div>
+                      {sourceManagerNotice && (
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                          {sourceManagerNotice}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Default sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceDefaults.length ? selectedSourceDefaults.map((domain) => (
+                            <span key={`default-${domain}`} className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-100">{domain}</span>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No default source for this country and type.</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Custom sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceCustom.length ? selectedSourceCustom.map((domain) => (
+                            <button
+                              key={`custom-${domain}`}
+                              type="button"
+                              onClick={() => removeCustomSource(sourceCountry, sourceType, domain)}
+                              className="rounded-full bg-brand-pink/25 px-3 py-1.5 text-[11px] font-bold text-brand-crimson ring-1 ring-brand-crimson/10 transition hover:bg-brand-pink/40"
+                              title="Remove source"
+                            >
+                              {domain} x
+                            </button>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No custom source added.</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Final fetch sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceEffective.length ? selectedSourceEffective.map((domain) => (
+                            <span
+                              key={`effective-${domain}`}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold ring-1 ${selectedSourceCustom.includes(domain) ? 'bg-brand-pink/25 text-brand-crimson ring-brand-crimson/10' : 'bg-white text-slate-700 ring-slate-200'}`}
+                            >
+                              {domain}
+                            </span>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No sources added yet.</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-black text-slate-950">{selectedSourceCustom.length} custom sources for {sourceCountry || 'selected country'}</div>
+                  <div className={`mt-1 text-[11px] font-black uppercase tracking-[0.18em] ${
+                    autosaveStatus === 'error' ? 'text-red-500'
+                      : autosaveStatus === 'saved' ? 'text-emerald-600'
+                        : 'text-amber-600'
+                  }`}>
+                    {autosaveStatus === 'saving' ? 'Saving sources...'
+                      : autosaveStatus === 'pending' ? 'Source changes will save automatically'
+                        : autosaveStatus === 'error' ? 'Source autosave failed'
+                          : 'Sources saved'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveConfig}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Save Sources
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {managerTab === 'setup' && (
+        <>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2">
@@ -1798,9 +2159,11 @@ function SuperAdminFetchTab() {
             </button>
           </div>
         </div>
+        </>
+        )}
 
         {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
-        {effectiveRunProgress && (
+        {showFetchActivity && effectiveRunProgress && (
           <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1827,30 +2190,32 @@ function SuperAdminFetchTab() {
         )}
       </div>
 
-      <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <div className="eyebrow mb-1">Last run</div>
-              <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+      {showFetchActivity ? (
+        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Last run</div>
+                <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+              </div>
+              <Activity size={17} className="text-brand-crimson" />
             </div>
-            <Activity size={17} className="text-brand-crimson" />
+            {!lastLog ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <Stat label="Status" value={lastLog.status} />
+                <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
+                <Stat label="Fetched" value={lastLog.totalFetched} />
+                <Stat label="Inserted" value={lastLog.totalInserted} highlight />
+                <Stat label="Duplicates" value={lastLog.totalDuplicates} />
+                <Stat label="Errors" value={lastLog.totalErrors} />
+                <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+              </div>
+            )}
           </div>
-          {!lastLog ? (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
-          ) : (
-            <div className="mt-3 space-y-3">
-              <Stat label="Status" value={lastLog.status} />
-              <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
-              <Stat label="Fetched" value={lastLog.totalFetched} />
-              <Stat label="Inserted" value={lastLog.totalInserted} highlight />
-              <Stat label="Duplicates" value={lastLog.totalDuplicates} />
-              <Stat label="Errors" value={lastLog.totalErrors} />
-              <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
-            </div>
-          )}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -2662,6 +3027,27 @@ function cleanList(value) {
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function normalizeSourceDomain(value) {
+  const domain = String(value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split(/[/?#]/)[0]
+    .toLowerCase();
+  if (!domain || !domain.includes('.') || /\s/.test(domain)) return '';
+  if (!/^[a-z0-9.-]+$/.test(domain)) return '';
+  return domain;
+}
+
+function parseSourceDomains(value) {
+  return Array.from(new Set(
+    String(value || '')
+      .split(/[\n,\s]+/)
+      .map(normalizeSourceDomain)
+      .filter(Boolean)
+  ));
 }
 
 function Stat({ label, value, highlight }) {

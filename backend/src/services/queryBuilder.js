@@ -156,6 +156,7 @@ function defaultTimezone() {
 function sourceTypeForTopic(topic) {
   if (topic === 'govt') return 'govt';
   if (topic === 'competitor') return 'competitor';
+  if (topic === 'evergreen') return 'news';
   return 'news';
 }
 
@@ -501,18 +502,31 @@ function buildN8nPayload(profile = {}, extra = {}) {
     profile.includeDomains ||
     profile.include_domains
   );
+  const typedSourceDomains = ['news', 'govt', 'competitor', 'evergreen'].reduce((out, type) => {
+    out[type] = cleanSourceDomains(profile.sourceDomainsByType?.[type]);
+    return out;
+  }, {});
+  const hasTypedSourceDomains = Object.values(typedSourceDomains).some((items) => items.length);
+  const newsSourceDomains = hasTypedSourceDomains && typedSourceDomains.news.length
+    ? typedSourceDomains.news
+    : sourceDomains;
   const mergedSources = mergeSourceDomains({
     country,
     type: 'news',
-    userSources: sourceDomains,
+    userSources: newsSourceDomains,
     strictSources: profile.strictSources || profile.strict_sources
   });
   const sourceDomainsByTopic = Object.fromEntries(
     topics.map((topic) => {
+      const sourceType = sourceTypeForTopic(topic);
+      const explicitTopicSources = typedSourceDomains[topic] || [];
+      const topicUserSources = hasTypedSourceDomains
+        ? (explicitTopicSources.length ? explicitTopicSources : typedSourceDomains[sourceType] || [])
+        : (sourceType === 'news' ? sourceDomains : []);
       const merged = mergeSourceDomains({
         country,
-        type: sourceTypeForTopic(topic),
-        userSources: topic === 'news' ? [] : sourceDomains,
+        type: sourceType,
+        userSources: topicUserSources,
         strictSources: profile.strictSources || profile.strict_sources
       });
       return [topic, merged.includeDomains];
@@ -569,6 +583,7 @@ function buildN8nPayload(profile = {}, extra = {}) {
     sourceDomainsByTopic,
     defaultDomainsByTopic,
     userDomains: mergedSources.userDomains,
+    sourceDomainsByType: typedSourceDomains,
     ...extra
   };
 

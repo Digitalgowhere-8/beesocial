@@ -19,13 +19,28 @@ const SUPER_ADMIN_SECTIONS = [
   { key: 'settings', label: 'Settings', icon: KeyRound }
 ];
 
-function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '', dataTour = '' }) {
+function SideNavItem({
+  icon: Icon,
+  label,
+  to,
+  onActiveClick,
+  badge = '',
+  dataTour = '',
+  navigationLocked = false,
+  onNavigationBlocked,
+}) {
   return (
     <NavLink
       to={to}
       data-tour={dataTour || undefined}
       onClick={(event) => {
-        if (window.location.pathname.startsWith(to)) {
+        const isCurrentPath = window.location.pathname.startsWith(to);
+        if (navigationLocked && !isCurrentPath) {
+          event.preventDefault();
+          onNavigationBlocked?.();
+          return;
+        }
+        if (isCurrentPath) {
           event.preventDefault();
           onActiveClick?.();
         }
@@ -61,6 +76,7 @@ const roleLabel = (role) => {
 
 const NOTIFICATION_LIMIT = 20;
 const ONBOARDING_NEW_USER_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const GENERATION_NAV_LOCK_MESSAGE = 'Generation is running. Please wait until it finishes before moving away.';
 
 const readOnboardingSession = (userId) => {
   try {
@@ -318,10 +334,25 @@ export default function Layout({ children, headerActions = null }) {
   const isNewUser = Number.isFinite(userCreatedTime) && userCreatedTime > 0
     ? (Date.now() - userCreatedTime) <= ONBOARDING_NEW_USER_WINDOW_MS
     : false;
+  const generationLocked = genProgress?.status === 'running';
+  const showGenerationLockMessage = useCallback(() => {
+    window.alert(GENERATION_NAV_LOCK_MESSAGE);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
   }, [collapsed]);
+
+  useEffect(() => {
+    if (!generationLocked) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [generationLocked]);
 
   useEffect(() => {
     setAvatar(user?.avatar || '');
@@ -359,12 +390,16 @@ export default function Layout({ children, headerActions = null }) {
   }, [saveNotifications]);
 
   const openNotificationItem = useCallback((item) => {
+    if (item?.href && generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
     setShowNotifications(false);
     markAllNotificationsRead();
     if (item?.href) {
       navigate(item.href);
     }
-  }, [markAllNotificationsRead, navigate]);
+  }, [generationLocked, markAllNotificationsRead, navigate, showGenerationLockMessage]);
 
   const pollNotifications = useCallback(async () => {
     if (!user?._id || isSuperAdmin) return;
@@ -515,20 +550,36 @@ export default function Layout({ children, headerActions = null }) {
     return () => window.removeEventListener('profile_avatar_updated', handleAvatarUpdate);
   }, [user?._id]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
     logout();
     navigate('/login');
-  };
+  }, [generationLocked, logout, navigate, showGenerationLockMessage]);
 
-  const openProfile = () => {
+  const openProfile = useCallback(() => {
+    if (generationLocked && !location.pathname.startsWith('/profile')) {
+      showGenerationLockMessage();
+      return;
+    }
     setShowProfileMenu(false);
     navigate('/profile');
-  };
+  }, [generationLocked, location.pathname, navigate, showGenerationLockMessage]);
 
   const navigateIfNeeded = useCallback((path) => {
-    if (location.pathname.startsWith(path)) return;
+    const currentPath = `${location.pathname}${location.search || ''}`;
+    const isSameTarget = path.includes('?')
+      ? currentPath === path
+      : location.pathname.startsWith(path);
+    if (isSameTarget) return;
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
     navigate(path);
-  }, [location.pathname, navigate]);
+  }, [generationLocked, location.pathname, location.search, navigate, showGenerationLockMessage]);
 
   useEffect(() => {
     setShowNotifications(false);
@@ -729,7 +780,7 @@ export default function Layout({ children, headerActions = null }) {
           <div className="p-3 border-b border-gray-100 shrink-0">
             <div className="p-2.5 rounded-xl cursor-pointer transition-all hover:bg-brand-pink/30 border border-gray-50" 
               style={{ background: 'rgba(209,18,67,0.04)' }}
-                onClick={() => navigate(isSuperAdmin ? '/admin' : '/profile')}
+                onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}
             >
               <div className="flex items-center gap-2.5">
                 <div className="relative shrink-0">
@@ -751,7 +802,7 @@ export default function Layout({ children, headerActions = null }) {
             </div>
           </div>
         ) : (
-          <div className="flex justify-center py-3 border-b border-gray-100 cursor-pointer shrink-0" onClick={() => navigate('/profile')}>
+          <div className="flex justify-center py-3 border-b border-gray-100 cursor-pointer shrink-0" onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}>
             <div className="relative">
               {avatar ? (
                 <img src={avatar} className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
@@ -774,7 +825,7 @@ export default function Layout({ children, headerActions = null }) {
                 {SUPER_ADMIN_SECTIONS.map(({ key, icon: Icon, label }) => (
                   <button
                     key={key}
-                    onClick={() => navigate(`/admin?section=${key}`)}
+                    onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
                     title={label}
                     className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') && currentAdminSection === key ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}
                   >
@@ -790,7 +841,7 @@ export default function Layout({ children, headerActions = null }) {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => navigate(`/admin?section=${key}`)}
+                      onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
                       style={{
                         background: active ? 'rgba(209,18,67,0.06)' : undefined,
@@ -837,13 +888,13 @@ export default function Layout({ children, headerActions = null }) {
             </>
           ) : (
             <>
-              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" />
-              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" />}
+              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" />
+                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
               )}
-              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" />
+              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
             </>
           )}
           </>
@@ -1005,7 +1056,7 @@ export default function Layout({ children, headerActions = null }) {
 
       {isSuperAdmin ? (
         <nav className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
-          <button onClick={() => navigate('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+          <button onClick={() => navigateIfNeeded('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
             <Shield size={16} />
             Owner Console
           </button>

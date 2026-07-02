@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import api from '../api/axios';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 
@@ -7,6 +7,7 @@ const TOKEN_KEY = 'opportunityos_token';
 const USER_KEY = 'opportunityos_user';
 const SESSION_KEY = 'opportunityos_session';
 const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
+const GENERATION_PROGRESS_POLL_MS = 1500;
 
 function readStoredUser() {
   try {
@@ -36,6 +37,16 @@ function clearAuthStorage() {
   localStorage.removeItem(SESSION_KEY);
 }
 
+function authSignature(user, session, uiSettings) {
+  return JSON.stringify({
+    userId: user?._id || '',
+    role: user?.role || '',
+    isActive: Boolean(user?.isActive),
+    sessionId: session?.sessionId || '',
+    uiSettings: uiSettings || null
+  });
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
@@ -54,6 +65,7 @@ export function AuthProvider({ children }) {
   });
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [uiSettings, setUiSettings] = useState(null);
+  const lastAuthSignatureRef = useRef('');
 
   const [runProgress, setRunProgress] = useState(() => {
     try {
@@ -151,7 +163,7 @@ export function AuthProvider({ children }) {
       }
     };
 
-    const id = window.setInterval(poll, 4000);
+    const id = window.setInterval(poll, GENERATION_PROGRESS_POLL_MS);
     poll();
 
     const handleVisibility = () => {
@@ -241,8 +253,9 @@ export function AuthProvider({ children }) {
     setUser(user);
     setSession(activeSession);
     setUiSettings(nextUiSettings);
+    lastAuthSignatureRef.current = authSignature(user, activeSession, nextUiSettings);
     emitAppEvent(APP_EVENT_AUTH_CHANGED, { user, session: activeSession });
-  }, []);
+  }, [lastAuthSignatureRef]);
 
   const setAuthState = useCallback((payload = {}) => {
     if (!payload?.token || !payload?.user) return;
@@ -283,18 +296,29 @@ export function AuthProvider({ children }) {
 
   const refreshMe = useCallback(async () => {
     const { data } = await api.get('/auth/me');
-    setUser(data.user);
-    setSession(data.session || null);
-    setUiSettings(data.uiSettings || null);
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    if (data.session) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(data.session));
+    const nextUser = data.user;
+    const nextSession = data.session || null;
+    const nextUiSettings = data.uiSettings || null;
+    const nextSignature = authSignature(nextUser, nextSession, nextUiSettings);
+    const changed = nextSignature !== lastAuthSignatureRef.current;
+
+    if (changed) {
+      setUser(nextUser);
+      setSession(nextSession);
+      setUiSettings(nextUiSettings);
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      if (nextSession) {
+        localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      } else {
+        localStorage.removeItem(SESSION_KEY);
+      }
+      lastAuthSignatureRef.current = nextSignature;
+      emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: nextUser, session: nextSession });
     } else {
-      localStorage.removeItem(SESSION_KEY);
+      setUiSettings(nextUiSettings);
     }
-    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: data.user, session: data.session || null });
-    return data.user;
-  }, []);
+    return nextUser;
+  }, [lastAuthSignatureRef]);
 
   useEffect(() => {
     if (!user) return undefined;

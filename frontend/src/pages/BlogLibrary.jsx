@@ -418,11 +418,10 @@ export default function BlogLibrary() {
         </button>
       </div>
       <div className="hidden w-full min-w-0 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="relative min-w-0 max-w-xl flex-1 group">
-          <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10" />
-          <Search size={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-crimson" />
+        <div className="relative min-w-0 max-w-xl flex-1">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
-            className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-11 pr-4 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30"
+            className="w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-gray-700 shadow-sm transition-all placeholder:text-gray-400 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -519,11 +518,10 @@ export default function BlogLibrary() {
     <Layout headerActions={headerActions}>
       <div className="flex h-full min-h-[calc(100vh-64px)] -m-3 flex-col gap-4 p-3 mesh-bg sm:-m-5 sm:gap-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="sm:hidden">
-          <div className="relative min-w-0 w-full group z-10">
-            <div className="absolute inset-0 rounded-2xl bg-brand-crimson/5 blur-md transition-colors group-focus-within:bg-brand-crimson/10" />
-            <Search size={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-crimson" />
+          <div className="relative min-w-0 max-w-xl flex-1">
+            <Search size={15} className="absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-gray-400" />
             <input
-              className="relative z-10 w-full rounded-2xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm font-medium text-gray-800 shadow-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/30"
+              className="relative w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-gray-700 shadow-sm transition-all placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40 hover:border-gray-300"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);

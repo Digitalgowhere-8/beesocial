@@ -647,7 +647,7 @@ function CategoryMomentumCard({ categories, className = '' }) {
         <Sparkles size={15} className="shrink-0 text-brand-crimson" />
         <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
       </div>
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.28rem,0.65vh,0.45rem)] overflow-y-auto pr-1">
+      <div className="max-h-[210px] min-h-0 flex-1 space-y-[clamp(0.28rem,0.65vh,0.45rem)] overflow-y-auto pr-2">
         {categories.length ? categories.map((item) => (
           <div key={item.label} className="flex min-h-[34px] shrink-0 flex-col justify-center">
             <div className="mb-[clamp(0.1rem,0.35vh,0.25rem)] flex items-center justify-between gap-2">
@@ -698,7 +698,7 @@ function MarketDistributionCard({ markets, className = '' }) {
           {total} signals
         </span>
       </div>
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.35rem,0.8vh,0.5rem)] overflow-y-auto pr-1">
+      <div className="max-h-[210px] min-h-0 flex-1 space-y-[clamp(0.35rem,0.8vh,0.5rem)] overflow-y-auto pr-2">
         {markets.length ? markets.map((market, index) => {
           const pct = Math.round((market.count / max) * 100);
           const color = index === 0 ? CRIMSON : index === 1 ? '#10b981' : index === 2 ? '#3b82f6' : '#f59e0b';
@@ -754,7 +754,7 @@ function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, m
 
 function AllDataDashboard({ total, counts, categoryCount, donutData, signalData, topArticles, dynamicSources }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={TrendingUp} label="Total Signals" value={total} sub={`${categoryCount} categories`} color={CRIMSON} delay={0.05} />
         <StatCard icon={Landmark} label="Gov't Updates" value={counts.govt} sub="Policy and public-sector signals" color="#10b981" delay={0.1} />
