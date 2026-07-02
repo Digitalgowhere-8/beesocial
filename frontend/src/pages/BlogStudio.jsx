@@ -460,6 +460,8 @@ export default function BlogStudio() {
             emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || genProgress.resultId || '' });
           } else if (genProgress.type === 'linkedin') {
             setLinkedinOutput(genProgress.data);
+            setContentType('social');
+            setOutputDrawerOpen(true);
             loadSocialPosts();
           }
         } catch (err) {
@@ -552,6 +554,20 @@ export default function BlogStudio() {
       }
       if (!detail.scope || detail.scope === 'social') {
         loadSocialPostsRef.current?.();
+        
+        const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'linkedin');
+        if (detail.action === 'generated' && isActivelyGenerating && detail.data) {
+          // Instantly close the overlay
+          setGenerating(false);
+          setGeneratingLinkedin(false);
+          setGenProgress(null);
+          api.post('/blogs/generation-clear').catch(() => {});
+
+          // Set output and open preview drawer
+          setLinkedinOutput(detail.data);
+          setContentType('social');
+          setOutputDrawerOpen(true);
+        }
       }
     };
 
@@ -680,6 +696,17 @@ export default function BlogStudio() {
     const draftId = pendingDraftId;
     const shouldDeletePendingDraft = draftId && selectedBlog?._id === draftId && selectedBlog?.status === 'draft';
 
+    if (shouldDeletePendingDraft) {
+      const confirmSave = window.confirm("You have unsaved changes. Do you want to save this blog draft before closing?");
+      if (confirmSave) {
+        // Keeping the draft is as simple as clearing pendingDraftId so it doesn't get deleted!
+        setPendingDraftId('');
+        setDraftDrawerOpen(false);
+        setDraftEditorOpen(false);
+        return;
+      }
+    }
+
     setDraftDrawerOpen(false);
     setDraftEditorOpen(false);
 
@@ -798,14 +825,12 @@ export default function BlogStudio() {
     setGeneratingLinkedin(true);
     setGenProgress({ type: 'linkedin', status: 'running', startedAt: new Date().toISOString() });
     try {
-      const { data } = await api.post('/blogs/linkedin/generate', {
+      await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
         options: linkedinForm
       });
-      setLinkedinOutput(data.item);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
-    } finally {
       setGeneratingLinkedin(false);
       setGenProgress(null);
     }
@@ -1329,74 +1354,43 @@ export default function BlogStudio() {
         )}
         </div>
         {generationLocked ? (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-gray-950/40 px-4 backdrop-blur-sm">
-            {/* Ambient pulsing glow behind the card */}
-            <div className="absolute -inset-10 bg-[radial-gradient(circle_at_center,rgba(209,18,67,0.12),transparent_60%)] blur-3xl opacity-75 animate-pulse pointer-events-none" />
-            
-            <div className="relative w-full max-w-[440px] overflow-hidden rounded-[32px] border border-gray-200 bg-white p-8 text-center shadow-[0_32px_96px_rgba(15,23,42,0.16)] relative overflow-hidden">
-              {/* Top brand accent stripe */}
-              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-brand-crimson via-brand-hoverred to-brand-crimson" />
-              
-              <div className="relative flex flex-col items-center">
-                {/* Concentric rotating glowing spinner */}
-                <div className="relative mb-6 flex h-24 w-24 items-center justify-center">
-                  <div className="absolute inset-0 rounded-full bg-brand-crimson/5 blur-md animate-pulse" />
-                  <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-brand-crimson border-r-brand-hoverred animate-spin" style={{ animationDuration: '2s' }} />
-                  <div className="absolute inset-2.5 rounded-full border-2 border-transparent border-b-brand-crimson/60 border-l-brand-hoverred animate-spin" style={{ animationDuration: '1.4s', animationDirection: 'reverse' }} />
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-pink to-white shadow-md border border-brand-crimson/10 animate-pulse">
+          <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px)' }}>
+            <div className="relative w-full max-w-[320px]">
+              {/* Ultra-soft ambient pink glow */}
+              <div className="absolute -inset-10 rounded-[50px] bg-brand-pink/20 blur-3xl pointer-events-none" />
+
+              <div className="relative overflow-hidden rounded-[24px] border border-gray-100 bg-white p-7 text-center shadow-[0_24px_50px_rgba(209,18,67,0.06)]">
+                
+                {/* Single premium custom spinner */}
+                <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center">
+                  {/* Rotating clean gradient track */}
+                  <div className="absolute inset-0 rounded-full border-[2px] border-gray-100" />
+                  <div className="absolute inset-0 rounded-full border-[2px] border-transparent border-t-brand-crimson animate-spin" />
+                  {/* Central soft logo indicator */}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-pink/30 text-brand-crimson shadow-[inset_0_1px_2px_rgba(209,18,67,0.05)] animate-pulse">
                     {isGeneratingLinkedin ? (
-                      <MessageSquareText size={22} className="text-brand-crimson" />
+                      <MessageSquareText size={18} />
                     ) : (
-                      <BookOpenText size={22} className="text-brand-crimson" />
+                      <BookOpenText size={18} />
                     )}
                   </div>
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-pink border border-brand-crimson/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson shadow-sm mb-3">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand-crimson animate-ping" />
-                  AI Writer Engine
-                </div>
+                {/* Plain, premium text */}
+                <h3 className="text-base font-black text-gray-900 tracking-tight">{generationOverlayTitle}</h3>
+                <p className="mt-1 text-xs font-semibold text-gray-400">AI is crafting your post. Please wait...</p>
 
-                <div className="text-[10px] font-black uppercase tracking-[0.26em] text-brand-crimson/70">AI Generation In Progress</div>
-                <h2 className="mt-1.5 text-xl font-black tracking-tight text-gray-900">{generationOverlayTitle}</h2>
-                <p className="mx-auto mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500 px-2">
-                  {generationOverlaySubtitle}
-                </p>
-
-                {/* Sleek Progress Indicator Bar */}
-                <div className="w-full mt-6 h-2 bg-gray-50 border border-gray-100 rounded-full overflow-hidden relative">
-                  <div 
-                    className="h-full bg-gradient-to-r from-brand-crimson via-brand-hoverred to-rose-500 rounded-full transition-all duration-[1200ms] ease-out shadow-[0_1px_4px_rgba(209,18,67,0.3)]" 
-                    style={{ width: `${Math.min((generationStepIndex + 1) * 16.6, 99)}%` }} 
-                  />
-                </div>
-
-                <div className="mt-4 text-xs font-bold text-brand-crimson/90 animate-pulse tracking-wide flex items-center justify-center gap-1.5">
-                  <Loader2 size={12} className="animate-spin" />
-                  {isGeneratingLinkedin ? LINKEDIN_STEPS[generationStepIndex] : BLOG_STEPS[generationStepIndex]}
-                </div>
-
-                {/* Selected Topic Box with left accent */}
-                <div className="mt-6 w-full rounded-2xl border-l-4 border-brand-crimson border border-gray-200/50 bg-gray-50/50 p-4 text-left shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] transition-all">
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400">Selected Topic</div>
-                  <div className="mt-1.5 line-clamp-2 text-xs font-bold leading-relaxed text-gray-800">{generationOverlayTopic}</div>
-                </div>
-
-                {/* Footer bar */}
-                <div className="w-full mt-6 flex items-center justify-between gap-4 border-t border-gray-150 pt-5">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                    <span className="h-1.5 w-1.5 rounded-full bg-brand-crimson animate-pulse" />
-                    Do not refresh this page
-                  </div>
+                {/* Extremely minimal cancel link */}
+                <div className="mt-6 flex justify-center">
                   <button
                     type="button"
                     onClick={cancelGeneration}
-                    className="inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-[11px] font-black uppercase tracking-wider text-gray-500 shadow-sm transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200/60"
+                    className="text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-brand-crimson transition-colors"
                   >
-                    <Ban size={12} />
-                    Cancel
+                    Cancel Generation
                   </button>
                 </div>
+
               </div>
             </div>
           </div>
@@ -1809,10 +1803,12 @@ function LinkedInOutputPreview({
                   type="button"
                   onClick={onSave}
                   disabled={saving}
-                  className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
+                  className="group relative inline-flex min-h-[40px] items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-brand-crimson to-brand-hoverred px-5 py-2 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_0_0_3px_rgba(209,18,67,0.15),0_4px_14px_rgba(209,18,67,0.35)] transition-all hover:shadow-[0_0_0_4px_rgba(209,18,67,0.2),0_6px_20px_rgba(209,18,67,0.45)] hover:scale-[1.03] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
                 >
-                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                  {saving ? 'Saving...' : 'Save'}
+                  {/* shimmer sweep */}
+                  <span className="absolute inset-0 -translate-x-full skew-x-[-20deg] bg-white/20 transition-transform duration-700 group-hover:translate-x-full" />
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  {saving ? 'Saving...' : 'Save Post'}
                 </button>
               ) : (
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
@@ -2325,6 +2321,13 @@ function LinkedInStudio({
     <SocialOutputDrawer
       open={outputDrawerOpen}
       onClose={() => {
+        if (linkedinOutput && !linkedinOutput.saved) {
+          const confirmSave = window.confirm("You have unsaved changes. Do you want to save this LinkedIn post before closing?");
+          if (confirmSave) {
+            saveLinkedinPost();
+            return;
+          }
+        }
         setOutputDrawerOpen(false);
         if (!linkedinOutput?.saved) setLinkedinOutput(null);
       }}
@@ -2444,7 +2447,16 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
                 output={output}
                 onSave={onSave}
                 saving={saving}
-                onBackToList={() => setMobilePreviewOpen(false)}
+                onBackToList={() => {
+                  if (output && !output.saved) {
+                    const confirmSave = window.confirm("You have unsaved changes. Do you want to save this LinkedIn post before returning?");
+                    if (confirmSave) {
+                      onSave();
+                      return;
+                    }
+                  }
+                  setMobilePreviewOpen(false);
+                }}
               />
             </div>
           </div>

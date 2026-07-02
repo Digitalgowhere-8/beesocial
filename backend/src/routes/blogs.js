@@ -482,6 +482,11 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
       };
 
       genProgress.completeGeneration(String(tenantId), null, resultPayload);
+      publishTenantEvent(String(tenantId), 'content', {
+        scope: 'social',
+        action: 'generated',
+        data: resultPayload
+      });
     } catch (err) {
       console.error('[Async LinkedIn Gen Error]', err);
       genProgress.failGeneration(String(tenantId), err.message || 'LinkedIn post generation failed');
