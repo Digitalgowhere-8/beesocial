@@ -1,7 +1,7 @@
 const FetchLog = require('../models/FetchLog');
 const { CATEGORIES } = require('../config/categories');
 const { configuredFetchCountries } = require('../config/fetchSources');
-const { buildN8nPayload, cleanList } = require('./queryBuilder');
+const { buildN8nPayload, cleanList, cleanSourceDomains } = require('./queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('./systemSettings');
 const { runProfileSearch } = require('./profileSearchRunner');
 const { persistProfileResults } = require('./profileResultsService');
@@ -9,9 +9,12 @@ const progress = require('./profileRunProgress');
 const { publishGlobalEvent } = require('../utils/realtime');
 
 const TOPICS = ['news', 'govt', 'competitor', 'evergreen'];
+const ALL_CATEGORIES = Object.keys(CATEGORIES);
 const DEFAULT_CONFIG = {
   countries: [],
+  categories: ALL_CATEGORIES,
   topics: TOPICS,
+  sourceDomainsByCountry: {},
   days: 30,
   targetPerTopic: 150,
   minTavilyScore: undefined,
@@ -35,18 +38,40 @@ function unique(values) {
 
 function normalizeConfig(value = {}) {
   const allowedCountries = configuredFetchCountries();
-  const countries = unique(value.countries)
-    .filter((country) => allowedCountries.includes(country));
+  const configuredSourceCountries = unique(Object.keys(value.sourceDomainsByCountry || {}));
+  const availableCountries = [...new Set([...allowedCountries, ...configuredSourceCountries])];
   const topics = unique(value.topics)
     .map((topic) => topic.toLowerCase())
     .filter((topic) => TOPICS.includes(topic));
   const schedule = value.schedule && typeof value.schedule === 'object' ? value.schedule : {};
 
+  const configuredCategories = unique(value.categories || [])
+    .filter((cat) => ALL_CATEGORIES.includes(cat));
+  const sourceDomainsByCountry = availableCountries.reduce((out, country) => {
+    const config = value.sourceDomainsByCountry?.[country];
+    if (!config || typeof config !== 'object') return out;
+    const entry = {
+      news: cleanSourceDomains(config.news),
+      govt: cleanSourceDomains(config.govt),
+      competitor: cleanSourceDomains(config.competitor),
+      evergreen: cleanSourceDomains(config.evergreen)
+    };
+    if (entry.news.length || entry.govt.length || entry.competitor.length || entry.evergreen.length) {
+      out[country] = entry;
+    }
+    return out;
+  }, {});
+  const validCountries = [...new Set([...allowedCountries, ...Object.keys(sourceDomainsByCountry)])];
+  const countries = unique(value.countries)
+    .filter((country) => validCountries.includes(country));
+
   return {
     ...DEFAULT_CONFIG,
     ...value,
     countries,
+    categories: configuredCategories.length ? configuredCategories : ALL_CATEGORIES,
     topics: topics.length ? topics : DEFAULT_CONFIG.topics,
+    sourceDomainsByCountry,
     days: Math.max(1, Math.min(365, Number(value.days || DEFAULT_CONFIG.days) || DEFAULT_CONFIG.days)),
     targetPerTopic: Math.max(1, Math.min(150, Number(value.targetPerTopic || DEFAULT_CONFIG.targetPerTopic) || DEFAULT_CONFIG.targetPerTopic)),
     minTavilyScore: value.minTavilyScore === undefined || value.minTavilyScore === null || value.minTavilyScore === ''
@@ -193,13 +218,15 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         userId: String(triggeredByUser || 'platform-scheduler'),
         trigger,
         country,
-        categories,
+        // Use only the configured categories — never fetch all categories blindly
+        categories: config.categories && config.categories.length ? config.categories : Object.keys(CATEGORIES),
         topics: config.topics,
         days: config.days,
         targetPerTopic: config.targetPerTopic,
         minTavilyScore: config.minTavilyScore,
         language: config.language,
         timezone: config.timezone,
+        sourceDomainsByType: config.sourceDomainsByCountry?.[country] || {},
         strictSources: true
       }, {
         logId: String(logId),

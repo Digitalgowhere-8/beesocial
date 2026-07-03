@@ -23,6 +23,7 @@ const articleSchema = new mongoose.Schema(
     summary:  { type: String, default: '', maxlength: 4000 },
     url:      { type: String, required: true, trim: true, maxlength: 2000 },
     urlHash:  { type: String, required: true, unique: true, index: true },
+    contentFingerprint: { type: String, default: '', index: true },
 
     // Classification
     type: {
@@ -62,8 +63,9 @@ const articleSchema = new mongoose.Schema(
     aiSummary:      { type: String, default: '', maxlength: 2000 },
 
     // Useful context snippets (trimmed — no full raw payload)
-    blogContext:  { type: String, default: '', maxlength: 3000 },
-    tavilyAnswer: { type: String, default: '', maxlength: 1200 },
+    rawContent:   { type: String, default: '', maxlength: 20000 },
+    blogContext:  { type: String, default: '', maxlength: 12000 },
+    tavilyAnswer: { type: String, default: '', maxlength: 4000 },
     rawData: { type: mongoose.Schema.Types.Mixed, default: undefined },
 
     // Workflow
@@ -82,5 +84,6 @@ articleSchema.index({ subcategory: 1, relevanceScore: -1, publishedAt: -1, fetch
 articleSchema.index({ source: 1, relevanceScore: -1, publishedAt: -1, fetchedAt: -1 });
 articleSchema.index({ userId: 1, savedSearchId: 1, relevanceScore: -1 });
 articleSchema.index({ region: 1, sector: 1, opportunityType: 1 });
+articleSchema.index({ type: 1, country: 1, contentFingerprint: 1, publishedAt: -1, fetchedAt: -1 });
 
 module.exports = mongoose.model('Article', articleSchema);

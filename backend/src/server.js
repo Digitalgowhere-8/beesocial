@@ -111,6 +111,17 @@ app.use('/api/blogs/linkedin/generate', expensiveLimit);
 app.use('/api/admin/fetch', expensiveLimit);
 app.use('/api/admin/n8n/run', expensiveLimit);
 app.use('/api/admin/super/fetch/run', expensiveLimit);
+app.use(
+  '/api/analytics/events',
+  rateLimit({
+    windowMs: ANALYTICS_RATE_LIMIT_WINDOW_MS,
+    max: ANALYTICS_RATE_LIMIT_MAX,
+    keyGenerator: rateLimitKey,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many analytics events. Please slow down and try again shortly.' }
+  })
+);
 
 // --------- Health ---------
 app.get('/api/health', (_req, res) => {

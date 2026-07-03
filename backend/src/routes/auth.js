@@ -4,8 +4,9 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Plan = require('../models/Plan');
 const UserSession = require('../models/UserSession');
-const { protect, signToken } = require('../middleware/auth');
+const { protect, signToken, signRealtimeToken } = require('../middleware/auth');
 const { buildPasswordResetEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { getSystemSettings, publicUiSettings } = require('../services/systemSettings');
 
 const router = express.Router();
 const JWT_SESSION_DAYS = Math.max(1, Number(process.env.JWT_SESSION_DAYS || 7));
@@ -70,6 +71,12 @@ async function syncUserPresenceFromSessions(userId) {
     { _id: userId },
     { $set: { lastSeenAt: latestSession?.lastActiveAt || null } }
   );
+}
+
+async function deletedTenantAdminForUser(user) {
+  if (!user?.tenantAdminId) return null;
+  if (String(user.tenantAdminId) === String(user._id)) return null;
+  return User.findById(user.tenantAdminId).withDeleted().select('_id deletedAt isActive').lean();
 }
 
 // Strict email validation - rejects patterns like jitesh@gmail.com.com
@@ -179,7 +186,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   const { error, value } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
-  const exists = await User.findOne({ email: value.email.toLowerCase() });
+  const exists = await User.findOne({ email: value.email.toLowerCase() }).withDeleted();
   if (exists) return res.status(409).json({ message: 'Email already registered' });
 
   const user = await User.create({
@@ -232,8 +239,15 @@ router.post('/login', asyncHandler(async (req, res) => {
   const { error, value } = loginSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
-  const user = await User.findOne({ email: value.email.toLowerCase() }).select('+password');
+  const user = await User.findOne({ email: value.email.toLowerCase() }).withDeleted().select('+password');
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+  if (user.deletedAt) {
+    return res.status(410).json({ message: 'This account has been deleted by an administrator.' });
+  }
+  const tenantAdmin = await deletedTenantAdminForUser(user);
+  if (tenantAdmin?.deletedAt || tenantAdmin?.isActive === false) {
+    return res.status(410).json({ message: 'This account is no longer available because its admin account has been deleted or disabled.' });
+  }
   if (!user.isActive) {
     return res.status(403).json({ message: 'Your account is pending super admin approval.' });
   }
@@ -259,7 +273,8 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const token = signToken(user, session.sessionId);
-  res.json({ token, user: user.toPublicJSON(), session: session.toObject() });
+  const settings = await getSystemSettings();
+  res.json({ token, user: user.toPublicJSON(), session: session.toObject(), uiSettings: publicUiSettings(settings) });
 }));
 
 // POST /api/auth/forgot-password
@@ -343,9 +358,10 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/auth/me
-router.get('/me', protect, (req, res) => {
-  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null });
-});
+router.get('/me', protect, asyncHandler(async (req, res) => {
+  const settings = await getSystemSettings();
+  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null, uiSettings: publicUiSettings(settings) });
+}));
 
 function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata') {
   return [
@@ -360,6 +376,12 @@ function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata'
 router.get('/plans', protect, asyncHandler(async (_req, res) => {
   const items = await Plan.find({}).sort({ planId: 1 }).lean();
   res.json({ items });
+}));
+
+// POST /api/auth/realtime-token
+router.post('/realtime-token', protect, asyncHandler(async (req, res) => {
+  const token = signRealtimeToken(req.user, req.session.sessionId);
+  res.json({ token });
 }));
 
 // POST /api/auth/logout

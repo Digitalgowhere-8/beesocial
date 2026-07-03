@@ -12,16 +12,25 @@ const { protect } = require('../middleware/auth');
 const { buildN8nPayload, cleanList } = require('../services/queryBuilder');
 const { runProfileSearch } = require('../services/profileSearchRunner');
 const { persistProfileResults } = require('../services/profileResultsService');
+const { evaluateTopicArticle } = require('../services/articleTopicRules');
 const progress = require('../services/profileRunProgress');
 const { hashUrl } = require('../utils/hash');
 const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
 const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
+const { acquire } = require('../utils/concurrencyGate');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
 const AVG_AI_TOKENS_PER_RESULT = Number(process.env.AVG_AI_TOKENS_PER_RESULT || 700);
 const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
 const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
+const DEFAULT_MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+
+function tenantScopeKey(user) {
+  if (!user?._id) return 'anonymous';
+  if (user.role === 'user') return String(user.tenantAdminId || user._id);
+  return String(user._id);
+}
 
 function primaryPayloadQuery(payload = {}) {
   const queries = payload.queries && typeof payload.queries === 'object' ? payload.queries : {};
@@ -208,6 +217,36 @@ function cleanLogId(value) {
   return mongoose.Types.ObjectId.isValid(id) ? id : '';
 }
 
+function minStoreScoreForBody(body = {}) {
+  return Math.max(0, Math.min(100, Number(body.minStoreScore ?? DEFAULT_MIN_STORE_SCORE) || DEFAULT_MIN_STORE_SCORE));
+}
+
+async function resolveExistingLogId(body = {}) {
+  const directLogId = cleanLogId(body.logId);
+  if (directLogId) return directLogId;
+
+  const query = { triggeredBy: 'n8n' };
+  const userId = mongoose.Types.ObjectId.isValid(body.userId) ? new mongoose.Types.ObjectId(body.userId) : null;
+  const savedSearchId = mongoose.Types.ObjectId.isValid(body.savedSearchId) ? new mongoose.Types.ObjectId(body.savedSearchId) : null;
+  const startedAt = body.startedAt ? new Date(body.startedAt) : null;
+
+  if (userId) query.userId = userId;
+  if (savedSearchId) query.savedSearchId = savedSearchId;
+  if (body.query) query.query = String(body.query).slice(0, 300);
+
+  if (startedAt && !Number.isNaN(startedAt.getTime())) {
+    query.startedAt = {
+      $gte: new Date(startedAt.getTime() - (2 * 60 * 60 * 1000)),
+      $lte: new Date(startedAt.getTime() + (2 * 60 * 60 * 1000))
+    };
+  } else {
+    query.startedAt = { $gte: new Date(Date.now() - (6 * 60 * 60 * 1000)) };
+  }
+
+  const existing = await FetchLog.findOne(query).sort({ startedAt: -1, createdAt: -1 }).select('_id').lean();
+  return existing?._id ? String(existing._id) : '';
+}
+
 function dedupeResultItems(items = []) {
   const seen = new Set();
   const deduped = [];
@@ -307,7 +346,7 @@ router.post('/log', verifySecret, async (req, res, next) => {
       notes: body.notes || 'n8n workflow callback'
     };
 
-    const logId = cleanLogId(body.logId);
+    const logId = await resolveExistingLogId(body);
     const log = logId
       ? await FetchLog.findByIdAndUpdate(logId, { $set: update }, { new: true, upsert: false })
       : await FetchLog.create(update);
@@ -448,6 +487,9 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
       minTavilyScore: req.body.minTavilyScore === undefined || req.body.minTavilyScore === null || req.body.minTavilyScore === ''
         ? undefined
         : Number(req.body.minTavilyScore),
+      minStoreScore: req.body.minStoreScore === undefined || req.body.minStoreScore === null || req.body.minStoreScore === ''
+        ? undefined
+        : Number(req.body.minStoreScore),
       query: req.body.query || req.body.customQueryOverride || '',
       language: req.body.language || user.language || 'en',
       timezone: req.body.timezone || user.timezone || 'Asia/Kolkata'
@@ -480,6 +522,7 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
   });
 
   payload.logId = String(log._id);
+  const scopeKey = tenantScopeKey(req.user);
 
   if (!useN8nWebhook) {
     if (req.body?.async === true || req.body?.async === 'true') {
@@ -487,7 +530,9 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
       progress.startRun(logId, 'Fetch queued in backend runner');
 
       setImmediate(async () => {
+        let release = null;
         try {
+          release = acquire('fetch', scopeKey);
           progress.updateRun(logId, { step: 'start', percent: 8, message: 'Backend fetch started' });
           const resultPayload = await runProfileSearch(payload, {
             onProgress: ({ step, message }) => progress.updateRun(logId, { step, message })
@@ -523,6 +568,8 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
             error: error.message,
             message: `Fetch failed: ${error.message}`
           });
+        } finally {
+          release?.();
         }
       });
 
@@ -535,7 +582,9 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
       });
     }
 
+    let release = null;
     try {
+      release = acquire('fetch', scopeKey);
       const resultPayload = await runProfileSearch(payload);
       const persisted = await persistProfileResults(resultPayload);
 
@@ -561,6 +610,8 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
         notes: `code profile-search failed: ${error.message}`
       });
       throw error;
+    } finally {
+      release?.();
     }
   }
 
@@ -627,6 +678,20 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
     console.warn(`[n8n] /results received ${body.results.length} items — capped to 2000`);
   }
   const items = dedupeResultItems(rawItems);
+  const filteredItems = items.filter((item) => {
+    const topicType = normalizeArticleType(item);
+    const score = Number(item.relevance_score ?? item.relevanceScore ?? item.tavilyScore ?? item.tavily_score ?? 0);
+    if (score < minStoreScoreForBody(body)) return false;
+    return evaluateTopicArticle({
+      ...item,
+      type: topicType
+    }, {
+      topic: topicType,
+      profile: {
+        competitors: Array.isArray(body.competitors) ? body.competitors : []
+      }
+    }).keep;
+  });
   const userObjectId = mongoose.Types.ObjectId.isValid(body.userId) ? new mongoose.Types.ObjectId(body.userId) : null;
   const savedSearchObjectId = mongoose.Types.ObjectId.isValid(body.savedSearchId) ? new mongoose.Types.ObjectId(body.savedSearchId) : null;
   const articleHashForItem = (item) => {
@@ -639,19 +704,20 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
     };
   };
 
-  const ops = items.map((item) => {
+  const ops = filteredItems.map((item) => {
     const url = String(item.url || item.link || '').trim();
     const { rawHash, storedHash } = articleHashForItem(item);
     const articleType = normalizeArticleType(item);
-    const blogContext = String(item.blog_context || item.blogContext || item.raw?.blogContext || item.raw_content || '').slice(0, 3000);
-    const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 1200);
+    const rawContent = String(item.rawContent || item.raw_content || item.rawData?.rawContent || item.raw?.rawContent || '').slice(0, 20000);
+    const blogContext = String(item.blog_context || item.blogContext || item.rawData?.blogContext || item.raw?.blogContext || rawContent || '').slice(0, 12000);
+    const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.rawData?.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 4000);
     return {
       updateOne: {
         filter: { urlHash: storedHash },
         update: {
           $set: {
             title: String(item.title || '').slice(0, 500),
-            summary: String(item.summary || item.ai_summary || item.aiSummary || '').slice(0, 2000),
+            summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
             url,
             type: articleType,
             source: item.source || item.sourceName || 'n8n',
@@ -673,8 +739,16 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
             relevanceScore: Number(item.relevance_score ?? item.relevanceScore ?? 0),
             relevanceReason: String(item.relevance_reason || item.relevanceReason || '').slice(0, 500),
             aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
+            rawContent,
             blogContext,
             tavilyAnswer,
+            rawData: item.rawData || item.raw || {
+              sourceQuery: item.source_query || item.sourceQuery || body.query || '',
+              rawContent,
+              blogContext,
+              tavilyAnswer,
+              tavilyScore: item.tavilyScore || item.tavily_score || null
+            },
             urlHash: storedHash,
             fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
             userId: userObjectId || undefined,
@@ -691,11 +765,11 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
     await Article.bulkWrite(ops, { ordered: false });
   }
 
-  if (userObjectId && items.length) {
-    const hashes = items.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
+  if (userObjectId && filteredItems.length) {
+    const hashes = filteredItems.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
     const articles = await Article.find({ urlHash: { $in: hashes } }, { _id: 1, urlHash: 1 }).lean();
     const articleByHash = new Map(articles.map((article) => [article.urlHash, article]));
-    const resultOps = items.map((item) => {
+    const resultOps = filteredItems.map((item) => {
       const urlHash = articleHashForItem(item).storedHash;
       const article = articleByHash.get(urlHash);
       if (!article) return null;
@@ -739,8 +813,8 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
     finishedAt: body.finishedAt ? new Date(body.finishedAt) : new Date(),
     durationMs: body.finishedAt && body.startedAt ? Math.max(new Date(body.finishedAt).getTime() - new Date(body.startedAt).getTime(), 0) : 0,
     perSource: normalizePerSource(body.perSource),
-    totalFetched: Number(body.totalFetched ?? body.fetched ?? body.resultCount ?? items.length),
-    totalInserted: items.length,
+    totalFetched: Number(body.totalFetched ?? body.fetched ?? body.resultCount ?? filteredItems.length),
+    totalInserted: filteredItems.length,
     totalDuplicates: Number(body.totalDuplicates ?? body.duplicates ?? 0),
     totalErrors: Number(body.totalErrors ?? body.errors ?? 0),
     notes: body.notes || 'n8n callback results received',
@@ -750,10 +824,10 @@ router.post('/results', verifySecret, asyncHandler(async (req, res, next) => {
     region: body.region || '',
     sector: body.sector || '',
     query: body.query || '',
-    resultCount: items.length
+    resultCount: filteredItems.length
   };
 
-  const logId = cleanLogId(body.logId);
+  const logId = await resolveExistingLogId(body);
   const log = logId
     ? await FetchLog.findByIdAndUpdate(logId, { $set: update }, { new: true, upsert: false })
     : await FetchLog.create(update);

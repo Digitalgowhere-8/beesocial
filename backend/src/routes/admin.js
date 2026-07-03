@@ -13,13 +13,17 @@ const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
 const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
+const { buildSourceTrustRegistry, groupRegistryByCredibility } = require('../services/sourceTrust');
+const { fetchSourceCatalog } = require('../config/fetchSources');
 const {
   getPlatformFetchConfig,
   savePlatformFetchConfig,
   triggerPlatformFetch,
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
+const { cleanupAnalyticsRetention, getDatabaseHealthSummary } = require('../services/storageMaintenance');
 const { buildAdminBroadcastEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { softDeleteUser, cleanupDeletedUsers, graceDays } = require('../services/userDeletionService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
 
@@ -59,6 +63,7 @@ const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
 const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
 const PAID_PLANS = ['growth', 'scale', 'enterprise', 'premium'];
 const ACCESS_KEYS = ['canFetch', 'canCreateMembers', 'canUseContentRepository', 'canUseBlogStudio', 'canUseSavedSearches', 'canUseScheduler'];
+const MAIL_SEND_CHUNK_SIZE = Math.max(1, Number(process.env.MAIL_SEND_CHUNK_SIZE || 10));
 const DEFAULT_MEMBER_ACCESS = {
   canFetch: true,
   canCreateMembers: false,
@@ -68,6 +73,39 @@ const DEFAULT_MEMBER_ACCESS = {
   canUseScheduler: false
 };
 const MAIL_AUDIENCE_OPTIONS = ['all', 'admins', 'members', 'inactive', 'custom'];
+
+async function sourceRegistryForSettings(mapping = {}) {
+  const sourceRows = await Article.aggregate([
+    {
+      $match: {
+        sourceId: { $nin: ['', null] },
+        source: { $nin: ['', null] },
+        type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          type: '$type',
+          id: '$sourceId',
+          name: '$source',
+          sourceType: '$sourceType'
+        },
+        countries: { $addToSet: '$country' },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  return buildSourceTrustRegistry(sourceRows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), mapping);
+}
 
 function startOfDay(days = 30) {
   const date = new Date();
@@ -255,6 +293,38 @@ async function resolveMailRecipients({ audience = 'all', userIds = [] } = {}) {
     .select('name email role company isActive')
     .sort({ role: 1, name: 1, email: 1 })
     .lean();
+}
+
+async function sendAdminBroadcastToRecipients(recipients, payloadBuilder) {
+  const sent = [];
+  const failed = [];
+
+  for (let index = 0; index < recipients.length; index += MAIL_SEND_CHUNK_SIZE) {
+    const batch = recipients.slice(index, index + MAIL_SEND_CHUNK_SIZE);
+    const batchResults = await Promise.allSettled(batch.map(async (recipient) => {
+      const payload = payloadBuilder(recipient);
+      await sendEmail({
+        to: recipient.email,
+        replyTo: process.env.EMAIL_REPLY_TO || undefined,
+        ...payload
+      });
+      return recipient;
+    }));
+
+    batchResults.forEach((result, batchIndex) => {
+      const recipient = batch[batchIndex];
+      if (result.status === 'fulfilled') {
+        sent.push(recipient.email);
+      } else {
+        failed.push({
+          email: recipient.email,
+          error: result.reason?.message || 'Send failed'
+        });
+      }
+    });
+  }
+
+  return { sent, failed };
 }
 
 // Every route here requires an operational admin.
@@ -750,10 +820,19 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     User.aggregate([{ $group: { _id: '$subscriptionPlan', count: { $sum: 1 } } }]),
     FetchLog.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
     FetchLog.aggregate([
-      { $match: { startedAt: { $gte: monthStart } } },
+      {
+        $match: {
+          startedAt: { $gte: monthStart },
+          sector: { $ne: 'platform intelligence' },
+          $or: [
+            { userId: { $exists: true, $ne: null } },
+            { triggeredByUser: { $exists: true, $ne: null } }
+          ]
+        }
+      },
       {
         $group: {
-          _id: '$userId',
+          _id: { $ifNull: ['$userId', '$triggeredByUser'] },
           runs: { $sum: 1 },
           inserted: { $sum: '$totalInserted' },
           fetched: { $sum: '$totalFetched' },
@@ -794,8 +873,8 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     FetchLog.find({})
       .sort({ startedAt: -1 })
       .limit(8)
-      .populate('userId', 'name email company subscriptionPlan')
-      .populate('triggeredByUser', 'name email company subscriptionPlan')
+      .populate('userId', 'name email company subscriptionPlan role')
+      .populate('triggeredByUser', 'name email company subscriptionPlan role')
       .lean()
   ]);
 
@@ -832,9 +911,8 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
   });
 }));
 
-router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (req, res) => {
-  const days = Math.max(1, Math.min(90, Number(req.query.days || 30) || 30));
-  const since = startOfDay(days);
+router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const since = startOfMonth();
   const match = { occurredAt: { $gte: since } };
 
   const [
@@ -948,6 +1026,8 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (r
   const avgEventDurationMs = Math.round(Number(engagementRows[0]?.avgDurationMs || 0));
   const sessionStats = sessionRows[0] || {};
   const dailyMap = new Map();
+  const today = new Date();
+  const days = Math.max(1, Math.floor((today - since) / (24 * 60 * 60 * 1000)) + 1);
   for (let i = 0; i < days; i += 1) {
     const date = new Date(since);
     date.setDate(since.getDate() + i);
@@ -1002,9 +1082,40 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (r
   });
 }));
 
+router.get('/super/database-health', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const summary = await getDatabaseHealthSummary();
+  res.json(summary);
+}));
+
+router.delete('/super/analytics/cleanup', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const result = await cleanupAnalyticsRetention();
+  const summary = await getDatabaseHealthSummary();
+  res.json({
+    success: true,
+    deleted: result.deleted,
+    cutoff: result.cutoff,
+    message: result.deleted
+      ? `${result.deleted} old analytics events deleted.`
+      : 'No old analytics events needed cleanup.',
+    health: summary
+  });
+}));
+
 router.get('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (_req, res) => {
   const config = await getPlatformFetchConfig();
-  res.json({ config });
+  const defaultCatalog = fetchSourceCatalog();
+  const customCountries = Object.keys(config.sourceDomainsByCountry || {}).reduce((out, country) => {
+    if (defaultCatalog[country]) return out;
+    out[country] = { news: [], govt: [], competitor: [], evergreen: [] };
+    return out;
+  }, {});
+  res.json({
+    config,
+    sourceCatalog: {
+      ...defaultCatalog,
+      ...customCountries
+    }
+  });
 }));
 
 router.put('/super/fetch/config', requireRole('super_admin'), asyncHandler(async (req, res) => {
@@ -1037,11 +1148,18 @@ router.post('/super/fetch/run', requireRole('super_admin'), asyncHandler(async (
 
 router.get('/settings', requireRole('super_admin'), asyncHandler(async (_req, res) => {
   const settings = await getSystemSettings({ useCache: false });
-  res.json({ settings });
+  const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
+  res.json({
+    settings,
+    sourceTrust: {
+      registry: sourceRegistry,
+      groups: groupRegistryByCredibility(sourceRegistry)
+    }
+  });
 }));
 
 router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res) => {
-  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'maintenanceMode'];
+  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'maintenanceMode', 'sourceTrustMapping', 'dashboardAppearance'];
   const patch = {};
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
@@ -1049,7 +1167,14 @@ router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res
     }
   }
   const settings = await saveSystemSettings(patch);
-  res.json({ settings });
+  const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
+  res.json({
+    settings,
+    sourceTrust: {
+      registry: sourceRegistry,
+      groups: groupRegistryByCredibility(sourceRegistry)
+    }
+  });
 }));
 
 // ============== SUPER ADMIN MAIL CENTER ==============
@@ -1099,7 +1224,8 @@ router.post('/email/send', requireRole('super_admin'), asyncHandler(async (req, 
     return res.status(400).json({ message: 'No recipients found for this audience.' });
   }
 
-  for (const recipient of recipients) {
+  const subjectLine = subject;
+  const { sent, failed } = await sendAdminBroadcastToRecipients(recipients, (recipient) => {
     const payload = buildAdminBroadcastEmail({
       heading,
       preview,
@@ -1109,20 +1235,32 @@ router.post('/email/send', requireRole('super_admin'), asyncHandler(async (req, 
       footerNote,
       recipientName: recipient.name || recipient.email
     });
-
-    await sendEmail({
-      to: recipient.email,
-      subject,
-      replyTo: process.env.EMAIL_REPLY_TO || undefined,
+    return {
+      subject: subjectLine,
       ...payload
+    };
+  });
+
+  if (!sent.length && failed.length) {
+    return res.status(502).json({
+      message: `Email could not be sent. ${failed.length} recipient${failed.length === 1 ? '' : 's'} failed.`,
+      success: false,
+      sent: 0,
+      failed: failed.length,
+      failures: failed.slice(0, 10)
     });
   }
 
   res.json({
     success: true,
-    message: `Email sent to ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}.`,
-    sent: recipients.length,
-    audience
+    message: failed.length
+      ? `Email sent to ${sent.length} recipient${sent.length === 1 ? '' : 's'}. ${failed.length} failed and can be retried.`
+      : `Email sent to ${sent.length} recipient${sent.length === 1 ? '' : 's'}.`,
+    sent: sent.length,
+    failed: failed.length,
+    failures: failed.slice(0, 10),
+    audience,
+    chunkSize: MAIL_SEND_CHUNK_SIZE
   });
 }));
 
@@ -1142,7 +1280,7 @@ router.get('/logs', asyncHandler(async (req, res) => {
     ];
   }
   const [items, total] = await Promise.all([
-    FetchLog.find(q).sort({ startedAt: -1 }).skip(skip).limit(limit).populate('triggeredByUser', 'name email').lean(),
+    FetchLog.find(q).sort({ startedAt: -1 }).skip(skip).limit(limit).populate('triggeredByUser', 'name email role').lean(),
     FetchLog.countDocuments(q)
   ]);
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
@@ -1259,7 +1397,7 @@ router.post('/users', asyncHandler(async (req, res) => {
   }
 
   const normalizedEmail = String(email).toLowerCase().trim();
-  const exists = await User.findOne({ email: normalizedEmail });
+  const exists = await User.findOne({ email: normalizedEmail }).withDeleted();
   if (exists) return res.status(409).json({ message: 'Email already registered' });
 
   // Determine plan and apply defaults for super admin account creation
@@ -1384,8 +1522,25 @@ router.delete('/users/:id', asyncHandler(async (req, res) => {
   if (target.role === 'super_admin') {
     return res.status(403).json({ message: 'Super admin is managed by the developer' });
   }
-  await target.deleteOne();
-  res.json({ message: 'Deleted', id: req.params.id });
+  const result = await softDeleteUser(target, req.user, { reason: 'deleted_by_super_admin' });
+  res.json({
+    message: result.scope === 'tenant'
+      ? `Tenant scheduled for deletion. Related data will be cleaned in the background after ${graceDays()} day(s).`
+      : `User scheduled for deletion. Related data will be cleaned in the background after ${graceDays()} day(s).`,
+    id: req.params.id,
+    scope: result.scope,
+    purgeAfter: result.purgeAfter,
+    deletedUsers: result.deletedUsers
+  });
+}));
+
+router.post('/users/deletion-cleanup/run', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const result = await cleanupDeletedUsers();
+  res.json({
+    ok: true,
+    processedBatches: result.processedBatches,
+    results: result.results
+  });
 }));
 
 // ============== SESSION MANAGEMENT (SUPER ADMIN) ==============

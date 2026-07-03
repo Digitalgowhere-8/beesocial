@@ -4,6 +4,8 @@ const UserResult = require('../models/UserResult');
 const { protect } = require('../middleware/auth');
 const { asTree } = require('../config/categories');
 const { configuredFetchCountries } = require('../config/fetchSources');
+const { getSystemSettings } = require('../services/systemSettings');
+const { buildSourceTrustRegistry, groupRegistryByCredibility, resolveSourceCredibility } = require('../services/sourceTrust');
 
 const router = express.Router();
 const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
@@ -12,8 +14,10 @@ const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-const DEFAULT_ARTICLE_SORT = { effectiveDay: -1, relevanceScore: -1, effectiveDate: -1 };
+const DEFAULT_ARTICLE_SORT = { fetchedDate: -1, relevanceScore: -1, effectiveDate: -1 };
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
+const DASHBOARD_TIMEZONE_OFFSET_MINUTES = 330;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function tenantOwnerIds(user) {
   if (!user?._id) return [];
@@ -45,23 +49,50 @@ function formatDashboardDate(date) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
-function parseFilterDateStart(value) {
+function parseDateInputParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utcDate.getUTCFullYear() !== year ||
+    utcDate.getUTCMonth() !== month - 1 ||
+    utcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day };
+}
+
+function parseDashboardDateBoundary(value, endOfDay = false) {
   if (!value) return null;
+
+  const parts = parseDateInputParts(value);
+  if (parts) {
+    const startUtc = Date.UTC(parts.year, parts.month - 1, parts.day) -
+      DASHBOARD_TIMEZONE_OFFSET_MINUTES * 60 * 1000;
+    return new Date(endOfDay ? startUtc + DAY_MS - 1 : startUtc);
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
+  date.setHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
   return date;
+}
+
+function parseFilterDateStart(value) {
+  return parseDashboardDateBoundary(value, false);
 }
 
 function parseFilterDateEnd(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date;
+  return parseDashboardDateBoundary(value, true);
 }
 
-function effectiveDateRangeMatch(from, to) {
+function dashboardDateRangeMatch(from, to) {
   const start = parseFilterDateStart(from);
   const end = parseFilterDateEnd(to);
   if (!start && !end) return null;
@@ -77,6 +108,14 @@ function withEffectiveDateSort(match, extraStages = []) {
     { $match: match },
     {
       $addFields: {
+        fetchedDate: {
+          $convert: {
+            input: '$fetchedAt',
+            to: 'date',
+            onError: new Date(0),
+            onNull: new Date(0)
+          }
+        },
         effectiveDate: {
           $convert: {
             input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
@@ -89,6 +128,13 @@ function withEffectiveDateSort(match, extraStages = []) {
     },
     {
       $addFields: {
+        fetchedDay: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$fetchedDate',
+            timezone: DASHBOARD_TIMEZONE
+          }
+        },
         effectiveDay: {
           $dateToString: {
             format: '%Y-%m-%d',
@@ -149,11 +195,15 @@ const asyncHandler = (fn) => (req, res, next) => {
  *  subcategory - sub-category
  *  source      - sourceId
  *  q           - full-text search keyword (title)
- *  from / to   - ISO date strings; filters by publishedAt, fallback fetchedAt
+ *  from / to   - ISO date strings; filters by fetchedAt in the dashboard timezone
  */
 function buildQuery(req, opts = {}) {
   const q = {};
   const ownerIds = tenantOwnerIds(req.user);
+
+  // Enforce a strict minimum relevance threshold of 30 before displaying any article
+  const minScoreThreshold = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+  q.relevanceScore = { $gte: minScoreThreshold };
 
   if (req.query.type) {
     const types = req.query.type.split(',').map((s) => s.trim()).filter(Boolean);
@@ -215,6 +265,71 @@ async function applySavedFilter(req, query) {
   return { ...query, _id: { $in: ids } };
 }
 
+async function sourceRowsForQuery(match = {}) {
+  return Article.aggregate([
+    {
+      $match: {
+        ...match,
+        sourceId: { $nin: ['', null] },
+        source: { $nin: ['', null] },
+        type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          type: '$type',
+          id: '$sourceId',
+          name: '$source',
+          sourceType: '$sourceType'
+        },
+        countries: { $addToSet: '$country' },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { '_id.type': 1, '_id.name': 1 } }
+  ]);
+}
+
+async function applySourceCredibilityFilter(req, query) {
+  const selectedCredibility = String(req.query.sourceCredibility || '').trim().toLowerCase();
+  if (!selectedCredibility) return query;
+
+  const settings = await getSystemSettings();
+  const rows = await sourceRowsForQuery(query);
+  const registry = buildSourceTrustRegistry(rows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), settings.sourceTrustMapping);
+  const matchingIds = registry
+    .filter((item) => item.credibility === selectedCredibility)
+    .map((item) => item.sourceId)
+    .filter(Boolean);
+
+  const allowedIds = [...new Set(matchingIds)];
+  const currentSourceFilter = query.sourceId;
+  let nextSourceFilter = { $in: allowedIds };
+
+  if (typeof currentSourceFilter === 'string' && currentSourceFilter) {
+    nextSourceFilter = allowedIds.includes(currentSourceFilter)
+      ? currentSourceFilter
+      : { $in: [] };
+  } else if (currentSourceFilter && Array.isArray(currentSourceFilter.$in)) {
+    nextSourceFilter = {
+      $in: currentSourceFilter.$in.filter((value) => allowedIds.includes(value))
+    };
+  }
+
+  return {
+    ...query,
+    sourceId: nextSourceFilter
+  };
+}
+
 async function annotateSaved(req, items = []) {
   if (!req.user?._id || !items.length) return items;
   const ids = items.map((item) => item._id).filter(Boolean);
@@ -224,6 +339,22 @@ async function annotateSaved(req, items = []) {
   ).lean();
   const savedIds = new Set(rows.map((row) => String(row.articleId)));
   return items.map((item) => ({ ...item, isSaved: savedIds.has(String(item._id)) }));
+}
+
+async function decorateArticles(items = []) {
+  if (!items.length) return items;
+  const settings = await getSystemSettings();
+  return items.map((item) => ({
+    ...item,
+    sourceCredibility: resolveSourceCredibility({
+      type: item.type,
+      country: item.country,
+      sourceId: item.sourceId,
+      source: item.source,
+      sourceType: item.sourceType,
+      rawData: item.rawData
+    }, settings.sourceTrustMapping)
+  }));
 }
 
 function canAccessArticle(user, article) {
@@ -239,33 +370,12 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   const ownerIds = tenantOwnerIds(req.user);
   const scope = scopedOwnerQuery(ownerIds);
   const visibleScope = scope;
-  const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows] = await Promise.all([
+  const [countries, regions, sectors, opportunityTypes, sourceRows, categoryRows, settings] = await Promise.all([
     Article.distinct('country', { ...visibleScope, country: { $nin: ['', null] } }),
     Article.distinct('region', { ...visibleScope, region: { $nin: ['', null] } }),
     Article.distinct('sector', { ...visibleScope, sector: { $nin: ['', null] } }),
     Article.distinct('opportunityType', { ...visibleScope, opportunityType: { $nin: ['', null] } }),
-    Article.aggregate([
-      {
-        $match: {
-          ...visibleScope,
-          sourceId: { $nin: ['', null] },
-          source: { $nin: ['', null] },
-          type: { $in: ['news', 'govt', 'competitor', 'evergreen'] }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            type: '$type',
-            id: '$sourceId',
-            name: '$source'
-          },
-          countries: { $addToSet: '$country' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.type': 1, '_id.name': 1 } }
-    ]),
+    sourceRowsForQuery(visibleScope),
     Article.aggregate([
       {
         $match: {
@@ -282,22 +392,45 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
           count: { $sum: 1 }
         }
       }
-    ])
+    ]),
+    getSystemSettings()
   ]);
 
   const sources = emptySourcesByType();
-  for (const row of sourceRows) {
-    const type = row._id?.type;
-    if (!sources[type]) continue;
-    sources[type].push({
-      id: optionLabel(row._id?.id),
-      name: optionLabel(row._id?.name),
-      countries: (row.countries || []).map(optionLabel).filter(Boolean),
-      count: row.count
-    });
+  const registry = buildSourceTrustRegistry(sourceRows.map((row) => ({
+    type: row._id?.type,
+    sourceId: row._id?.id,
+    source: row._id?.name,
+    sourceType: row._id?.sourceType,
+    countries: row.countries,
+    count: row.count
+  })), settings.sourceTrustMapping);
+  for (const item of registry) {
+    const types = Array.isArray(item.types) && item.types.length ? item.types : [];
+    const targetTypes = types.length ? types : ['news'];
+    for (const type of targetTypes) {
+      if (!sources[type]) continue;
+      sources[type].push({
+        id: optionLabel(item.sourceId),
+        name: optionLabel(item.name),
+        sourceType: optionLabel(item.sourceType),
+        credibility: item.credibility || 'moderate',
+        credibilityLabel: item.credibility ? `${item.credibility[0].toUpperCase()}${item.credibility.slice(1)} Credibility` : 'Moderate Credibility',
+        countries: (item.countries || []).map(optionLabel).filter(Boolean),
+        count: Number(item.count || 0)
+      });
+    }
   }
   for (const type of Object.keys(sources)) {
-    sources[type] = sources[type].filter((source) => source.id && source.name).sort(sortByName);
+    const seen = new Set();
+    sources[type] = sources[type]
+      .filter((source) => {
+        const key = `${source.id}::${source.name}`;
+        if (!source.id || !source.name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(sortByName);
   }
 
   res.json({
@@ -309,6 +442,10 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
     sectors: sectors.map(optionLabel).filter(Boolean).sort(),
     opportunityTypes: opportunityTypes.map(optionLabel).filter(Boolean).sort(),
     sources,
+    sourceTrust: {
+      groups: groupRegistryByCredibility(registry),
+      registry
+    },
     types: [
       { id: 'news',       label: 'News Articles' },
       { id: 'govt',       label: 'Government Updates' },
@@ -318,23 +455,86 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   });
 }));
 
+// GET /api/articles/counts — returns total counts for all columns after filtering
+router.get('/counts', protect, asyncHandler(async (req, res) => {
+  const baseQuery = await applySourceCredibilityFilter(
+    req,
+    await applySavedFilter(
+      req,
+      buildQuery(req)
+    )
+  );
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
+
+  const pipeline = [
+    { $match: baseQuery },
+    {
+      $addFields: {
+        fetchedDate: {
+          $convert: {
+            input: '$fetchedAt',
+            to: 'date',
+            onError: new Date(0),
+            onNull: new Date(0)
+          }
+        }
+      }
+    }
+  ];
+
+  if (dateRange) {
+    pipeline.push({ $match: { fetchedDate: dateRange } });
+  }
+
+  pipeline.push({
+    $group: {
+      _id: '$type',
+      count: { $sum: 1 }
+    }
+  });
+
+  const counts = await Article.aggregate(pipeline);
+
+  const response = {
+    news: 0,
+    govt: 0,
+    competitor: 0,
+    evergreen: 0
+  };
+
+  for (const row of counts) {
+    if (response[row._id] !== undefined) {
+      response[row._id] = row.count;
+    }
+  }
+
+  res.json(response);
+}));
+
 // ---------- DASHBOARD endpoint ----------
 // GET /api/articles/dashboard?limit=20&from=...&to=...&category=...
 // Returns 4 buckets in one round-trip.
 router.get('/dashboard', protect, asyncHandler(async (req, res) => {
-  const baseQuery = await applySavedFilter(
+  const baseQuery = await applySourceCredibilityFilter(
     req,
-    buildQuery(req)
+    await applySavedFilter(
+      req,
+      buildQuery(req)
+    )
   );
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
-  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const types = ['news', 'govt', 'competitor', 'evergreen'];
   const results = await Promise.all(
     types.map((t) => {
       const pipeline = withEffectiveDateSort({ ...baseQuery, type: t });
       if (dateRange) {
-        pipeline.push({ $match: { effectiveDate: dateRange } });
+        pipeline.push({ $match: { fetchedDate: dateRange } });
+      }
+      if (offset && offset > 0) {
+        pipeline.push({ $skip: offset });
       }
       if (limit && limit > 0) {
         pipeline.push({ $limit: limit });
@@ -343,7 +543,7 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
     })
   );
 
-  const annotated = await Promise.all(results.map((items) => annotateSaved(req, items)));
+  const annotated = await Promise.all(results.map(async (items) => decorateArticles(await annotateSaved(req, items))));
 
   res.json({
     news: annotated[0],
@@ -354,23 +554,22 @@ router.get('/dashboard', protect, asyncHandler(async (req, res) => {
 }));
 
 // GET /api/articles/velocity
-// Returns real signal counts for the last 7 days using publishedAt when present, otherwise fetchedAt.
+// Returns real signal counts for the last 7 days using fetchedAt.
 router.get('/velocity', protect, asyncHandler(async (req, res) => {
-  const baseQuery = buildQuery(req);
+  const baseQuery = await applySourceCredibilityFilter(req, buildQuery(req));
   const datasetScope = req.query.scope === 'dataset';
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - 6);
-  const explicitDateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const todayStart = parseFilterDateStart(formatDashboardDate(now)) || now;
+  const start = new Date(todayStart.getTime() - 6 * DAY_MS);
+  const explicitDateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const pipeline = [
     { $match: baseQuery },
     {
       $addFields: {
-        effectiveDate: {
+        fetchedDate: {
           $convert: {
-            input: { $ifNull: ['$publishedAt', '$fetchedAt'] },
+            input: '$fetchedAt',
             to: 'date',
             onError: new Date(0),
             onNull: new Date(0)
@@ -381,9 +580,9 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
   ];
 
   if (explicitDateRange) {
-    pipeline.push({ $match: { effectiveDate: explicitDateRange } });
+    pipeline.push({ $match: { fetchedDate: explicitDateRange } });
   } else if (!datasetScope) {
-    pipeline.push({ $match: { effectiveDate: { $gte: start, $lte: now } } });
+    pipeline.push({ $match: { fetchedDate: { $gte: start, $lte: now } } });
   }
 
   pipeline.push(
@@ -392,7 +591,7 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
         _id: {
           $dateToString: {
             format: '%Y-%m-%d',
-            date: '$effectiveDate',
+            date: '$fetchedDate',
             timezone: DASHBOARD_TIMEZONE
           }
         },
@@ -418,12 +617,14 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 
   const counts = Object.fromEntries(rows.map((row) => [row._id, row.count]));
   const days = Array.from({ length: 7 }).map((_, i) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + i);
+    const date = new Date(start.getTime() + i * DAY_MS);
     const key = formatDashboardDate(date);
     return {
       date: key,
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+      day: date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        timeZone: DASHBOARD_TIMEZONE
+      }).toUpperCase(),
       count: counts[key] || 0
     };
   });
@@ -434,8 +635,11 @@ router.get('/velocity', protect, asyncHandler(async (req, res) => {
 // ---------- LIST endpoint (paginated) ----------
 // GET /api/articles?type=news&category=...&page=1&limit=20
 router.get('/', protect, asyncHandler(async (req, res) => {
-  const q = await applySavedFilter(req, buildQuery(req));
-  const dateRange = effectiveDateRangeMatch(req.query.from, req.query.to);
+  const q = await applySourceCredibilityFilter(
+    req,
+    await applySavedFilter(req, buildQuery(req))
+  );
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
@@ -454,18 +658,18 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   const [items, total] = await Promise.all([
     sort
       ? Article.aggregate(withEffectiveDateSort(q, [
-        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
         { $sort: sortObj },
         { $skip: skip },
         { $limit: limit }
       ]))
       : Article.aggregate(withEffectiveDateSort(q, [
-        ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+        ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
         { $skip: skip },
         { $limit: limit }
       ])),
     Article.aggregate(withEffectiveDateSort(q, [
-      ...(dateRange ? [{ $match: { effectiveDate: dateRange } }] : []),
+      ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
       { $count: 'total' }
     ]))
   ]);
@@ -473,7 +677,7 @@ router.get('/', protect, asyncHandler(async (req, res) => {
   const totalCount = total[0]?.total || 0;
 
   res.json({
-    items: await annotateSaved(req, items),
+    items: await decorateArticles(await annotateSaved(req, items)),
     page,
     limit,
     total: totalCount,
@@ -528,7 +732,8 @@ router.get('/:id', protect, asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Not found' });
   }
   const [annotated] = await annotateSaved(req, [item]);
-  res.json({ item: annotated });
+  const [decorated] = await decorateArticles([annotated]);
+  res.json({ item: decorated });
 }));
 
 module.exports = router;

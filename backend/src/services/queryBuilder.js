@@ -6,6 +6,7 @@ const DEFAULT_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergr
   .filter(Boolean);
 const DEFAULT_TARGET_PER_TOPIC = 150;
 const MAX_TARGET_PER_TOPIC = 150;
+const MAX_TAVILY_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_TAVILY_QUERY_LENGTH || 380) || 380));
 const CATEGORY_QUERY_MAP = {
   'Corporate Services':
     'company incorporation company registration company formation company secretary corporate compliance entity management business setup market entry branch office representative office share registry acquisition liquidation regulatory update',
@@ -81,6 +82,28 @@ const COMPETITOR_QUERY_MAP = {
     'economy trade investment business policy market outlook competitor expansion partnership acquisition business announcement'
 };
 
+const COUNTRY_AUTHORITY_HINTS = {
+  'Abu Dhabi (UAE)': 'ADGM FSRA Abu Dhabi UAE',
+  Australia: 'ASIC APRA ATO Australia',
+  'British Virgin Islands': 'BVI FSC British Virgin Islands',
+  'Cayman Islands': 'CIMA Cayman Islands',
+  China: 'China MOFCOM SAMR PBOC CSRC',
+  Cyprus: 'CySEC Cyprus Registrar of Companies Tax Department',
+  'Dubai (UAE)': 'DIFC DFSA DMCC Dubai UAE FTA',
+  'Hong Kong': 'Hong Kong Companies Registry SFC HKMA IRD Labour Department',
+  India: 'India MCA CBDT CBIC SEBI RBI DPIIT',
+  Indonesia: 'Indonesia OJK BKPM OSS DGT Ministry Manpower',
+  Malaysia: 'Malaysia SSM LHDN SC BNM',
+  'Miami (United States)': 'Miami Florida SEC FINRA IRS USCIS',
+  'Montevideo (Uruguay)': 'Uruguay BCU DGI MTSS',
+  Philippines: 'Philippines SEC BIR DOLE BSP PEZA',
+  'Saint Kitts & Nevis': 'Saint Kitts Nevis FSC',
+  'Sao Paulo (Brazil)': 'Brazil CVM BACEN Receita Federal Sao Paulo',
+  Singapore: 'Singapore ACRA IRAS MOM MAS',
+  'United Kingdom': 'UK Companies House HMRC FCA PRA',
+  Vietnam: 'Vietnam MPI DICA GDT MOLISA SSC SBV'
+};
+
 function cleanText(value) {
   return String(value || '').trim();
 }
@@ -133,6 +156,7 @@ function defaultTimezone() {
 function sourceTypeForTopic(topic) {
   if (topic === 'govt') return 'govt';
   if (topic === 'competitor') return 'competitor';
+  if (topic === 'evergreen') return 'news';
   return 'news';
 }
 
@@ -167,13 +191,33 @@ function quoteIfNeeded(value) {
 }
 
 function compactQuery(parts) {
-  return parts
+  const query = parts
     .flatMap((part) => Array.isArray(part) ? part : [part])
     .map(cleanText)
     .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  if (query.length <= MAX_TAVILY_QUERY_LENGTH) return query;
+
+  const words = query.split(' ');
+  const trimmed = [];
+  let totalLength = 0;
+
+  for (const word of words) {
+    const nextLength = totalLength ? totalLength + 1 + word.length : word.length;
+    if (nextLength > MAX_TAVILY_QUERY_LENGTH) break;
+    trimmed.push(word);
+    totalLength = nextLength;
+  }
+
+  if (trimmed.length) return trimmed.join(' ');
+  return query.slice(0, MAX_TAVILY_QUERY_LENGTH).trim();
+}
+
+function serviceAnchorTerms() {
+  return 'corporate services accounting tax compliance payroll hr employment immigration market entry company registration trust fiduciary fund administration business advisory';
 }
 
 function categoryQuery(category) {
@@ -278,42 +322,93 @@ function categoryKeywordTerms(category, limit = 10) {
   return [...new Set([...categoryKeywords, ...subcategoryKeywords])].join(' ');
 }
 
-function buildCategoryQueryVariants(topic, category, profile = {}) {
-  const country = cleanText(profile.country) || defaultCountry();
-  const region = cleanText(profile.region);
-  const location = buildLocation({ country, region });
-  const year = currentIntelYear(profile);
-  const competitors = uniqueList(profile.competitors);
-  const base = categoryQuery(category);
-  const subcategoryTerms = categorySubcategoryTerms(category);
-  const keywordTerms = categoryKeywordTerms(category);
+function authorityHintsForCountry(country) {
+  return COUNTRY_AUTHORITY_HINTS[canonicalCountry(cleanText(country))] || cleanText(country);
+}
 
-  if (topic === 'evergreen') {
-    return [
-      compactQuery([location, category, subcategoryTerms, 'requirements guide checklist', year]),
-      compactQuery([location, keywordTerms || base, 'compliance guide requirements']),
-      compactQuery([location, 'how to', category, 'business services'])
-    ];
+function conciseTopicTerms(topic, category, competitors = []) {
+  if (topic === 'govt') return govtCategoryQuery(category);
+  if (topic === 'competitor') {
+    return compactQuery([
+      competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '',
+      'expansion acquisition partnership new office service launch market update',
+      competitorCategoryQuery(category)
+    ]);
+  }
+  if (topic === 'evergreen') return evergreenCategoryQuery(category);
+  return categoryQuery(category);
+}
+
+function broadTopicQueryVariant(topic, profile = {}) {
+  const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
+  const year = currentIntelYear(profile);
+  const authorityHints = authorityHintsForCountry(country);
+  const competitors = uniqueList(profile.competitors);
+
+  if (topic === 'news') {
+    return compactQuery([
+      country,
+      'business news market economy investment tax compliance corporate services employment trade update latest',
+      year
+    ]);
+  }
+
+  if (topic === 'govt') {
+    return compactQuery([
+      country,
+      authorityHints,
+      'official government regulation policy circular tax employment licensing company registry compliance update',
+      year
+    ]);
   }
 
   if (topic === 'competitor') {
-    const competitorText = competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '';
-    return [
-      compactQuery([competitorText, location, category, 'expansion acquisition partnership new office service launch', year]),
-      compactQuery([competitorText, location, base, 'competitor intelligence market update', year]),
-      compactQuery([competitorText, location, 'professional services corporate services expansion', year])
-    ];
+    return compactQuery([
+      competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '',
+      country,
+      'professional services competitor expansion acquisition partnership new office service launch leadership',
+      year
+    ]);
   }
 
-  const intent = topic === 'govt'
-    ? 'policy regulatory announcement law rule circular update'
-    : 'latest news announcement policy compliance business update';
+  if (topic === 'evergreen') {
+    return compactQuery([
+      country,
+      'business setup company registration tax compliance payroll employment market entry guide requirements checklist',
+      year
+    ]);
+  }
+
+  return '';
+}
+
+function buildCategoryQueryVariants(topic, category, profile = {}) {
+  const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
+  const year = currentIntelYear(profile);
+  const competitors = uniqueList(profile.competitors);
+  const authorityHints = authorityHintsForCountry(country);
+  const base = conciseTopicTerms(topic, category, competitors);
+  const subcategoryTerms = categorySubcategoryTerms(category);
+  const keywordTerms = categoryKeywordTerms(category);
+
+  if (topic === 'news') {
+    return [
+      compactQuery([country, base, serviceAnchorTerms(), 'business news market update latest', year]),
+      compactQuery([country, category, subcategoryTerms, keywordTerms, serviceAnchorTerms(), 'business news economy investment compliance update', year])
+    ].filter(Boolean);
+  }
+
+  if (topic === 'govt') {
+    return [
+      compactQuery([country, category, keywordTerms, serviceAnchorTerms(), 'official government regulation policy circular announcement', year]),
+      compactQuery([country, authorityHints, category, serviceAnchorTerms(), 'tax employment licensing company registry compliance update', year])
+    ].filter(Boolean);
+  }
 
   return [
-    compactQuery([location, category, subcategoryTerms, intent, year]),
-    compactQuery([location, keywordTerms || base, 'latest announcement update', year]),
-    compactQuery([location, category, 'regulation compliance tax business news', year])
-  ];
+    compactQuery([authorityHints, base, serviceAnchorTerms(), year]),
+    compactQuery([country, authorityHints, category, subcategoryTerms, serviceAnchorTerms(), year])
+  ].filter(Boolean);
 }
 
 function buildTopicQueries(profile = {}) {
@@ -331,9 +426,14 @@ function buildTopicQueryVariants(profile = {}) {
   const queries = {};
 
   for (const topic of topics) {
+    const categoryVariants = categories.flatMap((category) => (
+      buildCategoryQueryVariants(topic, category, { ...profile, competitors })
+    )).filter(Boolean);
+    // Only send category-specific queries — no broad generic fallback
+    // that could bring in unrelated articles from outside the configured categories.
     queries[topic] = customQueryOverride
       ? [customQueryOverride]
-      : categories.flatMap((category) => buildCategoryQueryVariants(topic, category, { ...profile, competitors })).filter(Boolean);
+      : categoryVariants.filter(Boolean);
   }
 
   return queries;
@@ -348,7 +448,10 @@ function buildTopicQueryCategories(profile = {}) {
       topic,
       customQueryOverride
         ? [categories[0] || defaultCategory()]
-        : categories.flatMap((category) => buildCategoryQueryVariants(topic, category, profile).map(() => category))
+        : [
+            ...(categories.length > 1 ? [categories[0] || defaultCategory()] : []),
+            ...categories.flatMap((category) => buildCategoryQueryVariants(topic, category, profile).map(() => category))
+          ]
     ])
   );
 }
@@ -403,18 +506,31 @@ function buildN8nPayload(profile = {}, extra = {}) {
     profile.includeDomains ||
     profile.include_domains
   );
+  const typedSourceDomains = ['news', 'govt', 'competitor', 'evergreen'].reduce((out, type) => {
+    out[type] = cleanSourceDomains(profile.sourceDomainsByType?.[type]);
+    return out;
+  }, {});
+  const hasTypedSourceDomains = Object.values(typedSourceDomains).some((items) => items.length);
+  const newsSourceDomains = hasTypedSourceDomains && typedSourceDomains.news.length
+    ? typedSourceDomains.news
+    : sourceDomains;
   const mergedSources = mergeSourceDomains({
     country,
     type: 'news',
-    userSources: sourceDomains,
+    userSources: newsSourceDomains,
     strictSources: profile.strictSources || profile.strict_sources
   });
   const sourceDomainsByTopic = Object.fromEntries(
     topics.map((topic) => {
+      const sourceType = sourceTypeForTopic(topic);
+      const explicitTopicSources = typedSourceDomains[topic] || [];
+      const topicUserSources = hasTypedSourceDomains
+        ? (explicitTopicSources.length ? explicitTopicSources : typedSourceDomains[sourceType] || [])
+        : (sourceType === 'news' ? sourceDomains : []);
       const merged = mergeSourceDomains({
         country,
-        type: sourceTypeForTopic(topic),
-        userSources: sourceDomains,
+        type: sourceType,
+        userSources: topicUserSources,
         strictSources: profile.strictSources || profile.strict_sources
       });
       return [topic, merged.includeDomains];
@@ -471,6 +587,7 @@ function buildN8nPayload(profile = {}, extra = {}) {
     sourceDomainsByTopic,
     defaultDomainsByTopic,
     userDomains: mergedSources.userDomains,
+    sourceDomainsByType: typedSourceDomains,
     ...extra
   };
 
@@ -479,6 +596,9 @@ function buildN8nPayload(profile = {}, extra = {}) {
   if (scope.categoryOptions.length) payload.subcategoryOptions = scope.categoryOptions;
   if (profile.minTavilyScore !== undefined && profile.minTavilyScore !== null && profile.minTavilyScore !== '') {
     payload.minTavilyScore = Math.max(0, Math.min(100, Number(profile.minTavilyScore) || 0));
+  }
+  if (profile.minStoreScore !== undefined && profile.minStoreScore !== null && profile.minStoreScore !== '') {
+    payload.minStoreScore = Math.max(0, Math.min(100, Number(profile.minStoreScore) || 0));
   }
 
   return payload;
