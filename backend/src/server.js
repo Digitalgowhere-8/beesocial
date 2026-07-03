@@ -114,8 +114,8 @@ app.use('/api/admin/super/fetch/run', expensiveLimit);
 app.use(
   '/api/analytics/events',
   rateLimit({
-    windowMs: process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS || 900000,
-    max: ANALYTICS_RATE_LIMIT_MAX,
+   windowMs: parseInt(process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS, 10) || 900000,
+    max: parseInt(process.env.ANALYTICS_RATE_LIMIT_MAX, 10) || 100,
     keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
