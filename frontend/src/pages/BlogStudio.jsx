@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
-import { BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare } from 'lucide-react';
+import useInfiniteScroll from '../hooks/useInfiniteScroll';
+import { ArrowLeft, Ban, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -15,8 +16,36 @@ const TYPE_OPTIONS = [
   { value: 'evergreen', label: 'Evergreen Guides' }
 ];
 
+const CONTENT_TYPE_TABS = [
+  { key: 'blog', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
+  { key: 'social', label: 'Social', desktopLabel: 'Social Media Post', icon: MessageSquareText },
+];
+
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
-const CONTENT_STUDIO_UPCOMING_MODE = true;
+const CONTENT_STUDIO_UPCOMING_MODE = false;
+const CONTENT_STUDIO_CACHE_VERSION = 'v1';
+const STUDIO_PAGE_SIZE = 12;
+const GENERATED_DRAFT_RETRY_COUNT = 10;
+const GENERATED_DRAFT_RETRY_DELAY_MS = 500;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function safeSessionGet(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSessionSet(key, value) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
 
 const STYLE_OPTIONS = {
   tone: [
@@ -107,15 +136,41 @@ const DEFAULT_LINKEDIN_FORM = {
   takeaway: '',
   includeHashtags: true,
   includeCTA: true,
-  cta: 'Follow us for more market intelligence.',
+  cta: '',
   customInstructions: ''
 };
 
+const BLOG_STEPS = [
+  'Analyzing source topic & context...',
+  'Synthesizing intelligence & key takeaways...',
+  'Structuring outline & SEO heading layout...',
+  'Drafting blog sections & content blocks...',
+  'Optimizing meta tags & target keywords...',
+  'Polishing brand voice & readability...'
+];
+
+const LINKEDIN_STEPS = [
+  'Analyzing source topic intelligence...',
+  'Extracting core points & statistics...',
+  'Structuring post hook & template layout...',
+  'Drafting post paragraphs & tone...',
+  'Applying spacing constraints & readability...',
+  'Refining soft authority line & CTA details...'
+];
+
 export default function BlogStudio() {
-  const { user, refreshMe } = useAuth();
+  const { user, refreshMe, genProgress, setGenProgress } = useAuth();
   const location = useLocation();
   const inboundState = location.state || {};
   const canUseBlogStudio = user?.access?.canUseBlogStudio !== false;
+  const studioCacheKey = useMemo(
+    () => `content_studio_cache:${CONTENT_STUDIO_CACHE_VERSION}:${user?._id || 'guest'}`,
+    [user?._id]
+  );
+  const cachedStudioState = useMemo(
+    () => safeSessionGet(studioCacheKey, null),
+    [studioCacheKey]
+  );
 
   if (!canUseBlogStudio) {
     return (
@@ -123,7 +178,7 @@ export default function BlogStudio() {
         <div className="flex h-full min-h-0 items-center justify-center -m-6 p-4">
           <div className="glass-panel p-8 text-center text-sm font-semibold text-gray-500 max-w-lg flex flex-col items-center justify-center gap-4">
             <Sparkles size={48} className="text-brand-crimson animate-pulse" />
-            <h2 className="text-xl font-black text-gray-900">Social Media Studio is Locked</h2>
+            <h2 className="text-xl font-black text-gray-900">Content Studio is Locked</h2>
             <p className="text-xs text-gray-500 leading-relaxed">
               AI content creation, blogging, and social media posting are not included in your current subscription plan. Contact your organization administrator or upgrade to a higher tier plan to unlock this feature.
             </p>
@@ -132,17 +187,17 @@ export default function BlogStudio() {
       </Layout>
     );
   }
-  const [contentType, setContentType] = useState(() => inboundState.contentType || 'blog');
-  const [socialPlatform, setSocialPlatform] = useState(() => inboundState.socialPlatform || 'linkedin');
-  const [articles, setArticles] = useState([]);
-  const [blogs, setBlogs] = useState([]);
-  const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || null);
-  const [selectedBlog, setSelectedBlog] = useState(null);
-  const [socialPosts, setSocialPosts] = useState([]);
-  const [style, setStyle] = useState(DEFAULT_STYLE);
-  const [keywords, setKeywords] = useState('');
-  const [topicMeta, setTopicMeta] = useState(EMPTY_META);
-  const [topicFilters, setTopicFilters] = useState({
+  const [contentType, setContentType] = useState(() => cachedStudioState?.contentType || inboundState.contentType || 'blog');
+  const [socialPlatform, setSocialPlatform] = useState(() => cachedStudioState?.socialPlatform || inboundState.socialPlatform || 'linkedin');
+  const [articles, setArticles] = useState(cachedStudioState?.articles || []);
+  const [blogs, setBlogs] = useState(cachedStudioState?.blogs || []);
+  const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || cachedStudioState?.selectedArticle || null);
+  const [selectedBlog, setSelectedBlog] = useState(cachedStudioState?.selectedBlog || null);
+  const [socialPosts, setSocialPosts] = useState(cachedStudioState?.socialPosts || []);
+  const [style, setStyle] = useState(cachedStudioState?.style || DEFAULT_STYLE);
+  const [keywords, setKeywords] = useState(cachedStudioState?.keywords || '');
+  const [topicMeta, setTopicMeta] = useState(cachedStudioState?.topicMeta || EMPTY_META);
+  const [topicFilters, setTopicFilters] = useState(cachedStudioState?.topicFilters || {
     q: '',
     type: '',
     category: '',
@@ -150,16 +205,55 @@ export default function BlogStudio() {
     country: '',
     saved: ''
   });
-  const [blogQuery, setBlogQuery] = useState('');
-  const [loadingArticles, setLoadingArticles] = useState(false);
-  const [loadingBlogs, setLoadingBlogs] = useState(false);
-  const [loadingSocialPosts, setLoadingSocialPosts] = useState(false);
+  const [blogQuery, setBlogQuery] = useState(cachedStudioState?.blogQuery || '');
+  const [articlesPage, setArticlesPage] = useState(cachedStudioState?.articlesPage || 1);
+  const [articlesHasMore, setArticlesHasMore] = useState(cachedStudioState?.articlesHasMore ?? true);
+  const [blogsPage, setBlogsPage] = useState(cachedStudioState?.blogsPage || 1);
+  const [blogsHasMore, setBlogsHasMore] = useState(cachedStudioState?.blogsHasMore ?? true);
+  const [loadingArticles, setLoadingArticles] = useState(() => !cachedStudioState?.articles?.length);
+  const [loadingBlogs, setLoadingBlogs] = useState(() => !cachedStudioState?.blogs?.length);
+  const [loadingSocialPosts, setLoadingSocialPosts] = useState(() => !cachedStudioState?.socialPosts?.length);
+  const isRefreshing = loadingArticles || (contentType === 'blog' ? loadingBlogs : loadingSocialPosts);
+  const [socialPreviewOpen, setSocialPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLinkedin, setGeneratingLinkedin] = useState(false);
+  const [generationFinalizing, setGenerationFinalizing] = useState(false);
+
+  // Derive generating flags from global genProgress so they survive tab switches
+  const isGenerating = generating || (genProgress?.status === 'running' && genProgress?.type === 'blog');
+  const isGeneratingLinkedin = generatingLinkedin || (genProgress?.status === 'running' && genProgress?.type === 'linkedin');
+  const generationLocked = isGenerating || isGeneratingLinkedin;
+
+  const [generationStepIndex, setGenerationStepIndex] = useState(0);
+
+  useEffect(() => {
+    if (!generationLocked) {
+      setGenerationStepIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setGenerationStepIndex((prev) => {
+        if (prev < 5) return prev + 1;
+        return prev;
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [generationLocked]);
+
+  const cancelGeneration = async () => {
+    try {
+      await api.post('/blogs/cancel');
+    } catch { /* ignore */ }
+    setGenProgress(null);
+    setGenerating(false);
+    setGeneratingLinkedin(false);
+  };
   const [savingLinkedinPost, setSavingLinkedinPost] = useState(false);
   const [deletingBlogs, setDeletingBlogs] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
+  const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
   const [draftForm, setDraftForm] = useState({ title: '', excerpt: '', bodyMarkdown: '' });
   const [draftEditorOpen, setDraftEditorOpen] = useState(false);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
@@ -171,6 +265,16 @@ export default function BlogStudio() {
   const [linkedinForm, setLinkedinForm] = useState(DEFAULT_LINKEDIN_FORM);
   const [linkedinOutput, setLinkedinOutput] = useState(null);
   const selectedArticleRef = useRef(selectedArticle);
+  const focusComposerMode = Boolean(inboundState.focusComposer && inboundState.article?._id);
+  const hasTopicFilters = useMemo(
+    () => Object.values(topicFilters || {}).some(Boolean),
+    [topicFilters]
+  );
+  const hasBlogSearch = Boolean(String(blogQuery || '').trim());
+
+  const showGenerationLockMessage = useCallback(() => {
+    setError('Generation is running. Please wait until it finishes before changing sections or refreshing.');
+  }, []);
 
   const keywordList = useMemo(() => cleanList(keywords), [keywords]);
   const categoryTree = useMemo(() => {
@@ -178,6 +282,21 @@ export default function BlogStudio() {
     return Object.keys(dataCategories).length ? dataCategories : topicMeta.categories || {};
   }, [topicMeta]);
   const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+  const countryOptions = useMemo(() => {
+    const directCountries = Array.isArray(topicMeta.countries)
+      ? topicMeta.countries.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (directCountries.length) {
+      return [...new Set(directCountries)].sort((a, b) => a.localeCompare(b));
+    }
+
+    const fallbackCountries = Object.values(topicMeta.sources || {})
+      .flatMap((sources) => (sources || []).flatMap((source) => source?.countries || []))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    return [...new Set(fallbackCountries)].sort((a, b) => a.localeCompare(b));
+  }, [topicMeta]);
   const subcategoryOptions = useMemo(() => (
     topicFilters.category ? categoryTree[topicFilters.category] || [] : []
   ), [categoryTree, topicFilters.category]);
@@ -193,15 +312,31 @@ export default function BlogStudio() {
     selectedArticleRef.current = selectedArticle;
   }, [selectedArticle]);
 
+  const selectedBlogRef = useRef(selectedBlog);
+  useEffect(() => {
+    selectedBlogRef.current = selectedBlog;
+  }, [selectedBlog]);
+
+  const generatingRef = useRef(generating);
+  useEffect(() => {
+    generatingRef.current = generating;
+  }, [generating]);
+
+  const genProgressRef = useRef(genProgress);
+  useEffect(() => {
+    genProgressRef.current = genProgress;
+  }, [genProgress]);
+
+
   const selectArticleById = useCallback((articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
   }, [articles]);
 
-  const loadArticles = useCallback(async () => {
+  const loadArticles = useCallback(async ({ page = 1, reset = false } = {}) => {
     setLoadingArticles(true);
     try {
-      const params = { limit: 24, personalized: 'true' };
+      const params = { limit: STUDIO_PAGE_SIZE, page, personalized: 'true' };
       Object.entries(topicFilters).forEach(([key, value]) => {
         if (value) params[key] = value;
       });
@@ -209,9 +344,12 @@ export default function BlogStudio() {
       const items = data.items || [];
       setArticles((prevArticles) => {
         const pinned = selectedArticleRef.current || prevArticles.find((item) => item._id === inboundState.articleId);
-        if (pinned?._id && !items.some((item) => item._id === pinned._id)) return [pinned, ...items];
-        return items;
+        const baseItems = reset ? items : [...prevArticles, ...items.filter((item) => !prevArticles.some((existing) => existing._id === item._id))];
+        if (pinned?._id && !baseItems.some((item) => item._id === pinned._id)) return [pinned, ...baseItems];
+        return baseItems;
       });
+      setArticlesPage(page);
+      setArticlesHasMore(page < Number(data.pages || page));
     } catch (err) {
       setError(err.message || 'Could not load topics');
     } finally {
@@ -219,14 +357,17 @@ export default function BlogStudio() {
     }
   }, [inboundState.articleId, topicFilters]);
 
-  const loadBlogs = useCallback(async () => {
+  const loadBlogs = useCallback(async ({ page = 1, reset = false, q = blogQuery } = {}) => {
     setLoadingBlogs(true);
     try {
-      const params = { limit: 30 };
-      if (blogQuery) params.q = blogQuery;
+      const params = { limit: STUDIO_PAGE_SIZE, page };
+      if (q) params.q = q;
       const { data } = await api.get('/blogs', { params });
-      setBlogs(data.items || []);
-      if (data.items?.length) setSelectedBlog((prev) => prev || data.items[0]);
+      const nextBlogs = data.items || [];
+      setBlogs((prev) => reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]);
+      if (nextBlogs.length) setSelectedBlog((prev) => prev || nextBlogs[0]);
+      setBlogsPage(page);
+      setBlogsHasMore(page < Number(data.pages || page));
     } catch (err) {
       setError(err.message || 'Could not load blogs');
     } finally {
@@ -246,36 +387,215 @@ export default function BlogStudio() {
     }
   }, []);
 
-  useEffect(() => { loadArticles(); }, [loadArticles]);
-  useEffect(() => { loadBlogs(); }, [loadBlogs]);
-  useEffect(() => { loadSocialPosts(); }, [loadSocialPosts]);
+  const loadBlogsRef = useRef(null);
   useEffect(() => {
-    const handleContentChanged = () => {
-      loadArticles();
-      loadBlogs();
-      loadSocialPosts();
-    };
-    const refreshVisibleData = () => {
-      if (document.visibilityState === 'hidden') return;
-      loadArticles();
-      loadBlogs();
-      loadSocialPosts();
+    loadBlogsRef.current = loadBlogs;
+  }, [loadBlogs]);
+
+  const loadSocialPostsRef = useRef(null);
+  useEffect(() => {
+    loadSocialPostsRef.current = loadSocialPosts;
+  }, [loadSocialPosts]);
+
+  const openGeneratedDraft = useCallback(async (draftId) => {
+    if (!draftId) return null;
+    let item = null;
+    let lastError = null;
+
+    setBlogQuery('');
+    setDraftDrawerOpen(true);
+    setDraftEditorOpen(false);
+
+    for (let attempt = 0; attempt < GENERATED_DRAFT_RETRY_COUNT; attempt += 1) {
+      try {
+        const { data } = await api.get(`/blogs/${draftId}`);
+        item = data.item || null;
+        if (item) break;
+      } catch (err) {
+        lastError = err;
+      }
+      await delay(GENERATED_DRAFT_RETRY_DELAY_MS);
+    }
+
+    if (!item) {
+      if (lastError) throw lastError;
+      throw new Error('Generated draft is not ready yet. Please open Drafts & Publishing again.');
+    }
+
+    setContentType('blog');
+    setBlogQuery('');
+    setSelectedBlog(item);
+    setDraftForm({
+      title: item.title || '',
+      excerpt: item.excerpt || '',
+      bodyMarkdown: item.bodyMarkdown || ''
+    });
+    setPendingDraftId(item._id || '');
+    setDraftDrawerOpen(true);
+    setDraftEditorOpen(true);
+    setBlogs((prev) => [item, ...prev.filter((blog) => blog._id !== item._id)]);
+    setSelectedBlog(item);
+    setDraftEditorOpen(true);
+    setDraftDrawerOpen(true);
+    loadBlogs({ page: 1, reset: true, q: '' }); // background refresh
+    return item;
+  }, [loadBlogs]);
+
+  // Listen to global generation progress updates to handle background success, failure or cancellation
+  useEffect(() => {
+    if (!genProgress) return;
+
+    if (genProgress.status === 'completed') {
+      const handleCompleted = async () => {
+        // Clear overlay states FIRST so the modal disappears immediately
+        api.post('/blogs/generation-clear').catch(() => {});
+        setGenerating(false);
+        setGeneratingLinkedin(false);
+        setGenProgress(null);
+
+        setGenerationFinalizing(true);
+        try {
+          if (genProgress.type === 'blog') {
+            const item = await openGeneratedDraft(genProgress.resultId);
+            emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || genProgress.resultId || '' });
+          } else if (genProgress.type === 'linkedin') {
+            setLinkedinOutput(genProgress.data);
+            setContentType('social');
+            setOutputDrawerOpen(true);
+            loadSocialPosts();
+          }
+        } catch (err) {
+          setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
+        } finally {
+          setGenerationFinalizing(false);
+        }
+      };
+      handleCompleted();
+    } else if (genProgress.status === 'failed') {
+      setError(genProgress.error || 'Generation failed');
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenerationFinalizing(false);
+      setGenerating(false);
+      setGeneratingLinkedin(false);
+      setGenProgress(null);
+    } else if (genProgress.status === 'cancelled') {
+      setError('Generation was cancelled');
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenerationFinalizing(false);
+      setGenerating(false);
+      setGeneratingLinkedin(false);
+      setGenProgress(null);
+    }
+  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, setLinkedinOutput]);
+
+  // Real-time listener: handles updates pushed to other tabs/users in real-time
+  useEffect(() => {
+    const handleContentChanged = (event) => {
+      const detail = event?.detail || {};
+      if (!detail.scope || detail.scope === 'blogs') {
+        if (detail.id) {
+          // Fetch the updated blog post
+          api.get(`/blogs/${detail.id}`).then(({ data }) => {
+            if (data.item) {
+              // Prepend or update in local state in-memory
+              setBlogs((prev) => {
+                const exists = prev.some((b) => b._id === data.item._id);
+                if (exists) {
+                  return prev.map((b) => b._id === data.item._id ? data.item : b);
+                }
+                return [data.item, ...prev]; // PREPEND new drafts!
+              });
+              
+              // If this user was actively generating, open the draft and close overlay instantly!
+              const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
+              if (detail.action === 'generated' && isActivelyGenerating) {
+                // Instantly close the overlay
+                setGenerating(false);
+                setGeneratingLinkedin(false);
+                setGenProgress(null);
+                api.post('/blogs/generation-clear').catch(() => {});
+
+                // Open the draft drawer
+                setContentType('blog');
+                setBlogQuery('');
+                setSelectedBlog(data.item);
+                setDraftForm({
+                  title: data.item.title || '',
+                  excerpt: data.item.excerpt || '',
+                  bodyMarkdown: data.item.bodyMarkdown || ''
+                });
+                setPendingDraftId(data.item._id || '');
+                setDraftDrawerOpen(true);
+                setDraftEditorOpen(true);
+                loadBlogsRef.current?.({ page: 1, reset: true, q: '' });
+              } else {
+                // Also update selected blog if it matches
+                if (selectedBlogRef.current?._id === data.item._id) {
+                  if (selectedBlogRef.current.status !== data.item.status || 
+                      selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
+                    setSelectedBlog(data.item);
+                  }
+                }
+              }
+            }
+          }).catch((err) => {
+            // If it returns 404 (deleted), remove it from list
+            if (err.response?.status === 404) {
+              setBlogs((prev) => prev.filter((b) => b._id !== detail.id));
+              if (selectedBlogRef.current?._id === detail.id) {
+                setSelectedBlog(null);
+              }
+            }
+          });
+        } else {
+          // Fallback to full load if no specific ID is provided
+          loadBlogsRef.current?.({ page: 1, reset: true });
+        }
+      }
+      if (!detail.scope || detail.scope === 'social') {
+        loadSocialPostsRef.current?.();
+        
+        const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'linkedin');
+        if (detail.action === 'generated' && isActivelyGenerating && detail.data) {
+          // Instantly close the overlay
+          setGenerating(false);
+          setGeneratingLinkedin(false);
+          setGenProgress(null);
+          api.post('/blogs/generation-clear').catch(() => {});
+
+          // Set output and open preview drawer
+          setLinkedinOutput(detail.data);
+          setContentType('social');
+          setOutputDrawerOpen(true);
+        }
+      }
     };
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-    window.addEventListener('focus', refreshVisibleData);
-    document.addEventListener('visibilitychange', refreshVisibleData);
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-      window.removeEventListener('focus', refreshVisibleData);
-      document.removeEventListener('visibilitychange', refreshVisibleData);
     };
-  }, [loadArticles, loadBlogs, loadSocialPosts]);
+  }, []);
+
   useEffect(() => {
+    if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
+    loadArticles({ page: 1, reset: true });
+  }, [cachedStudioState?.articles?.length, hasTopicFilters, loadArticles]);
+  useEffect(() => {
+    if (cachedStudioState?.blogs?.length && !hasBlogSearch) return;
+    loadBlogs({ page: 1, reset: true });
+  }, [cachedStudioState?.blogs?.length, hasBlogSearch, loadBlogs]);
+  useEffect(() => {
+    if (!cachedStudioState?.socialPosts?.length) loadSocialPosts();
+  }, [cachedStudioState?.socialPosts?.length, loadSocialPosts]);
+  useEffect(() => {
+    const cachedCategoryCount = Object.keys(cachedStudioState?.topicMeta?.dataCategories || cachedStudioState?.topicMeta?.categories || {}).length;
+    const cachedCountryCount = Array.isArray(cachedStudioState?.topicMeta?.countries) ? cachedStudioState.topicMeta.countries.length : 0;
+    if (cachedStudioState?.topicMeta && cachedCategoryCount > 0 && cachedCountryCount > 0) return;
     api.get('/articles/meta/filters')
       .then(({ data }) => setTopicMeta({ ...EMPTY_META, ...data }))
       .catch(() => setTopicMeta(EMPTY_META));
-  }, []);
+  }, [cachedStudioState?.topicMeta]);
   useEffect(() => {
     if (inboundState.contentType) setContentType(inboundState.contentType);
     if (inboundState.socialPlatform) setSocialPlatform(inboundState.socialPlatform);
@@ -297,6 +617,59 @@ export default function BlogStudio() {
     });
   }, [selectedBlog]);
 
+  useEffect(() => {
+    safeSessionSet(studioCacheKey, {
+      contentType,
+      socialPlatform,
+      articles,
+      blogs,
+      articlesPage,
+      articlesHasMore,
+      blogsPage,
+      blogsHasMore,
+      selectedArticle,
+      selectedBlog,
+      socialPosts,
+      style,
+      keywords,
+      topicMeta,
+      topicFilters,
+    blogQuery
+  });
+  }, [
+    articles,
+    articlesHasMore,
+    articlesPage,
+    blogQuery,
+    blogs,
+    blogsHasMore,
+    blogsPage,
+    contentType,
+    keywords,
+    selectedArticle,
+    selectedBlog,
+    socialPlatform,
+    socialPosts,
+    studioCacheKey,
+    style,
+    topicFilters,
+    topicMeta
+  ]);
+
+  const articleLoadMoreRef = useInfiniteScroll({
+    enabled: contentType === 'blog' || contentType === 'social',
+    hasMore: articlesHasMore,
+    loading: loadingArticles,
+    onLoadMore: () => loadArticles({ page: articlesPage + 1 })
+  });
+
+  const blogLoadMoreRef = useInfiniteScroll({
+    enabled: contentType === 'blog' && draftDrawerOpen,
+    hasMore: blogsHasMore,
+    loading: loadingBlogs,
+    onLoadMore: () => loadBlogs({ page: blogsPage + 1 })
+  });
+
   const deleteBlogsInternal = useCallback(async (ids) => {
     const targetIds = ids.filter(Boolean);
     if (!targetIds.length) return;
@@ -315,13 +688,24 @@ export default function BlogStudio() {
     if (targetIds.includes(pendingDraftId)) {
       setPendingDraftId('');
     }
-    await loadBlogs();
+    await loadBlogs({ page: 1, reset: true });
     emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
   }, [loadBlogs, pendingDraftId, selectedBlog?._id]);
 
   const closeDraftDrawer = useCallback(async () => {
     const draftId = pendingDraftId;
     const shouldDeletePendingDraft = draftId && selectedBlog?._id === draftId && selectedBlog?.status === 'draft';
+
+    if (shouldDeletePendingDraft) {
+      const confirmSave = window.confirm("You have unsaved changes. Do you want to save this blog draft before closing?");
+      if (confirmSave) {
+        // Keeping the draft is as simple as clearing pendingDraftId so it doesn't get deleted!
+        setPendingDraftId('');
+        setDraftDrawerOpen(false);
+        setDraftEditorOpen(false);
+        return;
+      }
+    }
 
     setDraftDrawerOpen(false);
     setDraftEditorOpen(false);
@@ -342,23 +726,20 @@ export default function BlogStudio() {
     }
     setError('');
     setGenerating(true);
+    setGenProgress({ type: 'blog', status: 'running', startedAt: new Date().toISOString() });
     try {
-      const { data } = await api.post('/blogs/generate', {
+      await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
         style,
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
         status: 'draft'
       });
-      setSelectedBlog(data.item);
-      setPendingDraftId(data.item?._id || '');
-      setDraftDrawerOpen(true);
-      setDraftEditorOpen(true);
-      await loadBlogs();
-      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
-    } finally {
+      setGenProgress(null);
       setGenerating(false);
+    } finally {
+      // The backend completes generation in the background; AuthContext polling opens the finished draft.
     }
   };
 
@@ -369,7 +750,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, { status });
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs();
+      setBlogs((prev) => prev.map((blog) => blog._id === data.item._id ? data.item : blog));
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'status', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Status update failed');
@@ -386,7 +767,7 @@ export default function BlogStudio() {
       const { data } = await api.patch(`/blogs/${selectedBlog._id}`, draftForm);
       setSelectedBlog(data.item);
       setPendingDraftId('');
-      await loadBlogs();
+      setBlogs((prev) => prev.map((blog) => blog._id === data.item._id ? data.item : blog));
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
       setError(err.message || 'Draft save failed');
@@ -428,11 +809,11 @@ export default function BlogStudio() {
     try {
       const latestUser = await refreshMe();
       if (latestUser?.access?.canUseBlogStudio === false) {
-        setError('Social Media Studio access has been turned off by the super admin.');
+        setError('Content Studio access has been turned off by the super admin.');
         return;
       }
     } catch (err) {
-      setError(err.message || 'Could not verify Social Media Studio access');
+      setError(err.message || 'Could not verify Content Studio access');
       return;
     }
 
@@ -442,16 +823,16 @@ export default function BlogStudio() {
     }
     setError('');
     setGeneratingLinkedin(true);
+    setGenProgress({ type: 'linkedin', status: 'running', startedAt: new Date().toISOString() });
     try {
-      const { data } = await api.post('/blogs/linkedin/generate', {
+      await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
         options: linkedinForm
       });
-      setLinkedinOutput(data.item);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
-    } finally {
       setGeneratingLinkedin(false);
+      setGenProgress(null);
     }
   };
 
@@ -485,60 +866,161 @@ export default function BlogStudio() {
     }
   };
 
-  const resetStudioComposer = useCallback(() => {
-    setSelectedArticle(null);
-    setSelectedBlog(null);
-    setSelectedBlogIds([]);
-    setDraftForm({ title: '', excerpt: '', bodyMarkdown: '' });
-    setDraftEditorOpen(false);
-    setDraftDrawerOpen(false);
-    setPendingDraftId('');
-    setKeywords('');
-    setStyle(DEFAULT_STYLE);
-    setLinkedinForm(DEFAULT_LINKEDIN_FORM);
-    setLinkedinOutput(null);
-    setBlogQuery('');
-    setError('');
-  }, []);
-
   const refreshStudio = useCallback(() => {
-    resetStudioComposer();
-    loadArticles();
-    loadBlogs();
+    if (contentType === 'blog') {
+      loadArticles({ page: 1, reset: true });
+      loadBlogs({ page: 1, reset: true });
+      return;
+    }
+    loadArticles({ page: 1, reset: true });
     loadSocialPosts();
-  }, [loadArticles, loadBlogs, loadSocialPosts, resetStudioComposer]);
+  }, [contentType, loadArticles, loadBlogs, loadSocialPosts]);
 
-  const headerActions = (
-    <div className="flex items-center gap-2">
-      <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+  const switchContentType = useCallback((nextType) => {
+    if (nextType === contentType) return true;
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return false;
+    }
+    setContentType(nextType);
+    return true;
+  }, [contentType, generationLocked, showGenerationLockMessage]);
+
+  const refreshStudioSafely = useCallback(() => {
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
+    refreshStudio();
+  }, [generationLocked, refreshStudio, showGenerationLockMessage]);
+
+  useEffect(() => {
+    setMobileHeaderMenuOpen(false);
+  }, [contentType, socialPreviewOpen]);
+
+  const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
+  const ActiveContentIcon = activeContentTab.icon;
+  const generationOverlayTitle = isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft';
+  const generationOverlaySubtitle = isGeneratingLinkedin
+    ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
+    : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.';
+  const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
+
+  const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
+    <>
+    <div className="flex w-full items-center justify-between gap-3 xl:flex-row xl:items-center">
+      <div className="flex items-center gap-2 xl:hidden">
         <button
           type="button"
-          onClick={() => setContentType('blog')}
-          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'blog' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+          onClick={() => setMobileHeaderMenuOpen((value) => !value)}
+          className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
         >
-          <BookOpenText size={14} />
-          Blog
-        </button>
-        <button
-          type="button"
-          onClick={() => setContentType('social')}
-          className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-black transition-all ${contentType === 'social' ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
-        >
-          <MessageSquareText size={14} />
-          Social Media Post
+          <ActiveContentIcon size={14} />
+          {activeContentTab.label}
         </button>
       </div>
-      <button type="button" onClick={refreshStudio} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
-        <RefreshCw size={14} />
-        Refresh
-      </button>
+      <div className="ml-auto flex items-center gap-2 xl:hidden">
+        <button
+          type="button"
+          onClick={refreshStudioSafely}
+          className={`inline-flex h-[42px] min-w-[42px] items-center justify-center gap-2 rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30 ${generationLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          aria-label="Refresh content studio"
+          title={generationLocked ? 'Generation is running. Please wait before refreshing.' : 'Refresh content studio'}
+        >
+          <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileHeaderMenuOpen((value) => !value)}
+          className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+          aria-label="Open content menu"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
+      <div className="hidden w-full xl:flex xl:flex-row xl:items-center xl:gap-2">
+        <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm xl:w-auto xl:min-w-[360px]">
+          {CONTENT_TYPE_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = contentType === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => switchContentType(tab.key)}
+                aria-disabled={generationLocked && !active}
+                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
+              >
+                <Icon size={14} />
+                <span className="xl:hidden">{tab.label}</span>
+                <span className="hidden xl:inline">{tab.desktopLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button type="button" onClick={refreshStudioSafely} title={generationLocked ? 'Generation is running. Please wait before refreshing.' : 'Refresh'} className={`inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50 xl:w-auto ${generationLocked ? 'cursor-not-allowed opacity-60' : ''}`}>
+          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
     </div>
+    {mobileHeaderMenuOpen ? (
+      <>
+        <button
+          type="button"
+          aria-label="Close content menu"
+          onClick={() => setMobileHeaderMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] xl:hidden"
+        />
+        <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] xl:hidden">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Content Studio</div>
+              <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileHeaderMenuOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+              aria-label="Close content menu"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <div className="space-y-2 p-3">
+            {CONTENT_TYPE_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = contentType === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    const switched = switchContentType(tab.key);
+                    if (switched || active) setMobileHeaderMenuOpen(false);
+                  }}
+                  aria-disabled={generationLocked && !active}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
+                >
+                  <span className="flex items-center gap-3 text-sm font-black">
+                    <Icon size={15} />
+                    {tab.label}
+                  </span>
+                  {active ? <Check size={15} /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    ) : null}
+    </>
   );
 
   return (
     <Layout headerActions={headerActions}>
       <div className="relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
-        <div className={CONTENT_STUDIO_UPCOMING_MODE ? 'pointer-events-none select-none blur-[5px] saturate-[0.82]' : ''}>
+        <div className={(CONTENT_STUDIO_UPCOMING_MODE || generationLocked) ? 'pointer-events-none select-none blur-[5px] saturate-[0.82] transition-all duration-300' : 'transition-all duration-300'}>
         {error && (
           <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
             {error}
@@ -552,6 +1034,8 @@ export default function BlogStudio() {
                 socialPlatform={socialPlatform}
                 setSocialPlatform={setSocialPlatform}
                 articles={articles}
+                articlesHasMore={articlesHasMore}
+                articleLoadMoreRef={articleLoadMoreRef}
                 selectedArticle={selectedArticle}
                 setSelectedArticle={setSelectedArticle}
                 loadingArticles={loadingArticles}
@@ -559,12 +1043,13 @@ export default function BlogStudio() {
                 updateTopicFilter={updateTopicFilter}
                 categoryOptions={categoryOptions}
                 subcategoryOptions={subcategoryOptions}
-                countries={topicMeta.countries || []}
+                countries={countryOptions}
                 types={topicMeta.types || EMPTY_META.types}
                 linkedinForm={linkedinForm}
                 setLinkedinForm={setLinkedinForm}
-                generatingLinkedin={generatingLinkedin}
+                generatingLinkedin={isGeneratingLinkedin}
                 generateLinkedinPost={generateLinkedinPost}
+                cancelGeneration={cancelGeneration}
                 saveLinkedinPost={saveLinkedinPost}
                 canUseBlogStudio={canUseBlogStudio}
                 linkedinOutput={linkedinOutput}
@@ -572,6 +1057,8 @@ export default function BlogStudio() {
                 savingLinkedinPost={savingLinkedinPost}
                 socialPosts={socialPosts}
                 loadingSocialPosts={loadingSocialPosts}
+                focusComposerMode={focusComposerMode}
+                onPreviewOpenChange={setSocialPreviewOpen}
               />
             )}
           </div>
@@ -582,22 +1069,22 @@ export default function BlogStudio() {
         <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-2 xl:grid-cols-2">
           
           {/* Panel 1: Topics */}
-          <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel xl:h-[calc(100vh-96px)]">
+          <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm group/panel xl:h-[calc(100vh-96px)]`}>
             <PanelHeader icon={Layers} title="Intelligence Topics" />
             <TopicFilterBar
               filters={topicFilters}
               onChange={updateTopicFilter}
               categoryOptions={categoryOptions}
               subcategoryOptions={subcategoryOptions}
-              countries={topicMeta.countries || []}
+              countries={countryOptions}
               types={topicMeta.types || EMPTY_META.types}
             />
             
             <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-3 custom-scrollbar">
-              {loadingArticles ? (
+              {loadingArticles && !articles.length ? (
                 <LoadingRows label="Loading intelligence topics..." />
               ) : articles.length ? (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
                   {articles.map((item) => {
                     const isSelected = selectedArticle?._id === item._id;
                     return (
@@ -643,6 +1130,11 @@ export default function BlogStudio() {
                       </div>
                     );
                   })}
+                  {articlesHasMore ? (
+                    <div ref={articleLoadMoreRef} className="col-span-full flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                      {loadingArticles ? 'Loading more...' : 'Scroll for more'}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <Empty icon={FileText} label="No topics found matching criteria" />
@@ -741,7 +1233,7 @@ export default function BlogStudio() {
                   <SelectField label="Content Outline (TOC)" value={style.outlineMode} onChange={(value) => setStyle({ ...style, outlineMode: value })} options={STYLE_OPTIONS.outlineMode} />
                   {style.outlineMode === 'custom' && (
                     <Field label="Custom Outline">
-                      <textarea className="input rounded-xl min-h-[100px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customOutline} onChange={(e) => setStyle({ ...style, customOutline: e.target.value })} placeholder="Add headings or bullet outline..." />
+                    <textarea className="input rounded-xl min-h-[100px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.customOutline} onChange={(e) => setStyle({ ...style, customOutline: e.target.value })} placeholder="Add headings or bullet outline..." />
                     </Field>
                   )}
                 </SettingsGroup>
@@ -760,7 +1252,7 @@ export default function BlogStudio() {
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaButtonText} onChange={(e) => setStyle({ ...style, ctaButtonText: e.target.value })} />
                   </Field>
                   <Field label="CTA Description">
-                    <textarea className="input rounded-xl min-h-[72px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
+                    <textarea className="input rounded-xl min-h-[72px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
                   </Field>
                   <Field label="CTA URL (optional)">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaUrl} onChange={(e) => setStyle({ ...style, ctaUrl: e.target.value })} />
@@ -769,7 +1261,7 @@ export default function BlogStudio() {
 
                 <SettingsGroup title="Additional Context">
                   <Field label="Key Points to Cover">
-                    <textarea className="input rounded-xl min-h-[90px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
+                    <textarea className="input rounded-xl min-h-[90px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
                   </Field>
                   <Field label="Competitor URLs (optional)">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.competitorUrls} onChange={(e) => setStyle({ ...style, competitorUrls: e.target.value })} placeholder="Comma separated" />
@@ -782,7 +1274,7 @@ export default function BlogStudio() {
                 </SettingsGroup>
               </div>
               {false && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 <SelectField label="Tone" value={style.tone} onChange={(value) => setStyle({ ...style, tone: value })} options={STYLE_OPTIONS.tone} />
                 <SelectField label="Format" value={style.format} onChange={(value) => setStyle({ ...style, format: value })} options={STYLE_OPTIONS.format} />
                 <SelectField label="Length" value={style.length} onChange={(value) => setStyle({ ...style, length: value })} options={STYLE_OPTIONS.length} />
@@ -794,21 +1286,21 @@ export default function BlogStudio() {
                   <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. startup funding, AI regulation" />
                 </Field>
                 <Field label="Call to Action (CTA)">
-                  <textarea className="input rounded-xl min-h-[64px] resize-y md:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.cta} onChange={(e) => setStyle({ ...style, cta: e.target.value })} />
+                  <textarea className="input rounded-xl min-h-[64px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.cta} onChange={(e) => setStyle({ ...style, cta: e.target.value })} />
                 </Field>
               </div>
               )}
             </div>
             
             <div className="border-t border-gray-200/50 bg-white/70 p-4 backdrop-blur">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
                 <button 
                   type="button" 
                   onClick={generate} 
-                  disabled={generating || !selectedArticle} 
+                  disabled={isGenerating || !selectedArticle} 
                   className="btn-primary w-full py-3 text-base rounded-xl font-black tracking-wide shadow-lg hover:shadow-brand-crimson/20 transition-all hover-lift disabled:hover:translate-y-0 relative overflow-hidden group"
                 >
-                  {generating ? (
+                  {isGenerating ? (
                     <>
                       <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
                       <Loader2 size={18} className="animate-spin relative z-10" />
@@ -829,9 +1321,6 @@ export default function BlogStudio() {
                   <BookOpenText size={16} />
                   Drafts & Publishing
                 </button>
-              </div>
-              <div className="mt-3 text-xs font-semibold text-gray-500">
-                After generation, the draft will open in the right-side drawer. If you close it without saving or publishing, the temporary draft will be removed.
               </div>
             </div>
           </section>
@@ -858,10 +1347,54 @@ export default function BlogStudio() {
           setDraftForm={setDraftForm}
           saveDraftEdits={saveDraftEdits}
           savingDraft={savingDraft}
+          blogsHasMore={blogsHasMore}
+          blogLoadMoreRef={blogLoadMoreRef}
         />
         </>
         )}
         </div>
+        {generationLocked ? (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px)' }}>
+            <div className="relative w-full max-w-[320px]">
+              {/* Ultra-soft ambient pink glow */}
+              <div className="absolute -inset-10 rounded-[50px] bg-brand-pink/20 blur-3xl pointer-events-none" />
+
+              <div className="relative overflow-hidden rounded-[24px] border border-gray-100 bg-white p-7 text-center shadow-[0_24px_50px_rgba(209,18,67,0.06)]">
+                
+                {/* Single premium custom spinner */}
+                <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center">
+                  {/* Rotating clean gradient track */}
+                  <div className="absolute inset-0 rounded-full border-[2px] border-gray-100" />
+                  <div className="absolute inset-0 rounded-full border-[2px] border-transparent border-t-brand-crimson animate-spin" />
+                  {/* Central soft logo indicator */}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-pink/30 text-brand-crimson shadow-[inset_0_1px_2px_rgba(209,18,67,0.05)] animate-pulse">
+                    {isGeneratingLinkedin ? (
+                      <MessageSquareText size={18} />
+                    ) : (
+                      <BookOpenText size={18} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Plain, premium text */}
+                <h3 className="text-base font-black text-gray-900 tracking-tight">{generationOverlayTitle}</h3>
+                <p className="mt-1 text-xs font-semibold text-gray-400">AI is crafting your post. Please wait...</p>
+
+                {/* Extremely minimal cancel link */}
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={cancelGeneration}
+                    className="text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-brand-crimson transition-colors"
+                  >
+                    Cancel Generation
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        ) : null}
         {CONTENT_STUDIO_UPCOMING_MODE ? <UpcomingStudioOverlay /> : null}
       </div>
     </Layout>
@@ -903,7 +1436,9 @@ function BlogDraftDrawer({
   draftForm,
   setDraftForm,
   saveDraftEdits,
-  savingDraft
+  savingDraft,
+  blogsHasMore,
+  blogLoadMoreRef
 }) {
   const allBlogsSelected = blogs.length > 0 && selectedBlogIds.length === blogs.length;
 
@@ -931,8 +1466,8 @@ function BlogDraftDrawer({
             </button>
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
-            <aside className="flex min-h-[260px] flex-col border-b border-gray-100 bg-gray-50/60 lg:min-h-0 lg:border-b-0 lg:border-r">
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+            <aside className={`${draftEditorOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col border-b border-gray-100 bg-gray-50/60 xl:min-h-0 xl:border-b-0 xl:border-r`}>
               <div className="border-b border-gray-100 bg-white p-3">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -953,61 +1488,73 @@ function BlogDraftDrawer({
                 ) : null}
               </div>
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
-                {loadingBlogs ? (
+                {loadingBlogs && !blogs.length ? (
                   <LoadingRows label="Loading drafts..." />
-                ) : blogs.length ? blogs.map((blog) => {
-                  const selectedForBulk = selectedBlogIds.includes(blog._id);
-                  const active = selectedBlog?._id === blog._id;
-                  return (
-                    <div
-                      key={blog._id}
-                      className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleBlogSelection(blog._id)}
-                          className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
-                          title={selectedForBulk ? 'Unselect' : 'Select'}
+                ) : blogs.length ? (
+                  <>
+                    {blogs.map((blog) => {
+                      const selectedForBulk = selectedBlogIds.includes(blog._id);
+                      const active = selectedBlog?._id === blog._id;
+                      return (
+                        <div
+                          key={blog._id}
+                          className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${active ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'}`}
                         >
-                          {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBlog(blog);
-                            setDraftEditorOpen(false);
-                          }}
-                          onDoubleClick={() => {
-                            setSelectedBlog(blog);
-                            setDraftEditorOpen(true);
-                          }}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <div className="mb-2 flex items-start justify-between gap-2">
-                            <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
-                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                              blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                              blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                              'bg-gray-50 text-gray-500 border-gray-200'
-                            }`}>
-                              {blog.status}
-                            </span>
+                          <div className="flex items-start gap-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleBlogSelection(blog._id)}
+                              className={`mt-0.5 rounded-lg p-1 transition-all ${selectedForBulk ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                              title={selectedForBulk ? 'Unselect' : 'Select'}
+                            >
+                              {selectedForBulk ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedBlog(blog);
+                                setDraftEditorOpen(true);
+                              }}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <div className="mb-2 flex items-start justify-between gap-2">
+                                <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
+                                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                                  blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                  blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  'bg-gray-50 text-gray-500 border-gray-200'
+                                }`}>
+                                  {blog.status}
+                                </span>
+                              </div>
+                              <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
+                            </button>
                           </div>
-                          <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
-                        </button>
+                        </div>
+                      );
+                    })}
+                    {blogsHasMore ? (
+                      <div ref={blogLoadMoreRef} className="flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                        {loadingBlogs ? 'Loading more...' : 'Scroll for more'}
                       </div>
-                    </div>
-                  );
-                }) : (
+                    ) : null}
+                  </>
+                ) : (
                   <Empty icon={BookOpenText} label="No drafts generated yet" />
                 )}
               </div>
             </aside>
 
-            <div className="min-h-[560px] overflow-y-auto bg-white p-4 custom-scrollbar lg:min-h-0">
+            <div className={`${draftEditorOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto bg-white p-4 custom-scrollbar xl:min-h-0`}>
               {selectedBlog && draftEditorOpen ? (
                 <div className="animate-fade-in-up stagger-1">
+                  <button
+                    type="button"
+                    onClick={() => setDraftEditorOpen(false)}
+                    className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
+                  >
+                    Back to drafts
+                  </button>
                   <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -1050,7 +1597,7 @@ function BlogDraftDrawer({
                   </div>
                   <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
                   <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
-                    Double-click this draft in the list to open edit mode.
+                    Click this draft in the list to open edit mode.
                   </p>
                   <button
                     type="button"
@@ -1061,7 +1608,7 @@ function BlogDraftDrawer({
                   </button>
                 </div>
               ) : (
-                <Empty icon={Settings2} label="Double-click a draft to open" />
+                <Empty icon={Settings2} label="Click a draft to open" />
               )}
             </div>
           </div>
@@ -1189,7 +1736,12 @@ function CompactPlatformSelector({ value, onChange }) {
   );
 }
 
-function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, onSelectSaved, onSave, saving = false }) {
+function LinkedInOutputPreview({
+  output,
+  onSave,
+  saving = false,
+  onBackToList
+}) {
   const [copied, setCopied] = useState(false);
 
   const copyOutput = useCallback(async () => {
@@ -1204,97 +1756,134 @@ function LinkedInOutputPreview({ output, savedPosts = [], loadingSaved = false, 
     }
   }, [output]);
 
-  if (!output) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/50 p-4 custom-scrollbar">
-        <div className="mb-4 rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-pink/40 text-brand-crimson shadow-sm ring-1 ring-gray-100">
-            <MessageSquareText size={20} />
-          </div>
-          <div className="text-sm font-black text-gray-900">Output will appear here</div>
-          <p className="mt-2 max-w-xs text-xs font-semibold leading-relaxed text-gray-500">Select a topic, tune the settings, and generate a post.</p>
-        </div>
-        <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} />
+  const emptyPreview = (
+    <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
+        <MessageSquareText size={18} />
       </div>
-    );
-  }
+      <div className="max-w-sm text-sm font-black text-gray-900">No post selected</div>
+      <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
+        Generate a post or open one from the saved posts list.
+      </p>
+    </div>
+  );
+
+  const previewPanel = output ? (
+    <>
+      <button
+        type="button"
+        onClick={onBackToList}
+        className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
+      >
+        <ArrowLeft size={13} />
+        Back to saved posts
+      </button>
+      <div className="animate-fade-in-up stagger-1">
+        <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Platform</span>
+              <span className="rounded-full border border-brand-crimson/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                {output.framework || 'LinkedIn'}
+              </span>
+              {output.topicTier ? (
+                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  {output.topicTier}
+                </span>
+              ) : null}
+              {output.emotionalJob ? (
+                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  {output.emotionalJob}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {!output.saved ? (
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={saving}
+                  className="group relative inline-flex min-h-[40px] items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-brand-crimson to-brand-hoverred px-5 py-2 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_0_0_3px_rgba(209,18,67,0.15),0_4px_14px_rgba(209,18,67,0.35)] transition-all hover:shadow-[0_0_0_4px_rgba(209,18,67,0.2),0_6px_20px_rgba(209,18,67,0.45)] hover:scale-[1.03] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
+                >
+                  {/* shimmer sweep */}
+                  <span className="absolute inset-0 -translate-x-full skew-x-[-20deg] bg-white/20 transition-transform duration-700 group-hover:translate-x-full" />
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  {saving ? 'Saving...' : 'Save Post'}
+                </button>
+              ) : (
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
+              )}
+              <button
+                type="button"
+                onClick={copyOutput}
+                className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <div className="text-sm font-black leading-snug text-gray-900">
+            {output.selectedTopic || 'LinkedIn post preview'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
+              <div className="min-w-0">
+                <div className="text-sm font-black text-gray-900">Admin</div>
+                <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
+              </div>
+            </div>
+            <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
+              {output.postText}
+            </div>
+            {Array.isArray(output.hashtags) && output.hashtags.length ? (
+              <div className="mt-4 border-t border-gray-100 pt-4 text-sm font-bold leading-relaxed text-brand-crimson">
+                {output.hashtags.join(' ')}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </>
+  ) : emptyPreview;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/60 p-4 custom-scrollbar">
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-brand-crimson px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">{output.framework || 'LinkedIn'}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.topicTier || 'Tier'}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">{output.emotionalJob || 'Job'}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!output.saved ? (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={saving}
-                className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg bg-brand-crimson px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-brand-hoverred disabled:opacity-60"
-              >
-                {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            ) : (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
-            )}
-            <button
-              type="button"
-              onClick={copyOutput}
-              className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-        </div>
-        <div className="mb-3 text-sm font-black leading-snug text-gray-900">{output.selectedTopic}</div>
-        <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-inner">
-          <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
-            <div className="min-w-0">
-              <div className="text-sm font-black text-gray-900">Admin</div>
-              <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
-            </div>
-          </div>
-          <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
-            {output.postText}
-          </div>
-        </div>
-        {Array.isArray(output.hashtags) && output.hashtags.length ? (
-          <div className="mt-3 break-words text-sm font-bold leading-relaxed text-brand-crimson">{output.hashtags.join(' ')}</div>
-        ) : null}
-      </div>
-      <SavedSocialPostsList posts={savedPosts} loading={loadingSaved} onSelect={onSelectSaved} activeId={output.saved ? output._id : ''} />
+      {previewPanel}
     </div>
   );
 }
 
-function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId }) {
+function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId, className = 'mt-4' }) {
   return (
-    <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-500">Saved Posts</div>
-        {loading ? <Loader2 size={14} className="animate-spin text-brand-crimson" /> : null}
-      </div>
+    <div className={className}>
       {posts.length ? (
         <div className="space-y-2">
           {posts.map((post) => (
-            <button
+            <div
               key={post._id}
-              type="button"
-              onClick={() => onSelect?.(post)}
-              className={`w-full rounded-xl border p-3 text-left transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/10 ${
-                activeId === post._id ? 'border-brand-crimson bg-brand-pink/20' : 'border-gray-100 bg-white'
+              className={`w-full rounded-xl border bg-white p-3 text-left transition-all duration-200 hover:border-gray-200 hover:shadow-sm ${
+                activeId === post._id ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'
               }`}
             >
-              <div className="line-clamp-2 text-xs font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
-              <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-relaxed text-gray-500">{post.postText}</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelect?.(post)}
+                className="w-full text-left"
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <span className="line-clamp-2 text-sm font-black leading-tight text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</span>
+                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                    Published
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
+              </button>
+            </div>
           ))}
         </div>
       ) : (
@@ -1411,6 +2000,8 @@ function LinkedInStudio({
   socialPlatform,
   setSocialPlatform,
   articles,
+  articlesHasMore,
+  articleLoadMoreRef,
   selectedArticle,
   setSelectedArticle,
   loadingArticles,
@@ -1424,31 +2015,44 @@ function LinkedInStudio({
   setLinkedinForm,
   generatingLinkedin,
   generateLinkedinPost,
+  cancelGeneration,
   saveLinkedinPost,
   canUseBlogStudio,
   linkedinOutput,
   setLinkedinOutput,
   savingLinkedinPost,
   socialPosts,
-  loadingSocialPosts
+  loadingSocialPosts,
+  focusComposerMode = false,
+  onPreviewOpenChange
 }) {
   const update = (key, value) => setLinkedinForm({ ...linkedinForm, [key]: value });
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
+  const hasMountedOutputEffect = useRef(false);
   const selectArticleById = (articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
   };
 
   useEffect(() => {
-    if (linkedinOutput) setOutputDrawerOpen(true);
-  }, [linkedinOutput]);
+    if (!hasMountedOutputEffect.current) {
+      hasMountedOutputEffect.current = true;
+      return;
+    }
+    if (linkedinOutput?.postText) setOutputDrawerOpen(true);
+  }, [linkedinOutput?._id, linkedinOutput?.postText]);
+
+  useEffect(() => {
+    onPreviewOpenChange?.(outputDrawerOpen);
+    return () => onPreviewOpenChange?.(false);
+  }, [onPreviewOpenChange, outputDrawerOpen]);
 
   return (
     <>
     <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 xl:grid-cols-2">
-      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+      <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]`}>
         <PanelHeader icon={Layers} title="Intelligence Topics" />
         <TopicFilterBar
           filters={topicFilters}
@@ -1459,10 +2063,10 @@ function LinkedInStudio({
           types={types}
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/30 p-4 custom-scrollbar">
-          {loadingArticles ? (
+          {loadingArticles && !articles.length ? (
             <LoadingRows label="Loading intelligence topics..." />
           ) : articles.length ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
               {articles.map((item) => {
                 const isSelected = selectedArticle?._id === item._id;
                 return (
@@ -1508,6 +2112,11 @@ function LinkedInStudio({
                   </div>
                 );
               })}
+              {articlesHasMore ? (
+                <div ref={articleLoadMoreRef} className="col-span-full flex items-center justify-center py-3 text-xs font-bold text-gray-400">
+                  {loadingArticles ? 'Loading more...' : 'Scroll for more'}
+                </div>
+              ) : null}
             </div>
           ) : (
             <Empty icon={FileText} label="No topics found matching criteria" />
@@ -1515,14 +2124,14 @@ function LinkedInStudio({
         </div>
       </section>
 
-      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:h-[calc(100vh-96px)]">
+      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
         <PanelHeader icon={Settings2} title="Post Builder" subtitle="Customize before generation" />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
           <div className="space-y-4">
             <SettingsGroup title="Platform & Source">
-              <div className="md:col-span-2">
+                <div className="xl:col-span-2">
                 <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
               </div>
               <div
@@ -1536,7 +2145,7 @@ function LinkedInStudio({
                   setDropActive(false);
                   selectArticleById(event.dataTransfer.getData('text/plain'));
                 }}
-                className={`md:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
+                className={`xl:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
               >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
@@ -1603,6 +2212,7 @@ function LinkedInStudio({
                 onChange={(value) => update('hookStyle', value)}
                 options={[
                   ['proof', 'Proof-led'],
+                  ['warning', 'Warning-led'],
                   ['contrarian', 'Contrarian'],
                   ['personal_story', 'Personal story'],
                   ['insight', 'Insight-led'],
@@ -1618,6 +2228,7 @@ function LinkedInStudio({
                   ['auto', 'Auto select'],
                   ['SLAY', 'SLAY - story-led authority'],
                   ['PAS', 'PAS - pain-driven inbound'],
+                  ['PRA', 'PRA - problem-risk-action'],
                   ['POV', 'POV - high reach'],
                   ['5-Line Mirror', '5-Line Mirror'],
                   ['AIDA', 'AIDA - conversion']
@@ -1630,6 +2241,7 @@ function LinkedInStudio({
                 options={[
                   ['auto', 'Auto select'],
                   ['Broad', 'Broad - reach'],
+                  ['Practical', 'Practical - decision-useful'],
                   ['Narrow', 'Narrow - authority'],
                   ['Niche', 'Niche - conversion']
                 ]}
@@ -1642,6 +2254,8 @@ function LinkedInStudio({
                   ['auto', 'Auto select'],
                   ['Inspire', 'Inspire'],
                   ['Educate', 'Educate'],
+                  ['Urgency', 'Urgency'],
+                  ['Reassure', 'Reassure'],
                   ['Provoke', 'Provoke'],
                   ['Convert', 'Convert']
                 ]}
@@ -1659,7 +2273,7 @@ function LinkedInStudio({
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
               </Field>
               <Field label="Call to Action">
-                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} />
+                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} placeholder="Optional - leave blank for a contextual CTA" />
               </Field>
               <Field label="Soft Authority Line">
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />
@@ -1687,7 +2301,7 @@ function LinkedInStudio({
         </div>
 
         <div className="border-t border-gray-200/50 bg-white/70 p-5 backdrop-blur">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid grid-cols-1 gap-3">
             <button
               type="button"
               disabled={generatingLinkedin || !canUseBlogStudio}
@@ -1697,17 +2311,9 @@ function LinkedInStudio({
               {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
               {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
             </button>
-            <button
-              type="button"
-              onClick={() => setOutputDrawerOpen(true)}
-              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
-            >
-              <MessageSquareText size={16} />
-              Saved Posts & Preview
-            </button>
           </div>
           <div className="mt-3 text-xs font-semibold text-gray-500">
-            After generation, the post preview will open in the right-side drawer. You can also reopen saved posts from there anytime.
+            After generation, the post preview will open in the right-side drawer.
           </div>
         </div>
       </section>
@@ -1715,6 +2321,13 @@ function LinkedInStudio({
     <SocialOutputDrawer
       open={outputDrawerOpen}
       onClose={() => {
+        if (linkedinOutput && !linkedinOutput.saved) {
+          const confirmSave = window.confirm("You have unsaved changes. Do you want to save this LinkedIn post before closing?");
+          if (confirmSave) {
+            saveLinkedinPost();
+            return;
+          }
+        }
         setOutputDrawerOpen(false);
         if (!linkedinOutput?.saved) setLinkedinOutput(null);
       }}
@@ -1733,6 +2346,51 @@ function LinkedInStudio({
 }
 
 function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, onSelectSaved, onSave, saving }) {
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [savedPostsQuery, setSavedPostsQuery] = useState('');
+  const drawerRef = useRef(null);
+  const listPaneRef = useRef(null);
+  const previewPaneRef = useRef(null);
+  const filteredSavedPosts = useMemo(() => {
+    const query = savedPostsQuery.trim().toLowerCase();
+    if (!query) return savedPosts;
+    return savedPosts.filter((post) => (
+      [post?.selectedTopic, post?.postText, post?.framework]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    ));
+  }, [savedPosts, savedPostsQuery]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSavedPostsQuery('');
+    setMobilePreviewOpen(Boolean(output));
+  }, [open, output?._id, output?.postText]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const resetScroll = () => {
+      drawerRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      if (mobilePreviewOpen) {
+        previewPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      } else {
+        listPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      }
+    };
+    resetScroll();
+    const frameId = window.requestAnimationFrame(resetScroll);
+    const timeoutId = window.setTimeout(resetScroll, 40);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [open, mobilePreviewOpen, output?._id]);
+
+  const selectSavedPost = useCallback((post) => {
+    onSelectSaved?.(post);
+    setMobilePreviewOpen(true);
+  }, [onSelectSaved]);
+
   return (
     <>
       <div
@@ -1740,12 +2398,13 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
         className={`fixed inset-0 z-40 bg-gray-950/30 backdrop-blur-[2px] transition-opacity duration-300 ${open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
       />
       <aside
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[620px] border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        ref={drawerRef}
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[620px] overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div className="min-w-0">
-              <div className="text-base font-black text-gray-900">Output Preview</div>
+              <div className="text-base font-black text-gray-900">Saved Posts & Preview</div>
               <div className="text-xs font-semibold text-gray-500">Review the generated post and reopen saved posts from here.</div>
             </div>
             <button
@@ -1756,14 +2415,51 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
               Close
             </button>
           </div>
-          <LinkedInOutputPreview
-            output={output}
-            savedPosts={savedPosts}
-            loadingSaved={loadingSaved}
-            onSelectSaved={onSelectSaved}
-            onSave={onSave}
-            saving={saving}
-          />
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(250px,290px)_minmax(0,1fr)]">
+            <aside
+              ref={listPaneRef}
+              className={`${mobilePreviewOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col overflow-y-auto border-b border-gray-100 bg-gray-50/60 p-4 custom-scrollbar xl:border-b-0 xl:border-r`}
+            >
+              <div className="border-b border-gray-100 bg-white p-3 -mx-4 -mt-4 mb-3 xl:mb-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson"
+                    value={savedPostsQuery}
+                    onChange={(e) => setSavedPostsQuery(e.target.value)}
+                    placeholder="Search saved posts..."
+                  />
+                </div>
+              </div>
+              <SavedSocialPostsList
+                posts={filteredSavedPosts}
+                loading={loadingSaved}
+                onSelect={selectSavedPost}
+                activeId={output?.saved ? output._id : ''}
+                className="mt-0"
+              />
+            </aside>
+            <div
+              ref={previewPaneRef}
+              className={`${mobilePreviewOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto bg-white custom-scrollbar`}
+            >
+              <LinkedInOutputPreview
+                output={output}
+                onSave={onSave}
+                saving={saving}
+                onBackToList={() => {
+                  if (output && !output.saved) {
+                    const confirmSave = window.confirm("You have unsaved changes. Do you want to save this LinkedIn post before returning?");
+                    if (confirmSave) {
+                      onSave();
+                      return;
+                    }
+                  }
+                  setMobilePreviewOpen(false);
+                }}
+              />
+            </div>
+          </div>
         </div>
       </aside>
     </>
@@ -1797,7 +2493,7 @@ function SettingsGroup({ title, children }) {
   return (
     <section className="rounded-xl border border-gray-100 bg-white/70 p-4 shadow-sm">
       <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-gray-500">{title}</h3>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{children}</div>
     </section>
   );
 }

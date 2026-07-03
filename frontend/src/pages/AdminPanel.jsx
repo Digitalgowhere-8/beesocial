@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardAppearance } from '../utils/feedTheme';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
-  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus,
+  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
   Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles, Mail, Send,
   MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
 } from 'lucide-react';
@@ -36,7 +37,7 @@ const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
 const MEMBER_ACCESS_OPTIONS = [
   { key: 'canFetch', label: 'Fetch' },
   { key: 'canUseContentRepository', label: 'Content Repository' },
-  { key: 'canUseBlogStudio', label: 'Social Media Studio' },
+  { key: 'canUseBlogStudio', label: 'Content Studio' },
   { key: 'canUseSavedSearches', label: 'Saved' },
   { key: 'canUseScheduler', label: 'Schedule' }
 ];
@@ -50,7 +51,7 @@ const ADMIN_TABS = [
 ];
 
 const SUPER_ADMIN_TABS = [
-  { key: 'platform', label: 'Overview', icon: Crown, hint: 'Global health and activity' },
+  { key: 'platform', label: 'Platform', icon: Crown, hint: 'Global health and activity' },
   { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review and moderate content' },
   { key: 'fetch',    label: 'Fetch',    icon: Globe2, hint: 'Shared intelligence workflows' },
   { key: 'users',    label: 'Users',    icon: ShieldCheck, hint: 'Companies, members and access' },
@@ -87,6 +88,13 @@ const TOPIC_OPTIONS = [
   { key: 'govt', label: 'Government updates', help: 'Regulatory, tax and policy sources' },
   { key: 'competitor', label: 'Competitor intel', help: 'Other firms, partnerships and launches' },
   { key: 'evergreen', label: 'Evergreen guides', help: 'Guides, explainers and reference content' }
+];
+
+const SOURCE_TYPE_OPTIONS = [
+  { key: 'news', label: 'News sources', help: 'Business, market and publisher domains', icon: Globe2, accent: 'from-sky-500/15 via-blue-500/10 to-cyan-500/10', ring: 'ring-sky-100', tint: 'text-sky-700' },
+  { key: 'govt', label: 'Government sources', help: 'Regulatory, ministry and official domains', icon: ShieldCheck, accent: 'from-emerald-500/15 via-green-500/10 to-teal-500/10', ring: 'ring-emerald-100', tint: 'text-emerald-700' },
+  { key: 'competitor', label: 'Competitor sources', help: 'Firm websites and competitor intelligence domains', icon: Building2, accent: 'from-amber-500/15 via-orange-500/10 to-yellow-500/10', ring: 'ring-amber-100', tint: 'text-amber-700' },
+  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-violet-500/15 via-fuchsia-500/10 to-pink-500/10', ring: 'ring-violet-100', tint: 'text-violet-700' }
 ];
 
 const COUNTRY_TIMEZONES = {
@@ -136,6 +144,7 @@ function getBrowserTimezones() {
 
 export default function AdminPanel() {
   const { user, isSuperAdmin, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabs = useMemo(() => {
     if (isSuperAdmin) return SUPER_ADMIN_TABS;
@@ -147,6 +156,7 @@ export default function AdminPanel() {
   const [subTab, setSubTab] = useState(() => SUPER_ADMIN_SUBTABS.platform[0].key);
   const [dbPlans, setDbPlans] = useState([]);
   const [superAdminRefreshKey, setSuperAdminRefreshKey] = useState(0);
+  const [mobileAdminMenuOpen, setMobileAdminMenuOpen] = useState(false);
 
   const loadDbPlans = useCallback(async () => {
     try {
@@ -183,6 +193,10 @@ export default function AdminPanel() {
     }
   }, [isSuperAdmin, tab, subTab]);
 
+  useEffect(() => {
+    setMobileAdminMenuOpen(false);
+  }, [tab, subTab, isSuperAdmin]);
+
   const handleSuperAdminTabChange = useCallback((nextTab) => {
     setTab(nextTab);
     const nextParams = new URLSearchParams(searchParams);
@@ -191,51 +205,192 @@ export default function AdminPanel() {
   }, [searchParams, setSearchParams]);
 
   const headerActions = (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-      <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
-        {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
-          const active = isSuperAdmin ? item.key === subTab : item.key === tab;
-          return (
+    <>
+      <div className={`min-w-0 flex-col gap-3 sm:flex-row sm:items-center ${isSuperAdmin ? 'hidden xl:flex' : 'flex'}`}>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
+          {isSuperAdmin ? (
+            <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+              {(() => {
+                const currentItem = (SUPER_ADMIN_SUBTABS[tab] || []).find((item) => item.key === subTab);
+                return currentItem?.label || 'Admin';
+              })()}
+            </div>
+          ) : (
+            <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(78px,1fr)] gap-1.5 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+              {tabs.map((item) => {
+                const active = item.key === tab;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setTab(item.key)}
+                    className={[
+                      'flex min-h-[36px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[11px] font-black transition-all',
+                      active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                    ].join(' ')}
+                  >
+                    {item.icon ? <item.icon size={13} /> : null}
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            {isSuperAdmin ? (
+              <button
+                type="button"
+                onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+                className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+                aria-label="Refresh admin panel"
+              >
+                <RefreshCw size={16} />
+              </button>
+            ) : null}
             <button
-              key={item.key}
               type="button"
-              onClick={() => {
-                if (isSuperAdmin) {
-                  setSubTab(item.key);
-                  return;
-                }
-                setTab(item.key);
-              }}
-              className={[
-                'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
-                active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
-              ].join(' ')}
+              onClick={() => setMobileAdminMenuOpen((value) => !value)}
+              className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+              aria-label="Open admin menu"
             >
-              {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
-              <span className="truncate">{item.label}</span>
+              <MoreHorizontal size={16} />
             </button>
-          );
-        })}
+          </div>
+        </div>
+        <div className="hidden min-w-0 flex-1 gap-2 sm:flex sm:flex-row sm:items-center">
+          <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
+            {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
+              const active = isSuperAdmin ? item.key === subTab : item.key === tab;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (isSuperAdmin) {
+                      setSubTab(item.key);
+                      return;
+                    }
+                    setTab(item.key);
+                  }}
+                  className={[
+                    'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
+                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                  ].join(' ')}
+                >
+                  {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+              className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          ) : null}
+        </div>
       </div>
-      {isSuperAdmin ? (
-        <button
-          type="button"
-          onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
-          className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+      {mobileAdminMenuOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close admin menu"
+            onClick={() => setMobileAdminMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          />
+          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{isSuperAdmin ? 'Super Admin' : 'Profile'}</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Sections</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileAdminMenuOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close admin menu"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2 p-3">
+              {isSuperAdmin ? (
+                (SUPER_ADMIN_SUBTABS[tab] || []).map((item) => {
+                  const active = item.key === subTab;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setSubTab(item.key);
+                        setMobileAdminMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${active ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                    >
+                      <span className="flex items-center gap-3 text-sm font-black">{item.label}</span>
+                      {active ? <Check size={15} /> : null}
+                    </button>
+                  );
+                })
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/profile', { state: { tab: 'profile' } });
+                      setMobileAdminMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+                  >
+                    <span>My Hive Profile</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/profile', { state: { tab: 'fetch' } });
+                      setMobileAdminMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+                  >
+                    <span>My Personalisation</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileAdminMenuOpen(false)}
+                    className="flex w-full items-center justify-between rounded-2xl border border-brand-crimson/15 bg-brand-pink/20 px-4 py-3 text-left text-sm font-black text-brand-crimson transition-all"
+                  >
+                    <span>Admin Controls</span>
+                    <Check size={15} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </>
       ) : null}
-    </div>
+    </>
   );
 
   return (
     <Layout headerActions={headerActions}>
       <div data-tour="admin-shell" className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
-        <div className="w-full space-y-5 pb-10">
+        <div className="w-full space-y-5 pb-5">
           {isSuperAdmin ? (
-            <SuperAdminWorkspace tabs={tabs} activeTab={tab} onTabChange={handleSuperAdminTabChange} subTabs={SUPER_ADMIN_SUBTABS[tab] || []} activeSubTab={subTab} onSubTabChange={setSubTab} user={user}>
+            <SuperAdminWorkspace
+              tabs={tabs}
+              activeTab={tab}
+              onTabChange={handleSuperAdminTabChange}
+              subTabs={SUPER_ADMIN_SUBTABS[tab] || []}
+              activeSubTab={subTab}
+              onSubTabChange={setSubTab}
+              onRefresh={() => setSuperAdminRefreshKey((value) => value + 1)}
+              onOpenMenu={() => setMobileAdminMenuOpen((value) => !value)}
+            >
               {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
               {tab === 'articles' && <ArticlesTab key={`articles-${superAdminRefreshKey}`} />}
               {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} />}
@@ -277,9 +432,117 @@ export default function AdminPanel() {
   );
 }
 
-function SuperAdminWorkspace({ children }) {
+function SuperAdminWorkspace({
+  children,
+  tabs = [],
+  activeTab = 'platform',
+  onTabChange,
+  subTabs = [],
+  activeSubTab = 'overview',
+  onSubTabChange,
+  onRefresh,
+  onOpenMenu
+}) {
+  const activeTabMeta = tabs.find((item) => item.key === activeTab);
+  const activeSubTabMeta = subTabs.find((item) => item.key === activeSubTab);
+  const showSubTabBadge = activeSubTabMeta && activeSubTabMeta.label !== activeTabMeta?.label;
+  const subTabGridClass = subTabs.length >= 3 ? 'grid-cols-3' : subTabs.length === 2 ? 'grid-cols-2' : 'grid-cols-1';
+
   return (
-    <section className="min-w-0 space-y-5">
+    <section className="min-w-0">
+      <div className="xl:hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(252,248,249,0.95)_48%,rgba(247,250,255,0.95))] shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl mb-5 overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-brand-crimson/90 via-rose-400 to-sky-300" />
+        <div className="px-4 py-5 sm:px-5">
+          <div className="min-w-0">
+            <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson ring-1 ring-brand-crimson/10 shadow-sm">
+              <Crown size={12} />
+              Super Admin
+            </div>
+            <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-gray-950 sm:text-[32px]">Control Center</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-gray-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm">
+                {activeTabMeta?.label || 'Platform'}
+              </span>
+              {showSubTabBadge ? (
+                <span className="inline-flex items-center rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gray-500 ring-1 ring-gray-200 shadow-sm">
+                  {activeSubTabMeta?.label}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/80 px-3 py-4 sm:px-4">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            {tabs.map((item) => {
+              const active = item.key === activeTab;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => onTabChange?.(item.key)}
+                  className={[
+                    'inline-flex min-h-[54px] min-w-0 items-center justify-start gap-2.5 rounded-2xl px-3.5 text-left text-[11px] font-black transition-all',
+                    active
+                      ? 'bg-gradient-to-br from-brand-crimson via-rose-600 to-rose-900 text-white shadow-[0_16px_28px_rgba(209,18,67,0.24)]'
+                      : 'border border-white/90 bg-white/80 text-gray-600 shadow-sm hover:border-brand-crimson/15 hover:bg-white hover:text-brand-crimson'
+                  ].join(' ')}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/16 text-white' : 'bg-brand-pink/25 text-brand-crimson'}`}>
+                    {item.icon ? <item.icon size={14} /> : null}
+                  </span>
+                  <span className="min-w-0 truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {subTabs.length ? (
+            <div className="mt-3 rounded-[24px] border border-white/90 bg-white/75 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+              <div className={`grid gap-2 ${subTabGridClass}`}>
+                {subTabs.map((item) => {
+                  const active = item.key === activeSubTab;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => onSubTabChange?.(item.key)}
+                      className={[
+                        'inline-flex min-h-[40px] min-w-0 items-center justify-center rounded-2xl px-3 text-[10px] font-black uppercase tracking-[0.14em] transition-all md:text-[11px]',
+                        active
+                          ? 'bg-gray-950 text-white shadow-[0_12px_24px_rgba(15,23,42,0.16)]'
+                          : 'bg-transparent text-gray-500 hover:bg-white hover:text-gray-800'
+                      ].join(' ')}
+                    >
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_44px] gap-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white/90 px-4 text-[12px] font-black uppercase tracking-[0.14em] text-gray-700 ring-1 ring-gray-200 shadow-sm transition hover:bg-white"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onOpenMenu}
+              className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl bg-white/90 text-gray-600 ring-1 ring-gray-200 shadow-sm transition hover:bg-white hover:text-brand-crimson"
+              aria-label="Open admin menu"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="min-w-0">
         {children}
       </div>
@@ -297,24 +560,48 @@ function parsePlanPrice(value) {
 function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [overview, setOverview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
-  const [analyticsDays, setAnalyticsDays] = useState(30);
+  const [dbHealth, setDbHealth] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshingHealth, setRefreshingHealth] = useState(false);
+  const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
+  const [cleanupNotice, setCleanupNotice] = useState('');
+
+  const loadDatabaseHealth = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setRefreshingHealth(true);
+    try {
+      const { data } = await api.get('/admin/super/database-health');
+      setDbHealth(data);
+      return data;
+    } finally {
+      if (!silent) setRefreshingHealth(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewRes, analyticsRes] = await Promise.all([
+      const [overviewRes, analyticsRes, dbHealthRes] = await Promise.all([
         api.get('/admin/super/overview'),
-        api.get('/admin/super/analytics', { params: { days: analyticsDays } })
+        api.get('/admin/super/analytics'),
+        api.get('/admin/super/database-health')
       ]);
       setOverview(overviewRes.data);
       setAnalytics(analyticsRes.data);
+      setDbHealth(dbHealthRes.data);
     } finally {
       setLoading(false);
     }
-  }, [analyticsDays]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (activeSubTab !== 'analytics') return undefined;
+    const id = window.setInterval(() => {
+      loadDatabaseHealth({ silent: true }).catch(() => {});
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [activeSubTab, loadDatabaseHealth]);
 
   if (loading || !overview || !analytics) return <Loader />;
 
@@ -327,6 +614,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const failedPct = Number(usage.failureRateThisMonth || 0);
   const successfulRunsThisMonth = Math.max(0, Number(usage.monthRuns || 0) - Number(usage.monthFailedRuns || 0));
   const traffic = analytics.totals || {};
+  const analyticsSince = analytics.since ? new Date(analytics.since) : null;
   const companyCount = Number(users.admins || 0);
   const premiumCompanies = Number(users.premium || 0);
   const planPriceMap = dbPlans.reduce((acc, plan) => {
@@ -338,6 +626,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     return sum + (Number(count || 0) * Number(planPriceMap[planId] || 0));
   }, 0);
   const apiCalls = Number(traffic.pageViews || 0) + Number(traffic.clicks || 0) + Number(traffic.visitors || 0);
+  const mobileTopUsers = topUsers.slice(0, 5);
   const ownerStats = [
     { label: 'Total Companies', value: compactNumber(companyCount), icon: Building2, accent: 'bg-brand-crimson', note: `${users.active || 0} active operators`, tint: 'bg-brand-pink/40 text-brand-crimson' },
     { label: 'Total Users', value: compactNumber(users.total || 0), icon: Users, accent: 'bg-violet-500', note: `${activePct}% active this month`, tint: 'bg-violet-50 text-violet-700' },
@@ -348,6 +637,23 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     { label: 'Failed Fetches', value: compactNumber(usage.monthFailedRuns || 0), icon: AlertTriangle, accent: 'bg-rose-500', note: `${failedPct}% failure rate`, tint: 'bg-rose-50 text-rose-700' },
     { label: 'API Calls', value: compactNumber(apiCalls), icon: Gauge, accent: 'bg-gray-900', note: 'Views, clicks and sessions combined', tint: 'bg-gray-100 text-gray-700' }
   ];
+
+  const cleanupAnalytics = async () => {
+    if (!confirm('Delete analytics data older than the current calendar month? Current month analytics will stay untouched.')) return;
+    setCleaningAnalytics(true);
+    setCleanupNotice('');
+    try {
+      const { data } = await api.delete('/admin/super/analytics/cleanup');
+      setCleanupNotice(data.message || 'Analytics cleanup completed.');
+      setDbHealth(data.health || null);
+      const analyticsRes = await api.get('/admin/super/analytics');
+      setAnalytics(analyticsRes.data);
+    } catch (e) {
+      setCleanupNotice(e.response?.data?.message || e.message || 'Analytics cleanup failed.');
+    } finally {
+      setCleaningAnalytics(false);
+    }
+  };
 
   return (
     <div className="space-y-6" data-analytics-section="Super admin platform overview">
@@ -369,19 +675,50 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
             <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
-              <div className="mb-6 flex items-center justify-between">
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
                     <Gauge size={12} /> Usage Leaders
                   </div>
-                  <h3 className="text-xl font-black tracking-tight text-gray-900">Top users this month</h3>
+                  <h3 className="text-xl font-black tracking-tight text-gray-900">Top users</h3>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
                   <Gauge size={18} className="text-brand-crimson" />
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm border-separate border-spacing-y-2">
+              <div className="space-y-3 lg:hidden">
+                {mobileTopUsers.map((row, index) => (
+                  <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-sm font-black text-white shadow-sm">
+                          {(row.user?.name || 'U')[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
+                          <div className="truncate text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
+                        </div>
+                      </div>
+                      <span className={`tag shrink-0 px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
+                        {row.user?.subscriptionPlan || 'free'}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <UsageMini label="Fetches" value={compactNumber(row.runs || 0)} />
+                      <UsageMini label="Stored" value={compactNumber(row.inserted || 0)} />
+                      <UsageMini label="Errors" value={compactNumber(row.errors || 0)} danger={Number(row.errors || 0) > 0} />
+                      <UsageMini label="Tokens" value={compactNumber(row.estimatedTokens || 0)} />
+                    </div>
+                  </div>
+                ))}
+                {!mobileTopUsers.length && (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white/50 p-8 text-center text-sm font-semibold text-gray-400">
+                    No usage this month yet.
+                  </div>
+                )}
+              </div>
+              <div className="hidden overflow-x-auto lg:block">
+                <table className="w-full min-w-[680px] text-sm border-separate border-spacing-y-2">
                   <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
                     <tr>
                       <th className="py-2 px-3">User</th>
@@ -443,28 +780,41 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-crimson">
-              <BarChart3 size={12} /> Business Analytics
+              <BarChart3 size={12} /> Analytics
             </div>
             <h3 className="text-xl font-black tracking-tight text-gray-900">Visitor behaviour and engagement</h3>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-gray-500">
-              See who is coming in, where people spend time, what gets clicked, and which sections deserve product or content focus.
-            </p>
           </div>
-          <div className="inline-flex w-fit rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
-            {[7, 30, 90].map((days) => (
-              <button
-                key={days}
-                type="button"
-                onClick={() => setAnalyticsDays(days)}
-                className={`rounded-lg px-3 py-2 text-[11px] font-black uppercase tracking-wider transition-all ${analyticsDays === days ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-brand-pink/40 hover:text-brand-crimson'}`}
-              >
-                {days}D
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex w-fit rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm">
+              {analyticsSince ? `Month to date since ${analyticsSince.toLocaleDateString()}` : 'Month to date'}
+            </div>
+            <button
+              type="button"
+              onClick={() => loadDatabaseHealth()}
+              disabled={refreshingHealth}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-white px-3.5 text-[11px] font-black uppercase tracking-wider text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              {refreshingHealth ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Health
+            </button>
+            <button
+              type="button"
+              onClick={cleanupAnalytics}
+              disabled={cleaningAnalytics}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-red-50 px-3.5 text-[11px] font-black uppercase tracking-wider text-red-700 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50"
+            >
+              {cleaningAnalytics ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              Cleanup old analytics
+            </button>
           </div>
         </div>
+        {cleanupNotice ? (
+          <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-600">
+            {cleanupNotice}
+          </div>
+        ) : null}
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <AnalyticsKpi icon={Users} label="Visitors" value={traffic.visitors || 0} detail={`${traffic.sessions || 0} sessions`} color="text-blue-600" bg="bg-blue-50" />
           <AnalyticsKpi icon={MonitorUp} label="Page views" value={traffic.pageViews || 0} detail={`${traffic.engagementRate || 0}% engaged`} color="text-emerald-600" bg="bg-emerald-50" />
           <AnalyticsKpi icon={MousePointerClick} label="Clicks" value={traffic.clicks || 0} detail={`${traffic.clickThroughRate || 0}% CTR`} color="text-amber-600" bg="bg-amber-50" />
@@ -499,7 +849,16 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
               suffix: 'views'
             }))}
           />
-          <BusinessInsightPanel analytics={analytics} />
+          <div className="space-y-5">
+            <BusinessInsightPanel analytics={analytics} />
+            <DatabaseHealthPanel
+              dbHealth={dbHealth}
+              onRefresh={() => loadDatabaseHealth()}
+              refreshing={refreshingHealth}
+              onCleanup={cleanupAnalytics}
+              cleaning={cleaningAnalytics}
+            />
+          </div>
         </div>
         </div>
       ) : null}
@@ -509,11 +868,11 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
-              <Activity size={12} /> Recent Runs
+              <Activity size={12} /> Activity
             </div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">Platform activity</h3>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Recent platform activity</h3>
           </div>
-          <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
              <Activity size={18} className="text-brand-crimson" />
           </div>
         </div>
@@ -577,11 +936,8 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
 
 function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   return (
-    <div className="premium-glass p-5 relative overflow-hidden group">
-      <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-500 pointer-events-none">
-        <Icon size={100} />
-      </div>
-      <div className="flex items-start gap-4 relative z-10">
+    <div className="premium-glass p-5 relative overflow-hidden">
+      <div className="relative z-10 flex items-start gap-4">
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
           <Icon size={20} />
         </span>
@@ -622,7 +978,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
 
   return (
     <div className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">System Health</div>
           <h4 className="mt-1 text-lg font-black tracking-tight text-gray-950">Core services</h4>
@@ -634,9 +990,9 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
 
       <div className="space-y-2.5">
         {healthItems.map((item) => (
-          <div key={item.label} className="flex items-center justify-between rounded-2xl bg-gray-50 px-3 py-3">
+          <div key={item.label} className="flex flex-col gap-2 rounded-2xl bg-gray-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm font-bold text-gray-700">{item.label}</span>
-            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ring-1 ${tones[item.tone]}`}>
+            <span className={`inline-flex w-fit items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ring-1 ${tones[item.tone]}`}>
               <span className="h-2 w-2 rounded-full bg-current opacity-70" />
               {item.value}
             </span>
@@ -699,6 +1055,14 @@ function compactNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function formatMegabytes(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '0 MB';
+  if (numeric >= 1024) return `${(numeric / 1024).toFixed(2)} GB`;
+  if (numeric >= 100) return `${Math.round(numeric)} MB`;
+  return `${numeric.toFixed(1)} MB`;
+}
+
 // eslint-disable-next-line no-unused-vars
 function formatSessionDate(value) {
   if (!value) return 'Not available';
@@ -724,7 +1088,7 @@ function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
 
 function AnalyticsTrend({ data }) {
   const max = Math.max(...(data || []).map((row) => Math.max(row.pageViews || 0, row.clicks || 0)), 1);
-  const visible = (data || []).slice(-14);
+  const visible = (data || []).slice(-10);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-1">
@@ -735,7 +1099,7 @@ function AnalyticsTrend({ data }) {
         </div>
         <Activity size={18} className="text-brand-crimson" />
       </div>
-      <div className="flex h-48 items-end gap-2">
+      <div className="flex h-48 items-end gap-1.5 sm:gap-2">
         {visible.map((row) => {
           const viewHeight = Math.max(6, ((row.pageViews || 0) / max) * 100);
           const clickHeight = Math.max(4, ((row.clicks || 0) / max) * 100);
@@ -857,6 +1221,85 @@ function BusinessInsightPanel({ analytics }) {
   );
 }
 
+function DatabaseHealthPanel({ dbHealth, onRefresh, refreshing = false, onCleanup, cleaning = false }) {
+  const database = dbHealth?.database || {};
+  const analytics = dbHealth?.analytics || {};
+  const hygiene = dbHealth?.hygiene || {};
+  const collections = Array.isArray(dbHealth?.collections) ? dbHealth.collections.slice().sort((a, b) => Number(b.storageSizeMb || 0) - Number(a.storageSizeMb || 0)).slice(0, 4) : [];
+  const cards = [
+    { label: 'Database size', value: formatMegabytes(database.storageSizeMb), detail: `${compactNumber(database.objects || 0)} documents` },
+    { label: 'Analytics kept', value: compactNumber(analytics.currentMonthEvents || 0), detail: 'Current month events' },
+    { label: 'Cleanup queue', value: compactNumber(analytics.pendingCleanup || 0), detail: 'Old analytics waiting to clear' },
+    { label: 'Old logs', value: compactNumber(hygiene.logsPendingTtlCleanup || 0), detail: 'TTL will remove these' }
+  ];
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Database health</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Live storage watch</h4>
+          <div className="mt-1 text-xs font-semibold text-gray-400">
+            {dbHealth?.checkedAt ? `Updated ${new Date(dbHealth.checkedAt).toLocaleTimeString()}` : 'Waiting for metrics'}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white text-gray-600 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50"
+            title="Refresh database health"
+          >
+            {refreshing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+          </button>
+          <button
+            type="button"
+            onClick={onCleanup}
+            disabled={cleaning}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50"
+            title="Delete old analytics"
+          >
+            {cleaning ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((item) => (
+          <div key={item.label} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.label}</div>
+            <div className="mt-1 text-lg font-black tracking-tight text-gray-900">{item.value}</div>
+            <div className="mt-1 text-[11px] font-semibold text-gray-400">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Heaviest collections</div>
+          <HardDrive size={15} className="text-brand-crimson" />
+        </div>
+        <div className="space-y-2">
+          {collections.map((item) => (
+            <div key={item.key} className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 ring-1 ring-gray-100">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-gray-800">{item.label}</div>
+                <div className="text-[11px] font-semibold text-gray-400">{compactNumber(item.count || 0)} docs</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-sm font-black text-gray-900">{formatMegabytes(item.storageSizeMb)}</div>
+                <div className="text-[10px] font-semibold text-gray-400">storage</div>
+              </div>
+            </div>
+          ))}
+          {!collections.length && <div className="rounded-md border border-dashed border-gray-200 p-4 text-center text-sm font-bold text-gray-400">Collection metrics are not available yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // =============== ARTICLES TAB ===============
 
 function ArticlesTab({ ownerOnly = false }) {
@@ -865,6 +1308,9 @@ function ArticlesTab({ ownerOnly = false }) {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState(new Set());
+  const filterMetaParams = useMemo(() => (
+    ownerOnly ? { ownerOnly: 'true' } : {}
+  ), [ownerOnly]);
 
   const load = useCallback(async (f = filters, page = 1) => {
     setLoading(true);
@@ -880,7 +1326,10 @@ function ArticlesTab({ ownerOnly = false }) {
     }
   }, [filters, ownerOnly]);
 
-  useEffect(() => { load(filters, 1); }, [filters, load]);
+  useEffect(() => {
+    setSelected(new Set());
+    load(filters, 1);
+  }, [filters, load]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -914,7 +1363,13 @@ function ArticlesTab({ ownerOnly = false }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
-        <Filters onChange={setFilters} showAdmin showStatusFilter={false} />
+        <Filters
+          initial={filters}
+          onChange={setFilters}
+          showAdmin
+          showStatusFilter={false}
+          metaParams={filterMetaParams}
+        />
       </div>
 
       {selected.size > 0 && (
@@ -1008,12 +1463,20 @@ function SuperAdminFetchTab() {
   const { runProgress, setRunProgress } = useAuth();
   const [profileMeta, setProfileMeta] = useState(null);
   const [config, setConfig] = useState(null);
+  const [sourceCatalog, setSourceCatalog] = useState({});
   const [status, setStatus] = useState({ running: false, logId: '' });
   const [lastLog, setLastLog] = useState(null);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
   const [autosaveStatus, setAutosaveStatus] = useState('saved');
+  const [managerTab, setManagerTab] = useState('setup');
+  const [sourceCountry, setSourceCountry] = useState('');
+  const [sourceType, setSourceType] = useState('news');
+  const [customCountryInput, setCustomCountryInput] = useState('');
+  const [draftCountries, setDraftCountries] = useState([]);
+  const [sourceInput, setSourceInput] = useState('');
+  const [sourceManagerNotice, setSourceManagerNotice] = useState('');
   const hasLocalEditsRef = useRef(false);
   const saveTimerRef = useRef(null);
   const saveVersionRef = useRef(0);
@@ -1030,6 +1493,7 @@ function SuperAdminFetchTab() {
     if (!hasLocalEditsRef.current) {
       setConfig(cfg.data.config);
     }
+    setSourceCatalog(cfg.data.sourceCatalog || {});
     setStatus(stat.data);
     setLastLog(logs.data.items?.[0] || null);
   }, []);
@@ -1053,6 +1517,17 @@ function SuperAdminFetchTab() {
   const countries = profileMeta?.fetchCountries || [];
   const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
   const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
+  const customSourceCountries = Object.keys(config?.sourceDomainsByCountry || {});
+  const sourceCountries = Array.from(new Set([
+    ...countries,
+    ...Object.keys(sourceCatalog || {}),
+    ...customSourceCountries,
+    ...draftCountries
+  ])).sort((a, b) => a.localeCompare(b));
+  const fetchSetupCountries = Array.from(new Set([
+    ...countries,
+    ...customSourceCountries
+  ])).sort((a, b) => a.localeCompare(b));
   const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
   const scheduleEnabled = Boolean(config?.schedule?.enabled);
   const scheduleTimezone = config?.schedule?.timezone || config?.timezone || 'Asia/Kolkata';
@@ -1086,6 +1561,12 @@ function SuperAdminFetchTab() {
         }
       : null
   );
+
+  useEffect(() => {
+    if (!sourceCountries.length) return;
+    if (sourceCountry && sourceCountries.includes(sourceCountry)) return;
+    setSourceCountry(selectedCountries[0] || sourceCountries[0] || '');
+  }, [sourceCountry, sourceCountries, selectedCountries]);
 
   const persistConfig = useCallback(async (configToSave, { manual = false, version: providedVersion } = {}) => {
     if (!configToSave) return configToSave;
@@ -1139,6 +1620,64 @@ function SuperAdminFetchTab() {
     ...(prev || {}),
     schedule: { ...((prev || {}).schedule || {}), [key]: value }
   }));
+  const updateCountrySources = useCallback((country, type, value) => {
+    const items = Array.from(new Set(
+      Array.isArray(value)
+        ? value
+        : String(value || '')
+          .split(/[\n,]+/)
+          .map((item) => item.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase())
+          .filter(Boolean)
+    ));
+
+    changeConfig((prev) => {
+      const current = prev || {};
+      const existing = { ...(current.sourceDomainsByCountry || {}) };
+      const nextCountry = {
+        ...(existing[country] || {}),
+        [type]: items
+      };
+      if (!nextCountry.news?.length && !nextCountry.govt?.length && !nextCountry.competitor?.length && !nextCountry.evergreen?.length) {
+        delete existing[country];
+      } else {
+        existing[country] = nextCountry;
+      }
+      const hasCountrySources = Boolean(existing[country]);
+      const isDefaultCountry = countries.includes(country);
+      const nextCountries = hasCountrySources
+        ? Array.from(new Set([...(current.countries || []), country]))
+        : isDefaultCountry
+          ? (current.countries || [])
+          : (current.countries || []).filter((item) => item !== country);
+
+      return {
+        ...current,
+        countries: nextCountries,
+        sourceDomainsByCountry: existing
+      };
+    });
+  }, [changeConfig, countries]);
+
+  const addCustomCountry = useCallback(() => {
+    const countriesToAdd = Array.from(new Set(
+      String(customCountryInput || '')
+        .split(/[\n,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ));
+    if (!countriesToAdd.length) return;
+    setDraftCountries((prev) => Array.from(new Set([...(prev || []), ...countriesToAdd])));
+    setSourceCountry(countriesToAdd[0] || '');
+    setSourceManagerNotice(`${countriesToAdd.length} countr${countriesToAdd.length === 1 ? 'y is' : 'ies are'} ready. Add at least one source to save.`);
+    setCustomCountryInput('');
+  }, [customCountryInput]);
+
+  const removeCustomSource = useCallback((country, type, domain) => {
+    if (!country || !type || !domain) return;
+    const nextItems = (config?.sourceDomainsByCountry?.[country]?.[type] || []).filter((item) => item !== domain);
+    updateCountrySources(country, type, nextItems);
+    setSourceManagerNotice(`${domain} removed.`);
+  }, [config?.sourceDomainsByCountry, updateCountrySources]);
 
   const toggleCountry = (country) => {
     const next = selectedCountries.includes(country)
@@ -1189,10 +1728,54 @@ function SuperAdminFetchTab() {
     }
   };
 
+  const selectedSourceDefaults = sourceCatalog?.[sourceCountry]?.[sourceType] || [];
+  const selectedSourceCustom = config?.sourceDomainsByCountry?.[sourceCountry]?.[sourceType] || [];
+  const selectedSourceEffective = Array.from(new Set([...(selectedSourceDefaults || []), ...(selectedSourceCustom || [])]));
+  const showFetchActivity = managerTab === 'setup';
+
+  const addSourceEntries = useCallback((rawValue) => {
+    if (!sourceCountry) {
+      setSourceManagerNotice('Select or add a country before adding sources.');
+      return;
+    }
+    const parsed = parseSourceDomains(rawValue);
+    if (!parsed.length) {
+      setSourceManagerNotice('Enter at least one valid domain, for example example.com.');
+      return;
+    }
+
+    const defaultSet = new Set(selectedSourceDefaults);
+    const existingSet = new Set(selectedSourceCustom);
+    const nextItems = [...selectedSourceCustom];
+    let added = 0;
+    let skipped = 0;
+
+    parsed.forEach((domain) => {
+      if (defaultSet.has(domain) || existingSet.has(domain)) {
+        skipped += 1;
+        return;
+      }
+      existingSet.add(domain);
+      nextItems.push(domain);
+      added += 1;
+    });
+
+    if (added) {
+      updateCountrySources(sourceCountry, sourceType, nextItems);
+      setDraftCountries((prev) => (prev || []).filter((country) => country !== sourceCountry));
+      setSourceInput('');
+    }
+    setSourceManagerNotice(
+      added
+        ? `${added} source${added === 1 ? '' : 's'} added${skipped ? `, ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`
+        : `${skipped} duplicate source${skipped === 1 ? '' : 's'} skipped.`
+    );
+  }, [selectedSourceCustom, selectedSourceDefaults, sourceCountry, sourceType, updateCountrySources]);
+
   if (!config || !profileMeta) return <Loader />;
 
   return (
-    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className={showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}>
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -1214,20 +1797,246 @@ function SuperAdminFetchTab() {
           </span>
         </div>
 
-        <FetchField label="Countries">
-          <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
-            {countries.map((country) => {
-              const checked = selectedCountries.includes(country);
-              return (
-                <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
-                  <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
-                  <span className="min-w-0 truncate">{country}</span>
-                </label>
-              );
-            })}
+        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">
+            {[
+              { key: 'setup', label: 'Fetch Setup' },
+              { key: 'sources', label: 'Source Manager' }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setManagerTab(tab.key)}
+                className={`rounded-xl px-4 py-2 text-sm font-black transition ${managerTab === tab.key ? 'bg-brand-crimson text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </FetchField>
 
+          {managerTab === 'setup' ? (
+            <div className="mt-4">
+              <FetchField label="Countries">
+                <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {fetchSetupCountries.map((country) => {
+                    const checked = selectedCountries.includes(country);
+                    const isCustom = !countries.includes(country);
+                    return (
+                      <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
+                        <span className="min-w-0 truncate">{country}</span>
+                        {isCustom && <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Custom</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </FetchField>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-5">
+              <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff,_#f8fafc_60%,_#fff1f2)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-2xl">
+                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">Source Manager</div>
+                    <h4 className="mt-2 text-[28px] font-black leading-tight tracking-[-0.03em] text-slate-950">Manage country sources</h4>
+                    <p className="mt-2 text-[15px] leading-7 text-slate-500">Choose a country, select the source type, add domains in bulk, and remove any incorrect source with one click.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Default</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceDefaults.length}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Custom</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceCustom.length}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Total</div>
+                      <div className="mt-1 text-xl font-black text-slate-950">{selectedSourceEffective.length}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+                <div className="space-y-4">
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                    <FetchField label="Country">
+                      <select className="select min-h-[48px] rounded-2xl border-slate-200 bg-white" value={sourceCountry} onChange={(e) => setSourceCountry(e.target.value)}>
+                        {sourceCountries.map((country) => (
+                          <option key={country} value={country}>{country}</option>
+                        ))}
+                      </select>
+                    </FetchField>
+                    <div className="mt-3 text-xs font-medium leading-6 text-slate-500">
+                      Countries added here will also be available in the Fetch Setup tab.
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <FetchField label="Add new countries">
+                      <textarea
+                        className="input min-h-[140px] rounded-2xl !py-3"
+                        value={customCountryInput}
+                        onChange={(e) => setCustomCountryInput(e.target.value)}
+                        placeholder={'Add one or many countries\n\nExample:\nAbu Dhabi (UAE)\nDoha (Qatar)\nKenya'}
+                      />
+                    </FetchField>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs font-medium leading-5 text-slate-500">Use one country per line or separate by commas.</div>
+                      <button
+                        type="button"
+                        onClick={addCustomCountry}
+                        disabled={!customCountryInput.trim()}
+                        className="rounded-2xl bg-brand-crimson px-4 py-2 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+                      >
+                        Add Countries
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <FetchField label="Source type">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {SOURCE_TYPE_OPTIONS.map((item) => {
+                        const active = sourceType === item.key;
+                        const total = (sourceCatalog?.[sourceCountry]?.[item.key]?.length || 0) + (config?.sourceDomainsByCountry?.[sourceCountry]?.[item.key]?.length || 0);
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setSourceType(item.key)}
+                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
+                          >
+                            <div className="text-sm font-black">{item.label}</div>
+                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{total} sources</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FetchField>
+
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+                    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Bulk add sources</div>
+                          <div className="mt-2 text-lg font-black text-slate-950">{sourceCountry || 'Select a country'}</div>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{sourceType}</span>
+                      </div>
+                      <textarea
+                        className="input mt-4 min-h-[260px] rounded-2xl !py-3"
+                        value={sourceInput}
+                        onChange={(e) => setSourceInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            addSourceEntries(sourceInput);
+                          }
+                        }}
+                        placeholder={'Add one domain per line\n\nexample.com\ngov.example\nnews.example.org'}
+                        disabled={!sourceCountry}
+                      />
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-xs font-medium leading-6 text-slate-500">
+                          Press Enter to add. Use Shift+Enter for a new line, or paste comma-separated domains.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addSourceEntries(sourceInput)}
+                          disabled={!sourceInput.trim() || !sourceCountry}
+                          className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          Add Sources
+                        </button>
+                      </div>
+                      {sourceManagerNotice && (
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                          {sourceManagerNotice}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Default sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceDefaults.length ? selectedSourceDefaults.map((domain) => (
+                            <span key={`default-${domain}`} className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-100">{domain}</span>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No default source for this country and type.</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Custom sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceCustom.length ? selectedSourceCustom.map((domain) => (
+                            <button
+                              key={`custom-${domain}`}
+                              type="button"
+                              onClick={() => removeCustomSource(sourceCountry, sourceType, domain)}
+                              className="rounded-full bg-brand-pink/25 px-3 py-1.5 text-[11px] font-bold text-brand-crimson ring-1 ring-brand-crimson/10 transition hover:bg-brand-pink/40"
+                              title="Remove source"
+                            >
+                              {domain} x
+                            </button>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No custom source added.</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Final fetch sources</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedSourceEffective.length ? selectedSourceEffective.map((domain) => (
+                            <span
+                              key={`effective-${domain}`}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold ring-1 ${selectedSourceCustom.includes(domain) ? 'bg-brand-pink/25 text-brand-crimson ring-brand-crimson/10' : 'bg-white text-slate-700 ring-slate-200'}`}
+                            >
+                              {domain}
+                            </span>
+                          )) : (
+                            <span className="text-sm font-medium text-slate-400">No sources added yet.</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-black text-slate-950">{selectedSourceCustom.length} custom sources for {sourceCountry || 'selected country'}</div>
+                  <div className={`mt-1 text-[11px] font-black uppercase tracking-[0.18em] ${
+                    autosaveStatus === 'error' ? 'text-red-500'
+                      : autosaveStatus === 'saved' ? 'text-emerald-600'
+                        : 'text-amber-600'
+                  }`}>
+                    {autosaveStatus === 'saving' ? 'Saving sources...'
+                      : autosaveStatus === 'pending' ? 'Source changes will save automatically'
+                        : autosaveStatus === 'error' ? 'Source autosave failed'
+                          : 'Sources saved'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveConfig}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Save Sources
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {managerTab === 'setup' && (
+        <>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2">
@@ -1341,9 +2150,11 @@ function SuperAdminFetchTab() {
             </button>
           </div>
         </div>
+        </>
+        )}
 
         {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
-        {effectiveRunProgress && (
+        {showFetchActivity && effectiveRunProgress && (
           <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1370,30 +2181,32 @@ function SuperAdminFetchTab() {
         )}
       </div>
 
-      <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <div className="eyebrow mb-1">Last run</div>
-              <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+      {showFetchActivity ? (
+        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">Last run</div>
+                <h3 className="text-lg font-black tracking-tight text-gray-900">Latest platform activity</h3>
+              </div>
+              <Activity size={17} className="text-brand-crimson" />
             </div>
-            <Activity size={17} className="text-brand-crimson" />
+            {!lastLog ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <Stat label="Status" value={lastLog.status} />
+                <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
+                <Stat label="Fetched" value={lastLog.totalFetched} />
+                <Stat label="Inserted" value={lastLog.totalInserted} highlight />
+                <Stat label="Duplicates" value={lastLog.totalDuplicates} />
+                <Stat label="Errors" value={lastLog.totalErrors} />
+                <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+              </div>
+            )}
           </div>
-          {!lastLog ? (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-400">No logs yet.</div>
-          ) : (
-            <div className="mt-3 space-y-3">
-              <Stat label="Status" value={lastLog.status} />
-              <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
-              <Stat label="Fetched" value={lastLog.totalFetched} />
-              <Stat label="Inserted" value={lastLog.totalInserted} highlight />
-              <Stat label="Duplicates" value={lastLog.totalDuplicates} />
-              <Stat label="Errors" value={lastLog.totalErrors} />
-              <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
-            </div>
-          )}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1835,7 +2648,7 @@ export function FetchTab({ embedded = false }) {
         <div className={`grid grid-cols-1 gap-3 ${embedded ? 'xl:grid-cols-12' : 'md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3'}`}>
           {user?.access?.canUseSavedSearches !== false && (
             <FetchField label="Saved search name" className={embedded ? 'xl:col-span-4' : ''}>
-              <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Rajasthan compliance watch" />
+              <input className="input min-h-[44px] rounded-xl" value={form.saveSearchName} onChange={(e) => update('saveSearchName', e.target.value)} placeholder="E.g., Singapore compliance watch" />
             </FetchField>
           )}
           <FetchField label="Country" className={embedded ? 'xl:col-span-3' : ''}>
@@ -1904,10 +2717,10 @@ export function FetchTab({ embedded = false }) {
             </select>
           </FetchField>
           <FetchField label="Preferred sources" className={embedded ? 'xl:col-span-6' : ''}>
-            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: rajasthan.gov.in, msme.gov.in" />
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.sources} onChange={(e) => update('sources', e.target.value)} placeholder="Optional: acra.gov.sg, mom.gov.sg" />
           </FetchField>
           <FetchField label="Tracked competitors" className={embedded ? 'xl:col-span-6' : ''}>
-            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: Deloitte, TCS, Infosys" />
+            <textarea className="input min-h-[88px] resize-y rounded-2xl bg-white" value={form.competitors} onChange={(e) => update('competitors', e.target.value)} placeholder="Optional: BoardRoom, Rikvin, Hawksford" />
           </FetchField>
         </div>
 
@@ -2144,7 +2957,7 @@ export function FetchTab({ embedded = false }) {
               }`}>{lastLog.status}</span>
             </div>
             <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
-            <Stat label="Trigger" value={lastLog.triggeredBy} />
+            <Stat label="Trigger" value={logTriggerLabel(lastLog) || '-'} />
             <Stat label="Fetched" value={lastLog.totalFetched} />
             <Stat label="Inserted" value={lastLog.totalInserted} highlight />
             <Stat label="Duplicates" value={lastLog.totalDuplicates} />
@@ -2205,6 +3018,27 @@ function cleanList(value) {
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function normalizeSourceDomain(value) {
+  const domain = String(value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split(/[/?#]/)[0]
+    .toLowerCase();
+  if (!domain || !domain.includes('.') || /\s/.test(domain)) return '';
+  if (!/^[a-z0-9.-]+$/.test(domain)) return '';
+  return domain;
+}
+
+function parseSourceDomains(value) {
+  return Array.from(new Set(
+    String(value || '')
+      .split(/[\n,\s]+/)
+      .map(normalizeSourceDomain)
+      .filter(Boolean)
+  ));
 }
 
 function Stat({ label, value, highlight }) {
@@ -2391,10 +3225,11 @@ function LogsTab() {
               <span className="text-sm font-bold text-gray-800">
                 {new Date(log.startedAt).toLocaleString()}
               </span>
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">
-                {log.triggeredBy}
-                {log.triggeredByUser?.name && ` · ${log.triggeredByUser.name}`}
-              </span>
+              {logTriggerLabel(log) ? (
+                <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">
+                  {logTriggerLabel(log)}
+                </span>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[12px] font-black text-gray-500">
               <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">+{log.totalInserted || 0} new</span>
@@ -2534,6 +3369,7 @@ function UsersTab({ dbPlans }) {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const [items, setItems] = useState([]);
+  const [userQuery, setUserQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -2544,9 +3380,9 @@ function UsersTab({ dbPlans }) {
     password: '',
     company: '',
     designation: '',
-    role: isSuperAdmin ? 'admin' : 'user',
+    role: isSuperAdmin ? '' : 'user',
     isActive: true,
-    subscriptionPlan: 'free',
+    subscriptionPlan: isSuperAdmin ? '' : 'free',
     memberLimit: 3,
     access: {
       canFetch: true,
@@ -2674,6 +3510,14 @@ function UsersTab({ dbPlans }) {
   const createUser = async (e) => {
     e.preventDefault();
     setErr('');
+    if (isSuperAdmin && !form.role) {
+      setErr('Please select a role.');
+      return;
+    }
+    if (isSuperAdmin && !form.subscriptionPlan) {
+      setErr('Please select a subscription plan.');
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/admin/users', form);
@@ -2683,9 +3527,9 @@ function UsersTab({ dbPlans }) {
         password: '',
         company: '',
         designation: '',
-        role: isSuperAdmin ? 'admin' : 'user',
+        role: isSuperAdmin ? '' : 'user',
         isActive: true,
-        subscriptionPlan: 'free',
+        subscriptionPlan: isSuperAdmin ? '' : 'free',
         memberLimit: 3,
         access: {
           canFetch: true,
@@ -2745,7 +3589,7 @@ function UsersTab({ dbPlans }) {
   };
 
   const remove = async (u) => {
-    if (!confirm(`Delete ${u.email}? This is permanent.`)) return;
+    if (!confirm(`Delete ${u.email}? Account access will stop immediately and background cleanup will remove related data after the retention window.`)) return;
     try {
       await api.delete(`/admin/users/${u._id}`);
       load();
@@ -2753,8 +3597,6 @@ function UsersTab({ dbPlans }) {
       alert(e.message);
     }
   };
-
-  if (loading) return <Loader />;
 
   const currentUserId = currentUser?._id || currentUser?.id;
   const currentAccount = items.find((u) => currentUserId && String(u._id) === String(currentUserId));
@@ -2772,6 +3614,28 @@ function UsersTab({ dbPlans }) {
         ...managedUsers.filter((u) => u.role === 'user' && !adminById.has(String(u.tenantAdminId || '')))
       ]
     : managedUsers;
+  const normalizedUserQuery = userQuery.trim().toLowerCase();
+  const visibleUsers = useMemo(() => {
+    if (!normalizedUserQuery) return sortedUsers;
+    return sortedUsers.filter((u) => {
+      const haystack = [
+        u.name,
+        u.email,
+        u.company,
+        u.role,
+        !isSuperAdmin
+          ? ''
+          : u.role === 'admin'
+            ? 'Company admin'
+            : (adminById.get(String(u.tenantAdminId || ''))
+              ? `${adminById.get(String(u.tenantAdminId || ''))?.name || ''} ${adminById.get(String(u.tenantAdminId || ''))?.company || ''}`
+              : 'Unassigned')
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+      return haystack.includes(normalizedUserQuery);
+    });
+  }, [sortedUsers, normalizedUserQuery]);
 
   const teamLabel = (u) => {
     if (!isSuperAdmin) return '';
@@ -2791,6 +3655,8 @@ function UsersTab({ dbPlans }) {
     if (u.access && Object.prototype.hasOwnProperty.call(u.access, key)) return u.access[key] !== false;
     return defaults[key] !== false;
   };
+
+  if (loading) return <Loader />;
 
   return (
     <div className="space-y-5">
@@ -2872,10 +3738,14 @@ function UsersTab({ dbPlans }) {
           <input className="input min-h-[44px] rounded-xl" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
           <div className="flex gap-2">
-            <select className="input min-h-[44px] rounded-xl" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
-              {isSuperAdmin && <option value="admin">Admin</option>}
-              <option value="user">Member</option>
-            </select>
+            <div className="flex-1">
+              <label className="sr-only">Role</label>
+              <select className="input min-h-[44px] rounded-xl" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
+                {isSuperAdmin && <option value="" disabled>Select role</option>}
+                {isSuperAdmin && <option value="admin">Admin</option>}
+                <option value="user">Member</option>
+              </select>
+            </div>
             <label className="flex items-center gap-2 text-xs text-ink-500 whitespace-nowrap px-2">
               <input type="checkbox" checked={form.isActive} onChange={(e) => updateForm('isActive', e.target.checked)} />
               Active
@@ -2886,6 +3756,7 @@ function UsersTab({ dbPlans }) {
               <div>
                 <label className="label text-gray-500 font-bold tracking-wider">Subscription Plan</label>
                 <select className="input" value={form.subscriptionPlan} onChange={(e) => updatePlan(e.target.value)}>
+                  <option value="" disabled>Select subscription plan</option>
                   <option value="premium">Premium - $99 / mo</option>
                   <option value="free">Free — $0 / mo</option>
                   <option value="growth">Growth — $29 / mo</option>
@@ -2894,10 +3765,22 @@ function UsersTab({ dbPlans }) {
                 </select>
                 <p className="mt-1 text-[10px] font-semibold text-gray-400">Changing plan auto-fills limits below.</p>
               </div>
-              <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
-              <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
-              <input className="input" type="number" min={0} placeholder="Monthly blog limit" value={form.limits.blogGenerationsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, blogGenerationsMonthly: Number(e.target.value) })} />
-              <input className="input" type="number" min={0} placeholder="Monthly post limit" value={form.limits.socialPostsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, socialPostsMonthly: Number(e.target.value) })} />
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Member Limit</label>
+                <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Fetch Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Blog Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly blog limit" value={form.limits.blogGenerationsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, blogGenerationsMonthly: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Post Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly post limit" value={form.limits.socialPostsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, socialPostsMonthly: Number(e.target.value) })} />
+              </div>
             </>
           )}
         </div>
@@ -2933,14 +3816,25 @@ function UsersTab({ dbPlans }) {
       </form>
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
+      <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-black text-gray-900">Members and admins</div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-            {managedUsers.length} managed accounts
+            {visibleUsers.length}{visibleUsers.length !== managedUsers.length ? ` of ${managedUsers.length}` : ''} managed accounts
           </div>
         </div>
-        <Users size={17} className="text-gray-400" />
+        <div className="flex items-center gap-3">
+          <div className="relative w-full min-w-0 lg:w-[300px]">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="input min-h-[42px] w-full rounded-xl pl-11"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+              placeholder="Search name, email, company..."
+            />
+          </div>
+          <Users size={17} className="hidden shrink-0 text-gray-400 sm:block" />
+        </div>
       </div>
       <div className="overflow-x-auto">
       <table className="w-full min-w-[1180px]">
@@ -2959,7 +3853,7 @@ function UsersTab({ dbPlans }) {
           </tr>
         </thead>
         <tbody>
-          {sortedUsers.map((u) => (
+          {visibleUsers.map((u) => (
             <tr key={u._id} className="border-t border-gray-100 hover:bg-gray-50/60">
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
@@ -3105,6 +3999,13 @@ function UsersTab({ dbPlans }) {
               </td>
             </tr>
           )}
+          {managedUsers.length > 0 && visibleUsers.length === 0 && (
+            <tr className="border-t border-gray-100">
+              <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
+                No users match your search.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
         </div>
@@ -3112,6 +4013,20 @@ function UsersTab({ dbPlans }) {
       </>
     </div>
   );
+}
+
+function logTriggerLabel(log = {}) {
+  const notes = String(log?.notes || '').toLowerCase();
+  if (log?.triggeredBy === 'cron' || notes.includes('scheduled profile intelligence trigger') || notes.includes('fetch queued from scheduler')) {
+    return 'Scheduler';
+  }
+  if (log?.triggeredByUser?.name) {
+    const role = String(log?.triggeredByUser?.role || '').toLowerCase();
+    if (role === 'admin' || role === 'super_admin') return `${log.triggeredByUser.name} manual`;
+    return log.triggeredByUser.name;
+  }
+  if (log?.triggeredBy === 'manual') return 'Manual';
+  return '';
 }
 
 function LimitInput({ label, value, onSave }) {
@@ -3424,8 +4339,7 @@ function UsageMini({ label, value, sub, danger = false }) {
 function StatCard({ label, value, icon: Icon, accent, note, tint }) {
   return (
     <div className="premium-stat-card overflow-hidden p-5">
-      <div className={`absolute top-0 right-0 h-24 w-24 rounded-full opacity-20 blur-[40px] ${accent}`} />
-      <div className={`absolute inset-x-0 top-0 h-1.5 ${accent}`} />
+      <div className={`absolute inset-x-0 top-0 h-1 ${accent}`} />
       <div className="relative z-10">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -3438,7 +4352,7 @@ function StatCard({ label, value, icon: Icon, accent, note, tint }) {
             </span>
           ) : null}
         </div>
-        {note && <div className="mt-4 inline-flex rounded-full border border-gray-100 bg-white/80 px-3 py-1.5 text-[11px] font-bold text-gray-500 shadow-sm">{note}</div>}
+        {note && <div className="mt-4 text-xs font-semibold text-gray-500">{note}</div>}
       </div>
     </div>
   );
@@ -3972,6 +4886,80 @@ const MAIL_AUDIENCE_OPTIONS_UI = [
   { key: 'custom', label: 'Custom selection', help: 'Pick exact recipients from the user directory.' }
 ];
 
+function renderInlineMailPreview(text) {
+  const parts = String(text || '').split(/(\*\*.+?\*\*)/g).filter(Boolean);
+  return parts.map((part, index) => (
+    /^\*\*.+\*\*$/.test(part)
+      ? <strong key={`${part}-${index}`} className="font-bold text-gray-800">{part.slice(2, -2)}</strong>
+      : <span key={`${part}-${index}`}>{part}</span>
+  ));
+}
+
+function MailPreviewBody({ message }) {
+  const lines = String(message || '').split(/\r?\n/).map((line) => line.trimEnd());
+  const blocks = [];
+  let bullets = [];
+
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    blocks.push(
+      <ul key={`bullets-${blocks.length}`} className="mb-4 list-disc space-y-2 pl-5 text-[15px] leading-7 text-slate-600">
+        {bullets.map((item, index) => (
+          <li key={`${item}-${index}`}>{renderInlineMailPreview(item)}</li>
+        ))}
+      </ul>
+    );
+    bullets = [];
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushBullets();
+      blocks.push(<div key={`space-${index}`} className="h-2" />);
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      bullets.push(bulletMatch[1]);
+      return;
+    }
+
+    flushBullets();
+
+    if (/:\s*$/.test(trimmed) && trimmed.length <= 80) {
+      blocks.push(
+        <p key={`heading-${index}`} className="mb-3 text-base font-bold leading-6 text-slate-700">
+          {renderInlineMailPreview(trimmed)}
+        </p>
+      );
+      return;
+    }
+
+    blocks.push(
+      <p key={`line-${index}`} className="mb-3 text-[15px] leading-7 text-slate-600">
+        {renderInlineMailPreview(trimmed)}
+      </p>
+    );
+  });
+
+  flushBullets();
+  return <div>{blocks}</div>;
+}
+
+const createMailCenterForm = () => ({
+  audience: 'all',
+  subject: '',
+  heading: '',
+  preview: '',
+  message: '',
+  ctaLabel: '',
+  ctaUrl: '',
+  footerNote: '',
+  userIds: []
+});
+
 function SuperAdminMailCenter() {
   const [audienceItems, setAudienceItems] = useState([]);
   const [loadingAudience, setLoadingAudience] = useState(true);
@@ -3982,17 +4970,7 @@ function SuperAdminMailCenter() {
   const [senderEmail, setSenderEmail] = useState('');
   const [replyToEmail, setReplyToEmail] = useState('');
   const [recipientQuery, setRecipientQuery] = useState('');
-  const [form, setForm] = useState({
-    audience: 'all',
-    subject: '',
-    heading: '',
-    preview: '',
-    message: '',
-    ctaLabel: '',
-    ctaUrl: '',
-    footerNote: '',
-    userIds: []
-  });
+  const [form, setForm] = useState(() => createMailCenterForm());
 
   const loadAudience = useCallback(async () => {
     setLoadingAudience(true);
@@ -4094,6 +5072,9 @@ function SuperAdminMailCenter() {
         footerNote: form.footerNote.trim()
       });
       setSendSuccess(data.message || 'Email sent successfully.');
+      setForm(createMailCenterForm());
+      setRecipientQuery('');
+      await loadAudience();
     } catch (err) {
       setSendError(err.response?.data?.message || err.message || 'Could not send email.');
     } finally {
@@ -4138,6 +5119,7 @@ function SuperAdminMailCenter() {
             <div className="md:col-span-2">
               <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Message body</label>
               <textarea className="input min-h-[220px] rounded-2xl py-3" value={form.message} onChange={(e) => updateForm('message', e.target.value)} placeholder={'Write your message here.\n\nYou can use multiple paragraphs.\nEach line break is preserved in the final email.'} />
+              <p className="mt-2 text-xs font-medium text-gray-400">Formatting: use `- item` for bullets, blank lines for spacing, and `**text**` for bold.</p>
             </div>
           </div>
 
@@ -4262,25 +5244,31 @@ function SuperAdminMailCenter() {
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Live preview</div>
-            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-[#faf0f2]">
-              <div className="bg-gradient-to-br from-brand-crimson to-brand-hoverred px-5 py-5 text-white">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/80">Super Admin Message</div>
-                <div className="mt-2 text-xl font-black leading-tight">{previewHeading}</div>
-                <div className="mt-2 text-sm font-medium leading-6 text-white/85">{previewIntro}</div>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
+              <div className="h-1.5 bg-gradient-to-r from-brand-pink/80 via-brand-crimson/80 to-brand-hoverred/90" />
+              <div className="border-b border-[#efe4e8] bg-gradient-to-b from-white to-[#faf5f7] px-6 py-6">
+                <div className="min-w-0">
+                  <img src="/logo.png" alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="inline-flex items-center rounded-full border border-[#f0d3dd] bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">Admin update</div>
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-gray-500">{previewIntro}</div>
+                </div>
+                <div className="mt-5 text-[30px] font-black leading-tight tracking-tight text-gray-900">{previewHeading}</div>
               </div>
-              <div className="space-y-4 bg-white px-5 py-5">
-                <div className="text-sm font-medium text-gray-600">
+              <div className="space-y-5 bg-white px-6 py-7">
+                <div className="text-base font-medium leading-7 text-gray-600">
                   Hi {selectedRecipients[0]?.name || selectedRecipients[0]?.email || 'recipient'},
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">{previewMessage}</div>
+                <MailPreviewBody message={previewMessage} />
                 {form.ctaUrl.trim() ? (
                   <div>
-                    <span className="inline-flex items-center rounded-xl bg-brand-crimson px-4 py-2 text-sm font-black text-white">
+                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]">
                       {form.ctaLabel.trim() || 'Open link'}
                     </span>
                   </div>
                 ) : null}
-                <div className="border-t border-gray-100 pt-4 text-xs font-medium leading-6 text-gray-400">
+                <div className="border-t border-[#ece7ea] pt-5 text-xs font-medium leading-6 text-gray-400">
                   {form.footerNote.trim() || 'You received this email because your account is part of the platform workspace.'}
                 </div>
               </div>
@@ -4294,11 +5282,126 @@ function SuperAdminMailCenter() {
 
 // =============== SYSTEM SETTINGS (SUPER ADMIN ONLY) ===============
 
+const SOURCE_TRUST_LEVELS = [
+  { key: 'high', label: 'High Credibility', tone: 'emerald' },
+  { key: 'moderate', label: 'Moderate Credibility', tone: 'amber' },
+  { key: 'low', label: 'Low Credibility', tone: 'rose' }
+];
+const SETTINGS_SECTIONS = [
+  { key: 'ai', label: 'AI & Automation', icon: Sparkles, help: 'Model and feature flags' },
+  { key: 'visual', label: 'Visual Theme', icon: Gauge, help: 'Feed colors and scoring' },
+  { key: 'sources', label: 'Source Trust', icon: Database, help: 'Credibility mapping' },
+  { key: 'maintenance', label: 'Maintenance', icon: AlertTriangle, help: 'Access controls' }
+];
+const TOPIC_THEME_OPTIONS = [
+  { key: 'govt', label: 'Government Updates' },
+  { key: 'news', label: 'News Articles' },
+  { key: 'evergreen', label: 'Evergreen Topics' },
+  { key: 'competitor', label: 'Competitor Intel' }
+];
+
+function trustToneClasses(tone) {
+  if (tone === 'emerald') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  if (tone === 'amber') return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-rose-200 bg-rose-50 text-rose-800';
+}
+
+function buildSourceTrustMappingFromRegistry(items = []) {
+  return items.reduce((acc, item) => {
+    const bucket = item?.credibility || 'moderate';
+    if (!acc[bucket]) acc[bucket] = [];
+    if (item?.trustKey) acc[bucket].push(item.trustKey);
+    return acc;
+  }, { high: [], moderate: [], low: [] });
+}
+
+function moveRegistryItem(items = [], trustKey, nextCredibility) {
+  return items.map((item) => (
+    item.trustKey === trustKey
+      ? { ...item, credibility: nextCredibility }
+      : item
+  ));
+}
+
+function ThemeColorField({ label, value, onChange, hint = '' }) {
+  return (
+    <label className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+      <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
+      <div className="mt-3 flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-14 cursor-pointer rounded-xl border border-gray-200 bg-white p-1"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-black text-gray-900">{value}</div>
+          {hint ? <div className="mt-0.5 text-xs font-medium text-gray-500">{hint}</div> : null}
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function SourceTrustCard({ item, onDragStart, onMove }) {
+  return (
+    <div
+      draggable
+      onDragStart={() => onDragStart(item.trustKey)}
+      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-black text-gray-900">{item.name}</div>
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+            {item.sourceType || item.sourceId || 'Source'}
+          </div>
+        </div>
+        <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-1 text-[10px] font-black ${item.isDefault ? 'border-brand-crimson/20 bg-brand-pink/20 text-brand-crimson' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
+          {item.isDefault ? 'Default High' : 'Dynamic'}
+        </span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {item.types?.length ? (
+          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+            {item.types.join(', ')}
+          </span>
+        ) : null}
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+          {item.count || 0} items
+        </span>
+        {item.countries?.length ? (
+          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+            {item.countries.length} countries
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {SOURCE_TRUST_LEVELS.map((level) => (
+          <button
+            key={level.key}
+            type="button"
+            onClick={() => onMove(item.trustKey, level.key)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-black transition-all ${item.credibility === level.key ? trustToneClasses(level.tone) : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
+          >
+            {level.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SystemSettingsTab() {
   const [aiModel, setAiModel] = useState('gpt-4o-mini');
   const [aiSummary, setAiSummary] = useState(false);
   const [aiCategory, setAiCategory] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [dashboardAppearance, setDashboardAppearance] = useState(() => getDashboardAppearance());
+  const [sourceTrustRegistry, setSourceTrustRegistry] = useState([]);
+  const [draggedTrustKey, setDraggedTrustKey] = useState('');
+  const [activeSection, setActiveSection] = useState('ai');
+  const [sourceTrustSearch, setSourceTrustSearch] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -4314,6 +5417,8 @@ function SystemSettingsTab() {
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setDashboardAppearance(getDashboardAppearance(settings));
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : []);
     } catch (e) {
       setSettingsError(e.response?.data?.message || e.message || 'Failed to load system settings');
     } finally {
@@ -4333,13 +5438,17 @@ function SystemSettingsTab() {
         aiModel,
         aiSummary,
         aiCategory,
-        maintenanceMode
+        maintenanceMode,
+        dashboardAppearance,
+        sourceTrustMapping: buildSourceTrustMappingFromRegistry(sourceTrustRegistry)
       });
       const settings = data.settings || {};
       setAiModel(settings.aiModel || aiModel);
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setDashboardAppearance(getDashboardAppearance(settings));
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : sourceTrustRegistry);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -4353,59 +5462,114 @@ function SystemSettingsTab() {
     { label: 'AI Article Summarization',   help: 'Auto-generate AI summaries for fetched articles',       val: aiSummary,  set: setAiSummary },
     { label: 'AI Category Classification', help: 'Use AI to auto-classify article categories on fetch',    val: aiCategory, set: setAiCategory },
   ];
+  const normalizedTrustSearch = sourceTrustSearch.trim().toLowerCase();
+  const sourceTrustGroups = useMemo(() => (
+    SOURCE_TRUST_LEVELS.reduce((acc, level) => {
+      acc[level.key] = sourceTrustRegistry
+        .filter((item) => (
+          !normalizedTrustSearch
+          || item.name?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceId?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceType?.toLowerCase().includes(normalizedTrustSearch)
+        ))
+        .filter((item) => item.credibility === level.key)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return acc;
+    }, {})
+  ), [sourceTrustRegistry, normalizedTrustSearch]);
+  const moveSourceTrustItem = useCallback((trustKey, nextCredibility) => {
+    setSourceTrustRegistry((current) => moveRegistryItem(current, trustKey, nextCredibility));
+  }, []);
+  const visibleSourceTrustCount = sourceTrustGroups.high.length + sourceTrustGroups.moderate.length + sourceTrustGroups.low.length;
+  const updateTopicColor = useCallback((topic, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      topicColors: {
+        ...current.topicColors,
+        [topic]: {
+          ...current.topicColors[topic],
+          [field]: value
+        }
+      }
+    }));
+  }, []);
+  const updateTrustColor = useCallback((level, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      sourceTrustColors: {
+        ...current.sourceTrustColors,
+        [level]: {
+          ...current.sourceTrustColors[level],
+          [field]: value
+        }
+      }
+    }));
+  }, []);
+  const updateScoreBand = useCallback((key, field, value) => {
+    setDashboardAppearance((current) => ({
+      ...current,
+      relevanceScoreBands: current.relevanceScoreBands.map((band) => (
+        band.key === key
+          ? { ...band, [field]: field === 'min' ? Number(value) : value }
+          : band
+      )).sort((a, b) => Number(b.min || 0) - Number(a.min || 0))
+    }));
+  }, []);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {/* AI Model & Flags */}
-        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">AI Engine</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">AI Model Settings</h3>
-          <div className="space-y-5">
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Active AI Model</label>
-              <select
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
-                value={aiModel}
-                onChange={e => setAiModel(e.target.value)}
-              >
-                <option value="gpt-4o-mini">GPT-4o Mini &mdash; Fast &amp; Cost Efficient (Recommended)</option>
-                <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
-                <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
-              </select>
-              <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
+              <div className="eyebrow mb-1">System Settings</div>
+              <h3 className="text-2xl font-black tracking-tight text-gray-900">Platform Control Center</h3>
+              <p className="mt-1 text-sm font-medium text-gray-500">Open a focused settings tab instead of scrolling through one long page.</p>
             </div>
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Feature Flags</div>
-              <div className="space-y-2.5">
-                {aiToggles.map(({ label, help, val, set }, i) => (
-                  <div key={i} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all ${val ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
-                    <div>
-                      <div className={`text-sm font-black ${val ? 'text-blue-800' : 'text-gray-700'}`}>{label}</div>
-                      <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
-                    </div>
-                    <button
-                      onClick={() => set(!val)}
-                      className={`flex-shrink-0 h-6 w-11 rounded-full flex items-center transition-all ${val ? 'bg-blue-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-                ))}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Model</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{aiModel || 'Not set'}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">AI Flags</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{[aiSummary, aiCategory].filter(Boolean).length}/2 active</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Mapped Sources</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustRegistry.length}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Access Mode</div>
+                <div className={`mt-1 text-sm font-black ${maintenanceMode ? 'text-red-600' : 'text-emerald-600'}`}>{maintenanceMode ? 'Maintenance' : 'Live'}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Current Configuration */}
-        <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Platform Snapshot</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">Current Configuration</h3>
-          <div className="space-y-3">
-            <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
-            <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
-            <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
-            <ConfigStatusRow icon={AlertTriangle} label="Maintenance mode" value={maintenanceMode ? 'Enabled' : 'Disabled'} tone={maintenanceMode ? 'amber' : 'gray'} />
+        <div className="px-3 py-3 sm:px-4">
+          <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(180px,1fr)] gap-3 overflow-x-auto">
+            {SETTINGS_SECTIONS.map((section) => {
+              const active = activeSection === section.key;
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => setActiveSection(section.key)}
+                  className={`rounded-[24px] border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson/20 bg-brand-pink/20 shadow-sm' : 'border-gray-200 bg-white/80 hover:bg-white hover:shadow-sm'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${active ? 'bg-brand-crimson text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      <section.icon size={17} />
+                    </span>
+                    <div>
+                      <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-900'}`}>{section.label}</div>
+                      <div className="mt-0.5 text-xs font-medium text-gray-500">{section.help}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -4416,35 +5580,309 @@ function SystemSettingsTab() {
         </div>
       )}
 
-      {/* Maintenance Mode */}
-      <div className={`bg-white rounded-2xl ring-1 shadow-sm p-6 border-2 transition-all ${maintenanceMode ? 'border-red-300 ring-red-100' : 'border-gray-200 ring-gray-100'}`}>
-        <div className="flex items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
-              <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
+      {activeSection === 'ai' && (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+            <div className="eyebrow mb-1">AI Engine</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">AI Model Settings</h3>
+            <p className="mt-1 text-sm font-medium text-gray-500">Control the shared model and AI automation features used during fetch and classification.</p>
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400">Active AI Model</label>
+                <select
+                  className="input min-h-[44px] rounded-xl"
+                  value={aiModel}
+                  onChange={e => setAiModel(e.target.value)}
+                >
+                  <option value="gpt-4o-mini">GPT-4o Mini &mdash; Fast &amp; Cost Efficient (Recommended)</option>
+                  <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
+                </select>
+                <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
+              </div>
+              <div>
+                <div className="mb-3 text-[10px] font-black uppercase tracking-wider text-gray-400">Feature Flags</div>
+                <div className="space-y-2.5">
+                  {aiToggles.map(({ label, help, val, set }, i) => (
+                    <div key={i} className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3.5 transition-all ${val ? 'border-emerald-200 bg-emerald-50/80' : 'border-gray-100 bg-gray-50/70'}`}>
+                      <div>
+                        <div className={`text-sm font-black ${val ? 'text-emerald-700' : 'text-gray-700'}`}>{label}</div>
+                        <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => set(!val)}
+                        className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                      >
+                        <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <p className="text-sm font-medium text-gray-500">When enabled, all users (except Super Admin) see a maintenance screen. Use during major updates or deployments.</p>
           </div>
-          <button
-            onClick={() => setMaintenanceMode(!maintenanceMode)}
-            className={`flex-shrink-0 h-7 w-14 rounded-full flex items-center transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
-          >
-            <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
-          </button>
+
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+            <div className="eyebrow mb-1">Platform Snapshot</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Current Configuration</h3>
+            <p className="mt-1 text-sm font-medium text-gray-500">Quick read-only summary of the settings that are currently active platform-wide.</p>
+            <div className="space-y-3">
+              <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
+              <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
+              <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
+              <ConfigStatusRow icon={Database} label="Source trust rules" value={`${sourceTrustRegistry.length} mapped sources`} tone="neutral" />
+            </div>
+          </div>
         </div>
-        {maintenanceMode && (
-          <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-700">
-            Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
+      )}
+
+      {activeSection === 'visual' && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Visual Theme</div>
+                <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Feed Palette Controls</h3>
+                <p className="mt-1 text-sm font-medium text-gray-500">Set premium colors for topic columns, source trust badges, and relevance score pills from one place.</p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
+                Keep topic colors soft. Let score and source trust colors carry the stronger emphasis.
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Topic Colors</div>
+              <h4 className="mt-1 text-xl font-black text-gray-900">Four Intel Topic Palettes</h4>
+            </div>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              {TOPIC_THEME_OPTIONS.map((column) => {
+                const theme = dashboardAppearance.topicColors[column.key];
+                return (
+                  <div key={column.key} className="rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-gray-900">{column.label}</div>
+                        <div className="mt-1 text-xs font-medium text-gray-500">Column header, article accent, and CTA tone</div>
+                      </div>
+                      <div className="rounded-2xl px-4 py-2" style={{ background: theme.soft, border: `1px solid ${theme.border}`, color: theme.text }}>
+                        <div className="text-[11px] font-black uppercase tracking-wider">{column.label}</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <ThemeColorField label="Accent" value={theme.accent} onChange={(value) => updateTopicColor(column.key, 'accent', value)} hint="Thin rail and key icon tint" />
+                      <ThemeColorField label="Text" value={theme.text} onChange={(value) => updateTopicColor(column.key, 'text', value)} hint="Readable heading/pill text" />
+                      <ThemeColorField label="Soft" value={theme.soft} onChange={(value) => updateTopicColor(column.key, 'soft', value)} hint="Soft fill for header backgrounds" />
+                      <ThemeColorField label="Border" value={theme.border} onChange={(value) => updateTopicColor(column.key, 'border', value)} hint="Subtle premium outline" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Source Trust</div>
+                <h4 className="mt-1 text-xl font-black text-gray-900">Source Box Colors</h4>
+              </div>
+              <div className="space-y-4">
+                {SOURCE_TRUST_LEVELS.map((level) => {
+                  const tone = dashboardAppearance.sourceTrustColors[level.key];
+                  return (
+                    <div key={level.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-gray-900">{level.label}</div>
+                          <div className="mt-1 text-xs font-medium text-gray-500">Used on the source panel inside article cards</div>
+                        </div>
+                        <div className="rounded-2xl px-4 py-2" style={{ background: tone.bg, border: `1px solid ${tone.border}`, color: tone.text }}>
+                          <div className="text-[11px] font-black uppercase tracking-wider">{level.label}</div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <ThemeColorField label="Background" value={tone.bg} onChange={(value) => updateTrustColor(level.key, 'bg', value)} />
+                        <ThemeColorField label="Border" value={tone.border} onChange={(value) => updateTrustColor(level.key, 'border', value)} />
+                        <ThemeColorField label="Text" value={tone.text} onChange={(value) => updateTrustColor(level.key, 'text', value)} />
+                        <ThemeColorField label="Icon" value={tone.icon} onChange={(value) => updateTrustColor(level.key, 'icon', value)} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Relevance Score</div>
+                <h4 className="mt-1 text-xl font-black text-gray-900">Score Color Coding</h4>
+              </div>
+              <div className="space-y-4">
+                {dashboardAppearance.relevanceScoreBands.map((band) => (
+                  <div key={band.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-gray-900">{band.label}</div>
+                        <div className="mt-1 text-xs font-medium text-gray-500">Articles with score {band.min}+ use this style</div>
+                      </div>
+                      <div className="rounded-2xl px-4 py-2" style={{ background: band.bg, border: `1px solid ${band.border}`, color: band.text }}>
+                        <div className="text-[11px] font-black uppercase tracking-wider">{band.min}+</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Minimum Score</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          className="input mt-2 min-h-[44px] rounded-xl"
+                          value={band.min}
+                          onChange={(e) => updateScoreBand(band.key, 'min', e.target.value)}
+                        />
+                      </label>
+                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Label</span>
+                        <input
+                          className="input mt-2 min-h-[44px] rounded-xl"
+                          value={band.label}
+                          onChange={(e) => updateScoreBand(band.key, 'label', e.target.value)}
+                        />
+                      </label>
+                      <ThemeColorField label="Background" value={band.bg} onChange={(value) => updateScoreBand(band.key, 'bg', value)} />
+                      <ThemeColorField label="Border" value={band.border} onChange={(value) => updateScoreBand(band.key, 'border', value)} />
+                      <ThemeColorField label="Text" value={band.text} onChange={(value) => updateScoreBand(band.key, 'text', value)} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'sources' && (
+        <div className="rounded-[30px] border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Source Trust</div>
+              <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Dynamic Source Credibility Mapping</h3>
+              <p className="mt-1 text-sm font-medium text-gray-500">
+                Default configured sources stay in High Credibility. Dynamic sources disappear automatically when their article data is deleted.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Visible sources</div>
+                <div className="mt-1 text-lg font-black text-gray-900">{visibleSourceTrustCount}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Search</div>
+                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustSearch.trim() ? 'Filtered' : 'All sources'}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
+                Drag source cards between columns or use the quick trust buttons inside each card.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full max-w-md">
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input min-h-[46px] rounded-2xl pl-11"
+                value={sourceTrustSearch}
+                onChange={(e) => setSourceTrustSearch(e.target.value)}
+                placeholder="Search source name, domain, or source id"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SOURCE_TRUST_LEVELS.map((level) => (
+                <span key={level.key} className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-black ${trustToneClasses(level.tone)}`}>
+                  {level.label}: {sourceTrustGroups[level.key]?.length || 0}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+            {SOURCE_TRUST_LEVELS.map((level) => (
+              <div
+                key={level.key}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggedTrustKey) moveSourceTrustItem(draggedTrustKey, level.key);
+                  setDraggedTrustKey('');
+                }}
+                className={`rounded-[28px] border p-4 transition-all ${trustToneClasses(level.tone)}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black">{level.label}</div>
+                    <div className="mt-1 text-xs font-semibold opacity-80">
+                      {sourceTrustGroups[level.key]?.length || 0} source{sourceTrustGroups[level.key]?.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-black">
+                    {level.key === 'high' ? 'All high' : level.key === 'moderate' ? 'All moderate' : 'All low'}
+                  </span>
+                </div>
+
+                <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
+                  {(sourceTrustGroups[level.key] || []).map((item) => (
+                    <SourceTrustCard
+                      key={item.trustKey}
+                      item={item}
+                      onDragStart={setDraggedTrustKey}
+                      onMove={moveSourceTrustItem}
+                    />
+                  ))}
+                  {!(sourceTrustGroups[level.key] || []).length ? (
+                    <div className="rounded-2xl border border-dashed border-current/30 bg-white/60 px-4 py-10 text-center text-sm font-semibold text-current/70">
+                      {normalizedTrustSearch ? 'No matching sources in this trust level' : 'Drop sources here'}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'maintenance' && (
+        <div className={`rounded-2xl border bg-white p-5 shadow-sm transition-all sm:p-6 ${maintenanceMode ? 'border-red-200' : 'border-gray-100'}`}>
+          <div className="flex items-center justify-between gap-6">
+            <div>
+              <div className="mb-1.5 flex items-center gap-2">
+                <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
+                <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
+              </div>
+              <p className="text-sm font-medium text-gray-500">When enabled, all users except Super Admin see a maintenance screen. Use this during deployments or platform repair work.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMaintenanceMode(!maintenanceMode)}
+              className={`flex h-7 w-14 shrink-0 items-center rounded-full transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+            >
+              <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
+            </button>
+          </div>
+          {maintenanceMode && (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button
           onClick={handleSaveSettings}
           disabled={savingSettings || loadingSettings}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
         >
           {savingSettings ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Settings</>}
         </button>

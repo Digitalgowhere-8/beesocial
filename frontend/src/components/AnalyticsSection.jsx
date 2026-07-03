@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe, Sparkles, ExternalLink, Clock3, MapPin, Tag, Flame } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { getDashboardAppearance, scoreBandForValue } from '../utils/feedTheme';
 
 const CRIMSON = '#D11243';
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
@@ -288,6 +290,16 @@ function getArticleDay(item) {
   return time ? formatDashboardDateKey(new Date(time)) : '';
 }
 
+function getInsertedTime(item) {
+  const time = new Date(item?.fetchedAt || item?.createdAt || 0).getTime();
+  return Number.isFinite(time) && time > 0 ? time : 0;
+}
+
+function getInsertedDay(item) {
+  const time = getInsertedTime(item);
+  return time ? formatDashboardDateKey(new Date(time)) : '';
+}
+
 function dateFromKey(key) {
   const [year, month, day] = String(key || '').split('-').map(Number);
   if (!year || !month || !day) return new Date();
@@ -345,7 +357,10 @@ function formatCompactDateTime(value) {
 }
 
 function InsightItem({ item, color }) {
+  const { uiSettings } = useAuth();
+  const appearance = getDashboardAppearance(uiSettings);
   const score = Math.round(Number(item.relevanceScore || 0));
+  const scoreBand = scoreBandForValue(score, appearance);
   const when = item.fetchedAt || item.publishedAt
     ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
     : '';
@@ -378,7 +393,7 @@ function InsightItem({ item, color }) {
         {score > 0 && (
           <span
             className="shrink-0 rounded-md px-2 py-1 text-[10px] font-black"
-            style={{ color, background: `${color}12`, border: `1px solid ${color}22` }}
+            style={{ color: scoreBand.text, background: scoreBand.bg, border: `1px solid ${scoreBand.border}` }}
             title="Relevance score"
           >
             {score}
@@ -436,7 +451,7 @@ function InsightsCard({ topArticles }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {topArticles.length ? (
           topArticles.map((item, index) => (
             <InsightItem
@@ -446,7 +461,7 @@ function InsightsCard({ topArticles }) {
             />
           ))
         ) : (
-          <div className="md:col-span-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
+          <div className="xl:col-span-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
             <p className="text-[12px] text-gray-500 leading-relaxed">
               No current signals available for the selected filters.
             </p>
@@ -466,8 +481,7 @@ function buildCategoryMomentum(items) {
 
   return Object.entries(buckets)
     .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    .sort((a, b) => b.count - a.count);
 }
 
 function sortBySignal(items) {
@@ -633,12 +647,12 @@ function CategoryMomentumCard({ categories, className = '' }) {
         <Sparkles size={15} className="shrink-0 text-brand-crimson" />
         <h3 className="text-sm font-black text-gray-900">Category Momentum</h3>
       </div>
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.28rem,0.65vh,0.45rem)] overflow-y-auto pr-1">
+      <div className="max-h-[210px] min-h-0 flex-1 space-y-[clamp(0.28rem,0.65vh,0.45rem)] overflow-y-auto pr-2">
         {categories.length ? categories.map((item) => (
           <div key={item.label} className="flex min-h-[34px] shrink-0 flex-col justify-center">
             <div className="mb-[clamp(0.1rem,0.35vh,0.25rem)] flex items-center justify-between gap-2">
-              <span className="truncate text-[clamp(10px,1.45vh,12px)] font-bold leading-none text-gray-700">{item.label}</span>
-              <span className="shrink-0 text-[10px] font-black leading-none text-gray-400">{item.count}</span>
+              <span className="truncate text-[12px] font-black leading-none text-gray-700">{item.label}</span>
+              <span className="shrink-0 text-[10px] font-black leading-none text-gray-500">{item.count}</span>
             </div>
             <div className="h-[clamp(0.2rem,0.55vh,0.4rem)] shrink-0 rounded-full bg-gray-100">
               <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${Math.round((item.count / max) * 100)}%` }} />
@@ -684,7 +698,7 @@ function MarketDistributionCard({ markets, className = '' }) {
           {total} signals
         </span>
       </div>
-      <div className="hide-scrollbar min-h-0 flex-1 space-y-[clamp(0.35rem,0.8vh,0.5rem)] overflow-y-auto pr-1">
+      <div className="max-h-[210px] min-h-0 flex-1 space-y-[clamp(0.35rem,0.8vh,0.5rem)] overflow-y-auto pr-2">
         {markets.length ? markets.map((market, index) => {
           const pct = Math.round((market.count / max) * 100);
           const color = index === 0 ? CRIMSON : index === 1 ? '#10b981' : index === 2 ? '#3b82f6' : '#f59e0b';
@@ -692,7 +706,7 @@ function MarketDistributionCard({ markets, className = '' }) {
             <div key={market.market} className="flex min-h-[58px] shrink-0 flex-col justify-center rounded-lg border border-gray-100 px-3 py-[clamp(0.28rem,0.65vh,0.5rem)]">
               <div className="mb-[clamp(0.18rem,0.45vh,0.35rem)] grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <div className="truncate text-[12px] font-black text-gray-800">{market.market}</div>
+                  <div className="truncate text-[12px] font-black text-gray-700">{market.market}</div>
                   <div className="truncate text-[9px] font-bold uppercase tracking-wider text-gray-400">
                     {market.types.length ? market.types.join(' / ') : 'Unclassified'}
                   </div>
@@ -720,17 +734,17 @@ function MarketDistributionCard({ markets, className = '' }) {
 
 function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution }) {
   return (
-    <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 lg:h-full lg:grid-cols-2 lg:overflow-hidden lg:pb-2">
-      <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] lg:h-full lg:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
-        <DonutChart data={donutData} className="min-h-[220px] lg:h-full lg:min-h-0" />
-        <MarketDistributionCard markets={marketDistribution} className="min-h-[210px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
-        <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
+    <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 xl:h-full xl:grid-cols-2 xl:overflow-hidden xl:pb-2">
+      <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] xl:h-full xl:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
+        <DonutChart data={donutData} className="min-h-[220px] xl:h-full xl:min-h-0" />
+        <MarketDistributionCard markets={marketDistribution} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+        <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
       </div>
 
-      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] lg:h-full lg:min-h-0 lg:flex lg:flex-col" />
+      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
 
       {!total && (
-        <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card lg:col-span-2">
+        <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
           No live signals found for today. Once the fetch job indexes fresh articles, these charts will update automatically.
         </section>
       )}
@@ -740,7 +754,7 @@ function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, m
 
 function AllDataDashboard({ total, counts, categoryCount, donutData, signalData, topArticles, dynamicSources }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={TrendingUp} label="Total Signals" value={total} sub={`${categoryCount} categories`} color={CRIMSON} delay={0.05} />
         <StatCard icon={Landmark} label="Gov't Updates" value={counts.govt} sub="Policy and public-sector signals" color="#10b981" delay={0.1} />
@@ -781,16 +795,30 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
     [data]
   );
   const todayKey = formatDashboardDateKey(new Date());
+  const latestInsertedDayKey = useMemo(() => {
+    const latest = Math.max(0, ...allArticles.map(getInsertedTime));
+    return latest ? formatDashboardDateKey(new Date(latest)) : todayKey;
+  }, [allArticles, todayKey]);
 
   useEffect(() => {
     if (!isAdmin && viewMode !== 'today') onViewModeChange?.('today');
   }, [isAdmin, onViewModeChange, viewMode]);
 
+  const todayArticles = useMemo(
+    () => allArticles.filter((item) => getInsertedDay(item) === todayKey),
+    [allArticles, todayKey]
+  );
+
+  const todayBuzzArticles = useMemo(() => {
+    if (todayArticles.length) return todayArticles;
+    return allArticles.filter((item) => getInsertedDay(item) === latestInsertedDayKey);
+  }, [allArticles, latestInsertedDayKey, todayArticles]);
+
   const visibleArticles = useMemo(
     () => viewMode === 'today'
-      ? allArticles.filter((item) => getArticleDay(item) === todayKey)
+      ? todayArticles
       : allArticles,
-    [allArticles, todayKey, viewMode]
+    [allArticles, todayArticles, viewMode]
   );
 
   const articlesByType = useMemo(() => ({
@@ -823,8 +851,8 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
   );
 
   const trendingUpdates = useMemo(
-    () => allArticles,
-    [allArticles]
+    () => viewMode === 'today' ? todayBuzzArticles : visibleArticles,
+    [todayBuzzArticles, viewMode, visibleArticles]
   );
 
   const categoryMomentum = useMemo(
@@ -905,7 +933,7 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
         
         <div className="bg-white rounded-xl p-5 border border-gray-100 space-y-3 shadow-sm">
           <div className="skeleton h-5 w-48 rounded" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="skeleton h-20 w-full rounded" />
             <div className="skeleton h-20 w-full rounded" />
             <div className="skeleton h-20 w-full rounded" />
