@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Check, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft, Sparkles, X } from 'lucide-react';
 
-const OVERLAY_COLOR = 'rgba(15, 23, 42, 0.62)';
-const SPOTLIGHT_PADDING = 12;
-const TOOLTIP_GAP = 18;
-const MAX_TOOLTIP_WIDTH = 430;
+const SPOTLIGHT_PADDING = 10;
+const SELECTOR_RETRY_LIMIT = 80;
+const SELECTOR_RETRY_DELAY = 120;
 
 function getVisibleElement(selector) {
   if (!selector || typeof document === 'undefined') return null;
@@ -13,54 +12,8 @@ function getVisibleElement(selector) {
   return nodes.find((node) => {
     const rect = node.getBoundingClientRect();
     const style = window.getComputedStyle(node);
-    return rect.width > 0
-      && rect.height > 0
-      && style.visibility !== 'hidden'
-      && style.display !== 'none';
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
   }) || null;
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function getPanelMetrics(rect) {
-  const isMobile = window.innerWidth < 768;
-  const width = Math.min(MAX_TOOLTIP_WIDTH, window.innerWidth - 24);
-
-  if (!rect || isMobile) {
-    return {
-      isMobile,
-      width,
-      left: Math.max(12, (window.innerWidth - width) / 2),
-      top: Math.max(12, window.innerHeight - 336),
-      arrow: null
-    };
-  }
-
-  const left = clamp(
-    rect.left + (rect.width / 2) - (width / 2),
-    12,
-    window.innerWidth - width - 12
-  );
-
-  const belowTop = rect.bottom + TOOLTIP_GAP;
-  const aboveTop = rect.top - 286;
-  const preferTop = belowTop > window.innerHeight - 36 && aboveTop >= 16;
-  const top = preferTop
-    ? clamp(aboveTop, 16, window.innerHeight - 320)
-    : clamp(belowTop, 16, window.innerHeight - 320);
-
-  return {
-    isMobile: false,
-    width,
-    left,
-    top,
-    arrow: {
-      side: preferTop ? 'bottom' : 'top',
-      left: clamp(rect.left + (rect.width / 2) - left - 8, 24, width - 24)
-    }
-  };
 }
 
 function stepListForUser(user) {
@@ -70,6 +23,10 @@ function stepListForUser(user) {
     || user?.access?.canFetch === true
     || (user?.role === 'admin' && user?.access?.canFetch !== false)
     || user?.access?.canUseScheduler === true;
+  const canUseContentRepository = user?.role === 'super_admin' || user?.access?.canUseContentRepository !== false;
+  const canUseBlogStudio = user?.role === 'super_admin'
+    || user?.access?.canUseBlogStudio === true
+    || (user?.role === 'admin' && user?.access?.canUseBlogStudio !== false);
 
   const steps = [
     {
@@ -111,8 +68,22 @@ function stepListForUser(user) {
       route: '/intel-desk',
       selector: '[data-tour="intel-feed"]',
       title: 'Signal cards',
-      description: 'Each card is a usable signal. Review the summary, open the source, save important items, or move a signal into your content workflow.'
+      description: 'Each card is a usable signal. Review the summary, open the source, save important items, or drag a signal into the Blog or LinkedIn action area to start generating content from Intel Desk.'
     },
+    ...(canUseContentRepository ? [{
+      id: 'nav-content-repository',
+      route: '/blogs',
+      selector: '[data-tour="nav-content-repository"]',
+      title: 'Content Repository',
+      description: 'This is your library for published content and saved outputs. Use it to search, review, and reopen blog or social content when you need it again.'
+    }] : []),
+    ...(canUseBlogStudio ? [{
+      id: 'nav-content-studio',
+      route: '/social-media-studio',
+      selector: '[data-tour="nav-content-studio"]',
+      title: 'Content Studio',
+      description: 'Open Content Studio to turn signals into blogs or LinkedIn posts. You can build content directly here or use Intel Desk signals to start faster.'
+    }] : []),
     {
       id: 'nav-profile',
       route: '/profile',
@@ -175,183 +146,242 @@ function stepListForUser(user) {
   return steps;
 }
 
-export default function GuidedOnboarding({ user, open, onClose }) {
+export default function GuidedOnboarding({ user, open, onClose, initialStepIndex = 0, onStepChange }) {
   const navigate = useNavigate();
   const location = useLocation();
   const steps = useMemo(() => stepListForUser(user), [user]);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [targetRect, setTargetRect] = useState(null);
+  const [stepIndex, setStepIndex] = useState(() => Math.min(Math.max(initialStepIndex, 0), Math.max(steps.length - 1, 0)));
+  const [spotlightRect, setSpotlightRect] = useState(null);
 
   const step = steps[stepIndex];
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
+  const showAnimatedFlow = step?.id === 'intel-feed';
 
   useEffect(() => {
     if (!open) {
       setStepIndex(0);
-      setTargetRect(null);
+      setSpotlightRect(null);
     }
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+    setStepIndex(Math.min(Math.max(initialStepIndex, 0), Math.max(steps.length - 1, 0)));
+  }, [initialStepIndex, open, steps.length]);
+
+  useEffect(() => {
     if (!open || !step?.route) return;
-    if (location.pathname !== step.route) {
-      navigate(step.route);
-    }
+    if (location.pathname !== step.route) navigate(step.route);
   }, [location.pathname, navigate, open, step?.route]);
 
   useEffect(() => {
     if (!open) return undefined;
-    if (!step?.selector) {
-      setTargetRect(null);
-      return undefined;
-    }
+    setSpotlightRect(null);
+    if (!step?.selector) return undefined;
 
     let cancelled = false;
     let attempts = 0;
 
     const update = () => {
-      const element = getVisibleElement(step.selector);
-      if (!element) {
+      const el = getVisibleElement(step.selector);
+      if (!el) {
         attempts += 1;
-        if (!cancelled && attempts < 40) window.requestAnimationFrame(update);
-        if (!cancelled && attempts >= 40) setTargetRect(null);
+        if (!cancelled && attempts < SELECTOR_RETRY_LIMIT) window.setTimeout(update, SELECTOR_RETRY_DELAY);
+        if (!cancelled && attempts >= SELECTOR_RETRY_LIMIT) setSpotlightRect(null);
         return;
       }
-
-      element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
-      const rect = element.getBoundingClientRect();
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      const r = el.getBoundingClientRect();
       if (!cancelled) {
-        setTargetRect({
-          top: rect.top - SPOTLIGHT_PADDING,
-          left: rect.left - SPOTLIGHT_PADDING,
-          width: rect.width + (SPOTLIGHT_PADDING * 2),
-          height: rect.height + (SPOTLIGHT_PADDING * 2)
+        setSpotlightRect({
+          top: r.top - SPOTLIGHT_PADDING,
+          left: r.left - SPOTLIGHT_PADDING,
+          width: r.width + SPOTLIGHT_PADDING * 2,
+          height: r.height + SPOTLIGHT_PADDING * 2
         });
       }
     };
 
-    const handleViewportChange = () => update();
     update();
-    window.addEventListener('resize', handleViewportChange);
-    window.addEventListener('scroll', handleViewportChange, true);
-
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
     return () => {
       cancelled = true;
-      window.removeEventListener('resize', handleViewportChange);
-      window.removeEventListener('scroll', handleViewportChange, true);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
     };
   }, [open, step?.selector, step?.route]);
 
   if (!open || !step) return null;
 
-  const rect = targetRect
-    ? {
-      top: targetRect.top,
-      left: targetRect.left,
-      bottom: targetRect.top + targetRect.height,
-      width: targetRect.width,
-      height: targetRect.height
-    }
-    : null;
-  const panel = getPanelMetrics(rect);
-
   const nextStep = () => {
-    if (isLast) {
-      onClose?.(true);
-      return;
-    }
-    setStepIndex((value) => Math.min(value + 1, steps.length - 1));
+    if (isLast) { onClose?.(true); return; }
+    setStepIndex((v) => { const n = Math.min(v + 1, steps.length - 1); onStepChange?.(n); return n; });
   };
-
   const prevStep = () => {
-    setStepIndex((value) => Math.max(value - 1, 0));
+    setStepIndex((v) => { const n = Math.max(v - 1, 0); onStepChange?.(n); return n; });
   };
 
   return (
-    <div className="fixed inset-0 z-[120]">
-      <div className="absolute inset-0" style={{ background: OVERLAY_COLOR }} />
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px]"
+        onClick={() => onClose?.(false)}
+      />
 
-      {targetRect ? (
+      {/* Spotlight ring around target element */}
+      {spotlightRect ? (
         <div
-          className="pointer-events-none fixed rounded-[24px] border border-white/70 shadow-[0_0_0_9999px_rgba(15,23,42,0.62)] transition-all duration-300"
+          className="pointer-events-none fixed rounded-2xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(15,23,42,0.55)] transition-all duration-300"
           style={{
-            top: targetRect.top,
-            left: targetRect.left,
-            width: targetRect.width,
-            height: targetRect.height,
-            background: 'transparent'
+            top: spotlightRect.top,
+            left: spotlightRect.left,
+            width: spotlightRect.width,
+            height: spotlightRect.height
           }}
         />
       ) : null}
 
-      <div
-        className="fixed rounded-[24px] border border-white/30 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
-        style={{
-          top: panel.top,
-          left: panel.left,
-          width: panel.width,
-          maxHeight: panel.isMobile ? 'calc(100vh - 24px)' : 'min(360px, calc(100vh - 32px))'
-        }}
-      >
-        {panel.arrow && !panel.isMobile ? (
-          <span
-            className="absolute h-4 w-4 rotate-45 border border-white/30 bg-white"
-            style={{
-              left: panel.arrow.left,
-              [panel.arrow.side]: -8
-            }}
-          />
-        ) : null}
+      {/* Modal card — always centered, never clips */}
+      <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl border border-white/20 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)] sm:max-w-[440px]"
+        style={{ maxHeight: 'calc(100dvh - 48px)' }}>
 
-        <div className="relative flex max-h-full flex-col overflow-hidden p-5 sm:p-6">
-          <button
-            type="button"
-            onClick={() => onClose?.(false)}
-            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-          >
-            <X size={15} />
-          </button>
+        {/* Gradient top decoration */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-3xl bg-[radial-gradient(circle_at_20%_0%,rgba(225,29,72,0.13),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.10),transparent_50%)]" />
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-brand-pink/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">
-            <Sparkles size={12} />
-            Product tour
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={() => onClose?.(false)}
+          className="absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-400 shadow-sm transition hover:bg-gray-100 hover:text-gray-700"
+        >
+          <X size={14} />
+        </button>
+
+        {/* ── Scrollable content ── */}
+        <div className="relative flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-2 sm:px-6 sm:pt-6">
+
+          {/* Badge */}
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-rose-600">
+            <Sparkles size={11} />
+            Guided tour
           </div>
 
-          <div className="mt-4 flex-1 overflow-y-auto pr-1">
-            <h2 className="pr-10 text-[clamp(1.45rem,2vw,2rem)] font-black tracking-tight text-slate-900">
-              {step.title}
-            </h2>
-            <p className="mt-3 text-[15px] leading-7 text-slate-600">
+          {/* Step number + title + icon */}
+          <div className="mt-4 flex items-start justify-between gap-3 pr-6">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                Step {stepIndex + 1} of {steps.length}
+              </p>
+              <h2 className="mt-1.5 text-2xl font-black leading-tight tracking-tight text-slate-900 sm:text-[1.7rem]">
+                {step.title}
+              </h2>
+            </div>
+            <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+              <Sparkles size={18} />
+            </div>
+          </div>
+
+          {/* Progress bar + dots */}
+          <div className="mt-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-rose-600 via-rose-400 to-rose-200 transition-all duration-500"
+                style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+              />
+            </div>
+            <div className="mt-2.5 flex flex-wrap gap-1">
+              {steps.map((s, i) => (
+                <span
+                  key={s.id}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === stepIndex ? 'w-7 bg-rose-600' : i < stepIndex ? 'w-2.5 bg-rose-300' : 'w-2.5 bg-slate-200'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Description card */}
+          <div className="mt-4 rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm sm:p-5">
+            <p className="text-[14px] leading-7 text-slate-600 sm:text-[15px]">
               {step.description}
             </p>
-          </div>
 
-          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Step {stepIndex + 1} of {steps.length}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Animated drag-to-generate flow (intel-feed step) */}
+            {showAnimatedFlow ? (
+              <div className="mt-4 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/80 to-slate-50/80 p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2 shadow-sm">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Intel signal</div>
+                    <div className="mt-0.5 text-sm font-black text-slate-800">Drag this card</div>
+                  </div>
+                  <div className="flex items-center gap-2 text-rose-600">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                    <span className="text-[11px] font-black uppercase tracking-widest">Drop to generate</span>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="relative flex flex-1 items-center">
+                    <div className="h-px w-full bg-gradient-to-r from-rose-200 via-rose-500 to-rose-200" />
+                    <div className="absolute left-[15%] h-2.5 w-2.5 animate-bounce rounded-full bg-rose-600" />
+                  </div>
+                  <div className="rounded-xl border border-rose-100 bg-white px-3 py-2 text-center shadow-sm">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-600">Blog</div>
+                    <div className="mt-0.5 text-[11px] text-slate-400">or LinkedIn</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* ── Sticky footer — always visible ── */}
+        <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            {/* Left: back or label */}
+            <div className="flex items-center gap-3">
               {!isFirst ? (
                 <button
                   type="button"
                   onClick={prevStep}
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900"
                 >
+                  <ChevronLeft size={14} />
                   Back
+                </button>
+              ) : (
+                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  {isLast ? 'Tour complete' : 'Keep exploring'}
+                </span>
+              )}
+            </div>
+
+            {/* Right: skip + next */}
+            <div className="flex items-center gap-2">
+              {!isLast ? (
+                <button
+                  type="button"
+                  onClick={() => onClose?.(false)}
+                  className="text-[12px] font-black uppercase tracking-[0.14em] text-slate-400 transition hover:text-slate-700"
+                >
+                  Skip tour
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={nextStep}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-brand-hoverred"
+                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 px-5 py-2.5 text-[13px] font-black text-white shadow-[0_8px_24px_rgba(225,29,72,0.28)] transition hover:brightness-105 active:scale-[0.98]"
               >
-                {isLast ? <Check size={15} /> : <ArrowRight size={15} />}
-                {step.cta || (isLast ? 'Finish' : 'Next')}
+                {isLast ? <Check size={14} /> : <ArrowRight size={14} />}
+                {step.cta || (isLast ? 'Finish' : 'Next step')}
               </button>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

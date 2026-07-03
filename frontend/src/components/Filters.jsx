@@ -5,13 +5,17 @@ import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 const CRIMSON = '#D11243';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 
-export default function Filters({ initial = {}, onChange, showAdmin = false, showSavedFilter = true, showStatusFilter = showAdmin }) {
-  const { region: _region, ...initialWithoutRegion } = initial || {};
+export default function Filters({ initial = {}, onChange, showAdmin = false, showSavedFilter = true, showStatusFilter = showAdmin, metaParams = null }) {
+  const initialWithoutRegion = useMemo(() => {
+    const { region: _region, ...rest } = initial || {};
+    return rest;
+  }, [initial]);
   const [meta, setMeta] = useState(null);
   const [filters, setFilters] = useState({
     type: '',
     category: '',
     subcategory: '',
+    sourceCredibility: '',
     source: '',
     country: '',
     from: '',
@@ -24,13 +28,30 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    api.get('/articles/meta/filters').then((r) => setMeta(r.data)).catch(() => {});
-  }, []);
+    api.get('/articles/meta/filters', metaParams ? { params: metaParams } : undefined).then((r) => setMeta(r.data)).catch(() => {});
+  }, [metaParams]);
 
-  const subcatOptions = useMemo(() => {
-    if (!meta || !filters.category) return [];
-    return (meta.categories || meta.dataCategories || {})[filters.category] || [];
-  }, [meta, filters.category]);
+  useEffect(() => {
+    setFilters((current) => {
+      const next = {
+        type: '',
+        category: '',
+        subcategory: '',
+        sourceCredibility: '',
+        source: '',
+        country: '',
+        from: '',
+        to: '',
+        q: '',
+        saved: '',
+        publishedOnly: '',
+        ...initialWithoutRegion,
+      };
+      const currentJson = JSON.stringify(current);
+      const nextJson = JSON.stringify(next);
+      return currentJson === nextJson ? current : next;
+    });
+  }, [initialWithoutRegion]);
 
   const getSourceOptions = (type, country) => {
     if (!meta) return [];
@@ -42,24 +63,61 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
       list = sources[type] || [];
     }
     if (country) {
-      list = list.filter((s) => s.countries && s.countries.includes(country));
+      list = list.filter((s) => !Array.isArray(s.countries) || !s.countries.length || s.countries.includes(country));
     }
     return list;
   };
 
   const sourceOptions = useMemo(() => {
-    return getSourceOptions(filters.type, filters.country);
-  }, [meta, filters.type, filters.country]);
+    const list = getSourceOptions(filters.type, filters.country);
+    if (!filters.sourceCredibility) return list;
+    return list.filter((source) => source.credibility === filters.sourceCredibility);
+  }, [meta, filters.type, filters.country, filters.sourceCredibility]);
 
-  const categoryOptions = useMemo(() => Object.keys(meta?.categories || meta?.dataCategories || {}), [meta]);
+  const categoryTree = useMemo(() => {
+    const dynamicTree = meta?.dataCategories && Object.keys(meta.dataCategories).length
+      ? meta.dataCategories
+      : null;
+    const configuredTree = meta?.categories && Object.keys(meta.categories).length
+      ? meta.categories
+      : null;
+    return dynamicTree || configuredTree || {};
+  }, [meta]);
+
+  const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+
+  const subcatOptions = useMemo(() => {
+    if (!filters.category) return [];
+    return categoryTree[filters.category] || [];
+  }, [categoryTree, filters.category]);
+
+  const countryOptions = useMemo(() => {
+    const directCountries = Array.isArray(meta?.countries)
+      ? meta.countries.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (directCountries.length) {
+      return [...new Set(directCountries)].sort((a, b) => a.localeCompare(b));
+    }
+
+    const fallbackCountries = Object.values({ ...EMPTY_SOURCES, ...(meta?.sources || {}) })
+      .flatMap((sources) => (sources || []).flatMap((source) => source?.countries || []))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    return [...new Set(fallbackCountries)].sort((a, b) => a.localeCompare(b));
+  }, [meta]);
 
   const update = (k, v) => {
     const next = { ...filters, [k]: v };
     if (k === 'category') next.subcategory = '';
     if (k === 'type')     next.source = '';
+    if (k === 'sourceCredibility') next.source = '';
     if (k === 'country') {
       const validOptions = getSourceOptions(next.type, v);
-      const isValid = validOptions.some((opt) => opt.id === next.source);
+      const filteredOptions = next.sourceCredibility
+        ? validOptions.filter((opt) => opt.credibility === next.sourceCredibility)
+        : validOptions;
+      const isValid = filteredOptions.some((opt) => opt.id === next.source);
       if (!isValid) {
         next.source = '';
       }
@@ -69,7 +127,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
   };
 
   const reset = () => {
-    const blank = { type: '', category: '', subcategory: '', source: '', country: '', from: '', to: '', q: '', saved: '', publishedOnly: '' };
+    const blank = { type: '', category: '', subcategory: '', sourceCredibility: '', source: '', country: '', from: '', to: '', q: '', saved: '', publishedOnly: '' };
     setFilters(blank);
     onChange?.(blank);
   };
@@ -144,7 +202,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
       {open && (
         <div className="p-4 fade-in">
           {/* Row 1 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
             <div className="sm:col-span-2">
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Search</label>
               <div className="relative">
@@ -173,10 +231,24 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
               </select>
             </div>
             <div>
+              <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Source trust</label>
+              <select style={inputBase} value={filters.sourceCredibility} onChange={(e) => update('sourceCredibility', e.target.value)}
+                onFocus={handleFocus} onBlur={handleBlur}>
+                <option value="">All trust levels</option>
+                <option value="high">High Credibility</option>
+                <option value="moderate">Moderate Credibility</option>
+                <option value="low">Low Credibility</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Source</label>
               <select style={inputBase} value={filters.source} onChange={(e) => update('source', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
-                <option value="">All sources</option>
+                <option value="">
+                  {filters.sourceCredibility
+                    ? `All ${filters.sourceCredibility} credibility sources`
+                    : 'All sources'}
+                </option>
                 {sourceOptions.map((s, index) => (
                   <option key={`${s.id}-${index}`} value={s.id}>{s.name}</option>
                 ))}
@@ -214,7 +286,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
               <select style={inputBase} value={filters.country} onChange={(e) => update('country', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All countries</option>
-                {(meta?.countries || []).map((country) => (
+                {countryOptions.map((country) => (
                   <option key={country} value={country}>{country}</option>
                 ))}
               </select>

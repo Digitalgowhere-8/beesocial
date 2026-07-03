@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import GuidedOnboarding from './GuidedOnboarding';
 import {
-  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound
+  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -19,15 +19,30 @@ const SUPER_ADMIN_SECTIONS = [
   { key: 'settings', label: 'Settings', icon: KeyRound }
 ];
 
-function SideNavItem({ icon: Icon, label, to, onActiveClick, badge = '', dataTour = '' }) {
+function SideNavItem({
+  icon: Icon,
+  label,
+  to,
+  onActiveClick,
+  badge = '',
+  dataTour = '',
+  navigationLocked = false,
+  onNavigationBlocked,
+}) {
   return (
     <NavLink
       to={to}
       data-tour={dataTour || undefined}
       onClick={(event) => {
-        if (onActiveClick && window.location.pathname.startsWith(to)) {
+        const isCurrentPath = window.location.pathname.startsWith(to);
+        if (navigationLocked && !isCurrentPath) {
           event.preventDefault();
-          onActiveClick();
+          onNavigationBlocked?.();
+          return;
+        }
+        if (isCurrentPath) {
+          event.preventDefault();
+          onActiveClick?.();
         }
       }}
       className={({ isActive }) =>
@@ -60,6 +75,33 @@ const roleLabel = (role) => {
 };
 
 const NOTIFICATION_LIMIT = 20;
+const ONBOARDING_NEW_USER_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const GENERATION_NAV_LOCK_MESSAGE = 'Generation is running. Please wait until it finishes before moving away.';
+
+const readOnboardingSession = (userId) => {
+  try {
+    const raw = sessionStorage.getItem(`app_onboarding_session_${userId || 'guest'}`);
+    if (!raw) return { active: false, stepIndex: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      active: parsed?.active === true,
+      stepIndex: Number.isInteger(parsed?.stepIndex) ? parsed.stepIndex : 0
+    };
+  } catch {
+    return { active: false, stepIndex: 0 };
+  }
+};
+
+const writeOnboardingSession = (userId, payload) => {
+  try {
+    sessionStorage.setItem(`app_onboarding_session_${userId || 'guest'}`, JSON.stringify({
+      active: payload?.active === true,
+      stepIndex: Number.isInteger(payload?.stepIndex) ? payload.stepIndex : 0
+    }));
+  } catch {
+    // Ignore session storage failures.
+  }
+};
 
 const notificationStorageKey = (userId) => `app_notifications_${userId || 'guest'}`;
 
@@ -160,24 +202,36 @@ const normalizeNotificationFeed = ({ articles = [], blogs = [], socialPosts = []
     .slice(0, NOTIFICATION_LIMIT);
 };
 
-function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll }) {
+function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll, onClose, mobile = false }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-white border border-gray-100 shadow-xl overflow-hidden">
+    <div className={`${mobile ? 'fixed right-3 top-[76px] z-50 w-[min(340px,calc(100vw-24px))] rounded-[24px] shadow-[0_24px_48px_rgba(15,23,42,0.18)]' : 'absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl shadow-xl'} overflow-hidden border border-gray-100 bg-white`}>
       <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-brand-pink/20 to-white">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-bold text-gray-800">Notifications</div>
             <div className="text-[11px] text-gray-400">Latest activity and alerts</div>
           </div>
-          {items.length > 0 ? (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="text-[11px] font-bold text-gray-500 hover:text-brand-crimson transition-colors"
-            >
-              Clear all
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {items.length > 0 ? (
+              <button
+                type="button"
+                onClick={onClearAll}
+                className="text-[11px] font-bold text-gray-500 hover:text-brand-crimson transition-colors"
+              >
+                Clear all
+              </button>
+            ) : null}
+            {mobile ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close notifications"
+              >
+                <X size={15} />
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="text-[12px] font-bold text-gray-600">Recent updates</div>
@@ -195,7 +249,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
           </button>
         </div>
       </div>
-      <div className="max-h-[420px] overflow-y-auto p-2">
+      <div className={`${mobile ? 'max-h-[min(60vh,480px)]' : 'max-h-[420px]'} overflow-y-auto p-2`}>
         {items.length ? items.map((item) => {
           const unread = item.unread === true;
           return (
@@ -228,26 +282,18 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
   );
 }
 
-function ProfileMenu({ user, role, onProfile, onLogout, onStartTour }) {
+function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className = '' }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(280px,calc(100vw-24px))] rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <div className="text-sm font-bold text-gray-800 truncate">{user?.name || 'User'}</div>
-        <div className="text-[11px] text-gray-400 truncate">{user?.email || ''}</div>
-        <div className="mt-1 text-[10px] uppercase tracking-wider font-bold text-brand-crimson">{role}</div>
+    <div className={`absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,250,0.97))] shadow-[0_24px_48px_rgba(15,23,42,0.16)] ${className}`}>
+      <div className="border-b border-gray-100 px-4 py-4">
+        <div className="text-sm font-black text-gray-900 truncate">{user?.name || 'User'}</div>
+        <div className="mt-1 text-[12px] font-medium text-gray-400 truncate">{user?.email || ''}</div>
+        <div className="mt-2 text-[10px] uppercase tracking-[0.16em] font-black text-brand-crimson">{role}</div>
       </div>
-      <div className="p-2">
-        <button onClick={onProfile} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
-          <UserIcon size={14} />
-          My Hive Profile
-        </button>
-        <button onClick={onStartTour} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-brand-pink/30 hover:text-brand-crimson transition-all">
-          <LayoutDashboard size={14} />
-          Take product tour
-        </button>
-        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-all">
+      <div className="space-y-2 p-3">
+        <button onClick={onLogout} className="w-full flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50/80 px-4 py-3 text-left text-sm font-black text-red-600 transition-all hover:bg-red-100">
           <LogOut size={14} />
-          Sign out
+          Sign off
         </button>
       </div>
     </div>
@@ -255,7 +301,7 @@ function ProfileMenu({ user, role, onProfile, onLogout, onStartTour }) {
 }
 
 export default function Layout({ children, headerActions = null }) {
-  const { user, isAdmin, isSuperAdmin, logout, runProgress } = useAuth();
+  const { user, isAdmin, isSuperAdmin, logout, runProgress, setRunProgress, genProgress, setGenProgress } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -272,18 +318,41 @@ export default function Layout({ children, headerActions = null }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
   const [tourOpen, setTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
-  const profileMenuRef = useRef(null);
+  const mobileProfileMenuRef = useRef(null);
+  const desktopProfileMenuRef = useRef(null);
   const canUseContentRepository = isSuperAdmin || user?.access?.canUseContentRepository !== false;
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
   const unreadCount = notifications.unreadKeys.length;
   const onboardingSeenKey = `app_onboarding_seen_${user?._id || 'guest'}`;
+  const onboardingAutoShownKey = `app_onboarding_auto_shown_${user?._id || 'guest'}`;
+  const onboardingSessionKey = `app_onboarding_session_${user?._id || 'guest'}`;
+  const userCreatedTime = user?.createdAt ? new Date(user.createdAt).getTime() : 0;
+  const isNewUser = Number.isFinite(userCreatedTime) && userCreatedTime > 0
+    ? (Date.now() - userCreatedTime) <= ONBOARDING_NEW_USER_WINDOW_MS
+    : false;
+  const generationLocked = genProgress?.status === 'running';
+  const showGenerationLockMessage = useCallback(() => {
+    window.alert(GENERATION_NAV_LOCK_MESSAGE);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
   }, [collapsed]);
+
+  useEffect(() => {
+    if (!generationLocked) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [generationLocked]);
 
   useEffect(() => {
     setAvatar(user?.avatar || '');
@@ -321,12 +390,16 @@ export default function Layout({ children, headerActions = null }) {
   }, [saveNotifications]);
 
   const openNotificationItem = useCallback((item) => {
+    if (item?.href && generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
     setShowNotifications(false);
     markAllNotificationsRead();
     if (item?.href) {
       navigate(item.href);
     }
-  }, [markAllNotificationsRead, navigate]);
+  }, [generationLocked, markAllNotificationsRead, navigate, showGenerationLockMessage]);
 
   const pollNotifications = useCallback(async () => {
     if (!user?._id || isSuperAdmin) return;
@@ -408,33 +481,58 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     if (!user?._id) return;
     try {
+      const activeSession = readOnboardingSession(user?._id);
+      if (activeSession.active) {
+        setTourStepIndex(activeSession.stepIndex || 0);
+        setTourOpen(true);
+        return;
+      }
       const seen = localStorage.getItem(onboardingSeenKey) === 'true';
-      if (!seen) setTourOpen(true);
+      const autoShown = localStorage.getItem(onboardingAutoShownKey) === 'true';
+      if (!seen && !autoShown && isNewUser) {
+        localStorage.setItem(onboardingAutoShownKey, 'true');
+        writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
+        setTourStepIndex(0);
+        setTourOpen(true);
+      }
     } catch {
-      setTourOpen(true);
+      if (isNewUser) setTourOpen(true);
     }
-  }, [onboardingSeenKey, user?._id]);
+  }, [isNewUser, onboardingAutoShownKey, onboardingSeenKey, onboardingSessionKey, user?._id]);
 
   useEffect(() => {
-    const handleStartTour = () => setTourOpen(true);
+    const handleStartTour = () => {
+      setTourStepIndex(0);
+      writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
+      setTourOpen(true);
+    };
     window.addEventListener('app:start-tour', handleStartTour);
     return () => window.removeEventListener('app:start-tour', handleStartTour);
-  }, []);
+  }, [user?._id]);
 
   const closeTour = useCallback(() => {
     setTourOpen(false);
+    setTourStepIndex(0);
     try {
       localStorage.setItem(onboardingSeenKey, 'true');
     } catch {
       // Ignore storage failures.
     }
-  }, [onboardingSeenKey]);
+    writeOnboardingSession(user?._id, { active: false, stepIndex: 0 });
+  }, [onboardingSeenKey, user?._id]);
 
   const startTour = useCallback(() => {
     setShowProfileMenu(false);
     setShowNotifications(false);
+    setTourStepIndex(0);
+    writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
     setTourOpen(true);
-  }, []);
+  }, [user?._id]);
+
+  const handleTourStepChange = useCallback((stepIndex) => {
+    setTourStepIndex(stepIndex);
+    writeOnboardingSession(user?._id, { active: true, stepIndex });
+  }, [user?._id]);
 
   useEffect(() => {
     const handleAvatarUpdate = (e) => {
@@ -452,15 +550,36 @@ export default function Layout({ children, headerActions = null }) {
     return () => window.removeEventListener('profile_avatar_updated', handleAvatarUpdate);
   }, [user?._id]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
     logout();
     navigate('/login');
-  };
+  }, [generationLocked, logout, navigate, showGenerationLockMessage]);
 
-  const openProfile = () => {
+  const openProfile = useCallback(() => {
+    if (generationLocked && !location.pathname.startsWith('/profile')) {
+      showGenerationLockMessage();
+      return;
+    }
     setShowProfileMenu(false);
     navigate('/profile');
-  };
+  }, [generationLocked, location.pathname, navigate, showGenerationLockMessage]);
+
+  const navigateIfNeeded = useCallback((path) => {
+    const currentPath = `${location.pathname}${location.search || ''}`;
+    const isSameTarget = path.includes('?')
+      ? currentPath === path
+      : location.pathname.startsWith(path);
+    if (isSameTarget) return;
+    if (generationLocked) {
+      showGenerationLockMessage();
+      return;
+    }
+    navigate(path);
+  }, [generationLocked, location.pathname, location.search, navigate, showGenerationLockMessage]);
 
   useEffect(() => {
     setShowNotifications(false);
@@ -478,23 +597,13 @@ export default function Layout({ children, headerActions = null }) {
     const handleAuthChanged = () => {
       pollNotifications();
     };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') pollNotifications();
-    };
-    const handleFocus = () => {
-      pollNotifications();
-    };
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     window.addEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
       window.removeEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isSuperAdmin, pollNotifications, user?._id]);
 
@@ -502,7 +611,9 @@ export default function Layout({ children, headerActions = null }) {
     const handleOutsideClick = (event) => {
       const target = event.target;
       const clickedNotifications = notificationsRef.current?.contains(target) || mobileNotificationsRef.current?.contains(target);
-      const clickedProfile = profileMenuRef.current?.contains(target);
+      const clickedProfile =
+        mobileProfileMenuRef.current?.contains(target) ||
+        desktopProfileMenuRef.current?.contains(target);
 
       if (!clickedNotifications) setShowNotifications(false);
       if (!clickedProfile) setShowProfileMenu(false);
@@ -530,14 +641,31 @@ export default function Layout({ children, headerActions = null }) {
   const initials = user?.name 
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'U';
+  const mobileNavItems = isSuperAdmin
+    ? []
+    : [
+        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
+        { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigateIfNeeded('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
+        ...(canUseContentRepository ? [
+          { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigateIfNeeded('/blogs'), active: location.pathname.startsWith('/blogs') }
+        ] : []),
+        { key: 'profile', label: 'Profile', icon: UserIcon, onClick: () => navigateIfNeeded('/profile'), active: location.pathname.startsWith('/profile'), dataTour: 'nav-profile' }
+      ];
 
   return (
-    <div className="min-h-screen flex flex-col md:h-screen md:flex-row bg-gray-50 overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="md:hidden shrink-0 bg-white border-b border-gray-100 px-4 py-3">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-hidden xl:h-screen xl:flex-row" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
+      <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur xl:hidden">
+        <div className="overflow-visible rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <img src="/logo.png" className="h-7 object-contain shrink-0" alt="OpportunityOS AI Logo" />
-            <span className="text-sm font-bold text-gray-800 truncate">{getPageTitle()}</span>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(253,242,246,0.98)_100%)] shadow-[0_8px_18px_rgba(209,18,67,0.10)] ring-1 ring-gray-200">
+              <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.14),transparent_55%)]" />
+              <img src="/logo.png" className="relative h-6 object-contain" alt="OpportunityOS AI Logo" />
+            </div>
+            <div className="min-w-0">
+              <span className="block truncate text-[14px] font-black leading-tight text-gray-900">{getPageTitle()}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative" ref={mobileNotificationsRef}>
@@ -550,7 +678,7 @@ export default function Layout({ children, headerActions = null }) {
                 });
                 setShowProfileMenu(false);
               }}
-              className="relative w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-50"
+              className="relative flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-brand-crimson/10 hover:bg-gray-50 hover:text-gray-600"
             >
               <Bell size={15} />
               {!isSuperAdmin && unreadCount > 0 ? (
@@ -560,31 +688,67 @@ export default function Layout({ children, headerActions = null }) {
               ) : null}
             </button>
             {showNotifications && !isSuperAdmin && (
+              <>
+              <button
+                type="button"
+                aria-label="Close notifications"
+                onClick={() => setShowNotifications(false)}
+                className="fixed inset-0 z-40 bg-gray-950/10 backdrop-blur-[1px] xl:hidden"
+              />
               <NotificationsMenu
                 items={notifications.items}
                 unreadCount={unreadCount}
                 onItemClick={openNotificationItem}
                 onMarkAllRead={markAllNotificationsRead}
                 onClearAll={clearAllNotifications}
+                onClose={() => setShowNotifications(false)}
+                mobile
               />
+              </>
             )}
             </div>
-            <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
-              <LogOut size={15} />
-            </button>
+            <div className="relative" ref={mobileProfileMenuRef}>
+              <button
+                data-tour="header-profile-menu"
+                onClick={() => {
+                  setShowProfileMenu((v) => !v);
+                  setShowNotifications(false);
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:opacity-90"
+              >
+                {avatar ? (
+                  <img src={avatar} className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-[12px] font-black text-white" style={{ background: `linear-gradient(135deg, ${CRIMSON}, ${DARK_RED})` }}>
+                    {initials}
+                  </div>
+                )}
+              </button>
+              {showProfileMenu && (
+                <ProfileMenu
+                  user={user}
+                  role={roleLabel(user?.role)}
+                  onProfile={openProfile}
+                  onLogout={handleLogout}
+                  onStartTour={startTour}
+                  className="top-12 right-0"
+                />
+              )}
+            </div>
           </div>
         </div>
         {headerActions ? (
-          <div className="mt-3 min-w-0 overflow-hidden">
+          <div className="mt-3 min-w-0 overflow-visible border-t border-gray-100/80 pt-3">
             {headerActions}
           </div>
         ) : null}
+        </div>
       </header>
 
       {/* Sidebar */}
       <aside
         data-tour="layout-sidebar"
-        className="hidden md:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
+        className="hidden xl:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
         style={{ width: collapsed ? '60px' : '232px', minWidth: collapsed ? '60px' : '232px' }}
       >
         {/* Collapse toggle / logo */}
@@ -594,12 +758,12 @@ export default function Layout({ children, headerActions = null }) {
               <img 
                 src="/logo.png" 
                 className="h-8 cursor-pointer object-contain" 
-                onClick={() => navigate('/dashboard')} 
+                onClick={() => navigateIfNeeded('/dashboard')} 
                 alt="OpportunityOS AI Logo" 
               />
             </div>
           ) : (
-            <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigate('/dashboard')}>
+            <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigateIfNeeded('/dashboard')}>
               <img src="/favicon.png" className="h-6 w-6 object-contain" alt="OpportunityOS AI Logo" />
             </div>
           )}
@@ -616,7 +780,7 @@ export default function Layout({ children, headerActions = null }) {
           <div className="p-3 border-b border-gray-100 shrink-0">
             <div className="p-2.5 rounded-xl cursor-pointer transition-all hover:bg-brand-pink/30 border border-gray-50" 
               style={{ background: 'rgba(209,18,67,0.04)' }}
-                onClick={() => navigate(isSuperAdmin ? '/admin' : '/profile')}
+                onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}
             >
               <div className="flex items-center gap-2.5">
                 <div className="relative shrink-0">
@@ -638,7 +802,7 @@ export default function Layout({ children, headerActions = null }) {
             </div>
           </div>
         ) : (
-          <div className="flex justify-center py-3 border-b border-gray-100 cursor-pointer shrink-0" onClick={() => navigate('/profile')}>
+          <div className="flex justify-center py-3 border-b border-gray-100 cursor-pointer shrink-0" onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}>
             <div className="relative">
               {avatar ? (
                 <img src={avatar} className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
@@ -661,7 +825,7 @@ export default function Layout({ children, headerActions = null }) {
                 {SUPER_ADMIN_SECTIONS.map(({ key, icon: Icon, label }) => (
                   <button
                     key={key}
-                    onClick={() => navigate(`/admin?section=${key}`)}
+                    onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
                     title={label}
                     className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') && currentAdminSection === key ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}
                   >
@@ -677,7 +841,7 @@ export default function Layout({ children, headerActions = null }) {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => navigate(`/admin?section=${key}`)}
+                      onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
                       style={{
                         background: active ? 'rgba(209,18,67,0.06)' : undefined,
@@ -697,40 +861,40 @@ export default function Layout({ children, headerActions = null }) {
           <>
           {collapsed ? (
             <>
-              <button onClick={() => navigate('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
+              <button onClick={() => navigateIfNeeded('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <LayoutDashboard size={16} />
               </button>
-              <button onClick={() => navigate('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
+              <button onClick={() => navigateIfNeeded('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <Newspaper size={16} />
               </button>
               {canUseContentRepository && (
-                <button onClick={() => navigate('/blogs')} title="Content Repository"
+                <button onClick={() => navigateIfNeeded('/blogs')} title="Content Repository" data-tour="nav-content-repository"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
               {canUseBlogStudio && (
-                <button onClick={() => navigate('/social-media-studio')} title="Content Studio Beta"
+                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
                   className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
                 </button>
               )}
-              <button onClick={() => navigate('/profile')} title="My Hive Profile" data-tour="nav-profile"
+              <button onClick={() => navigateIfNeeded('/profile')} title="My Hive Profile" data-tour="nav-profile"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <UserIcon size={16} />
               </button>
             </>
           ) : (
             <>
-              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" />
-              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" />}
+              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" />
+                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
               )}
-              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" />
+              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
             </>
           )}
           </>
@@ -757,7 +921,7 @@ export default function Layout({ children, headerActions = null }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header */}
-        <header className="hidden md:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 lg:px-6"
+        <header className="hidden xl:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 xl:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
           <div className="min-w-0 flex items-center gap-3">
             <span className="truncate text-base font-bold text-gray-800">{getPageTitle()}</span>
@@ -794,11 +958,12 @@ export default function Layout({ children, headerActions = null }) {
                 onItemClick={openNotificationItem}
                 onMarkAllRead={markAllNotificationsRead}
                 onClearAll={clearAllNotifications}
+                onClose={() => setShowNotifications(false)}
               />
             )}
             </div>
 
-            <div className="relative" ref={profileMenuRef}>
+            <div className="relative" ref={desktopProfileMenuRef}>
             <button
               data-tour="header-profile-menu"
               className="flex items-center gap-2.5 pl-2 border-l border-gray-100 cursor-pointer hover:opacity-85"
@@ -828,7 +993,7 @@ export default function Layout({ children, headerActions = null }) {
         </header>
 
         {/* Content Body: added padding so it doesn't touch the screen edges */}
-        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 md:pb-5 lg:px-6 lg:pt-4 transition-all duration-300 relative">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 xl:px-6 xl:pt-4 xl:pb-5 transition-all duration-300 relative">
           <div className="w-full h-full relative">
             {children}
             
@@ -843,6 +1008,45 @@ export default function Layout({ children, headerActions = null }) {
                     <span className="text-[12px] font-black text-gray-800 truncate">Fetching Intelligence</span>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">{runProgress.step || 'Processing...'}</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRunProgress(null);
+                      localStorage.removeItem('ascentium_run_progress');
+                    }}
+                    className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
+                    title="Stop"
+                  >
+                    <Ban size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {genProgress && genProgress.status === 'running' && (
+              <div className={`fixed ${runProgress && ['queued', 'running'].includes(runProgress.status) ? 'bottom-36 md:bottom-20' : 'bottom-20 md:bottom-6'} right-4 sm:right-6 z-50 animate-fade-in-up`}>
+                <div className="rounded-xl border border-purple-200 bg-white p-3 shadow-lg flex items-center gap-3">
+                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-50">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-20"></span>
+                    <div className="h-4 w-4 rounded-full border-2 border-purple-500 border-t-transparent animate-spin"></div>
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[12px] font-black text-gray-800 truncate">
+                      {genProgress.type === 'linkedin' ? 'Generating LinkedIn Post' : 'Generating Blog'}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">AI is writing…</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try { await api.post('/blogs/cancel'); } catch { /* ignore */ }
+                      setGenProgress(null);
+                    }}
+                    className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
+                    title="Stop generation"
+                  >
+                    <Ban size={14} />
+                  </button>
                 </div>
               </div>
             )}
@@ -851,42 +1055,40 @@ export default function Layout({ children, headerActions = null }) {
       </div>
 
       {isSuperAdmin ? (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
-          <button onClick={() => navigate('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
+        <nav className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
+          <button onClick={() => navigateIfNeeded('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
             <Shield size={16} />
             Owner Console
           </button>
         </nav>
       ) : (
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-4 gap-1">
-        <button onClick={() => navigate('/dashboard')} data-tour="nav-dashboard" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/dashboard') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <LayoutDashboard size={16} />
-          Dashboard
-        </button>
-        <button onClick={() => navigate('/intel-desk')} data-tour="nav-intel" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/intel-desk') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <Newspaper size={16} />
-          Intel
-        </button>
-        {canUseContentRepository ? (
-          <button onClick={() => navigate('/blogs')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/blogs') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <BookOpenText size={16} />
-            Posts
-          </button>
-        ) : canUseBlogStudio ? (
-          <button onClick={() => navigate('/social-media-studio')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${(location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio')) ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <BookOpenText size={16} />
-            Studio
-          </button>
-        ) : (
-          <div className="rounded-lg py-2" />
-        )}
-        <button onClick={() => navigate('/profile')} data-tour="nav-profile" className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/profile') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-          <UserIcon size={16} />
-          Profile
-        </button>
+      <nav
+        className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
+        style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}
+      >
+        {mobileNavItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              onClick={item.onClick}
+              {...(item.dataTour ? { 'data-tour': item.dataTour } : {})}
+              className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${item.active ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}
+            >
+              <Icon size={16} />
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
       )}
-      <GuidedOnboarding user={user} open={tourOpen} onClose={closeTour} />
+      <GuidedOnboarding
+        user={user}
+        open={tourOpen}
+        onClose={closeTour}
+        initialStepIndex={tourStepIndex}
+        onStepChange={handleTourStepChange}
+      />
     </div>
   );
 }

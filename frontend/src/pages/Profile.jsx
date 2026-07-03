@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { FetchTab as ProfileFetchTab } from './AdminPanel';
@@ -13,10 +13,12 @@ import {
   Loader2,
   Lock,
   Mail,
+  MoreHorizontal,
   RefreshCw,
   Save,
   Trash2,
-  User
+  User,
+  X
 } from 'lucide-react';
 
 const roleLabel = (role) => {
@@ -48,9 +50,12 @@ const PROFILE_TABS = [
 export default function Profile() {
   const { user, updateProfile, setAuthState } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const canManageIntelligence = user?.role === 'admin' || user?.role === 'super_admin';
   const canSeeFetchSection = canAccessFetchControls(user);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => (
+    location.state?.tab === 'fetch' ? 'fetch' : 'profile'
+  ));
   const [form, setForm] = useState(() => initialFormFromUser(user));
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [pwdVisibility, setPwdVisibility] = useState({
@@ -63,6 +68,7 @@ export default function Profile() {
   const [err, setErr] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
+  const [mobileProfileMenuOpen, setMobileProfileMenuOpen] = useState(false);
 
   const [avatar, setAvatar] = useState(user?.avatar || '');
 
@@ -84,6 +90,22 @@ export default function Profile() {
       setActiveTab('profile');
     }
   }, [activeTab, canSeeFetchSection]);
+
+  useEffect(() => {
+    if (location.state?.tab === 'fetch' && canSeeFetchSection) {
+      setActiveTab('fetch');
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+    if (location.state?.tab === 'profile') {
+      setActiveTab('profile');
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [canSeeFetchSection, location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    setMobileProfileMenuOpen(false);
+  }, [activeTab, canSeeFetchSection, canManageIntelligence]);
 
   const update = (key, value) => setForm((prev) => ({
     ...prev,
@@ -170,35 +192,109 @@ export default function Profile() {
   };
 
   const headerActions = (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-      <div data-tour="profile-tabs" className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => {
-          const active = activeTab === tab.key;
-          return (
+    <>
+      <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-row sm:items-center">
+        <div data-tour="profile-tabs" className="flex items-center gap-2 sm:hidden">
+          <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+            {activeTab === 'profile' ? 'My Hive Profile' : 'My Personalisation'}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2 sm:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileProfileMenuOpen((value) => !value)}
+            className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+            aria-label="Open profile menu"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+        </div>
+        <div className="hidden min-w-0 flex-1 gap-2 sm:flex sm:flex-row sm:items-center">
+          <div data-tour="profile-tabs" className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5 ${
+                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="truncate">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {canManageIntelligence ? (
             <button
-              key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5 ${
-                active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
-              }`}
+              onClick={() => navigate('/admin')}
+              data-tour="profile-admin-controls"
+              className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
             >
-              <span className="truncate">{tab.label}</span>
+              Admin Controls
             </button>
-          );
-        })}
+          ) : null}
+        </div>
       </div>
-      {canManageIntelligence ? (
-        <button
-          type="button"
-          onClick={() => navigate('/admin')}
-          data-tour="profile-admin-controls"
-          className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
-        >
-          Admin Controls
-        </button>
+      {mobileProfileMenuOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close profile menu"
+            onClick={() => setMobileProfileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+          />
+          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">Profile</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileProfileMenuOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500"
+                aria-label="Close profile menu"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2 p-3">
+              {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.key);
+                    setMobileProfileMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${activeTab === tab.key ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                >
+                  <span className="text-sm font-black">{tab.label}</span>
+                  {activeTab === tab.key ? <Check size={15} /> : null}
+                </button>
+              ))}
+              {canManageIntelligence ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/admin');
+                    setMobileProfileMenuOpen(false);
+                  }}
+                  data-tour="profile-admin-controls"
+                  className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+                >
+                  <span>Admin Controls</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </>
       ) : null}
-    </div>
+    </>
   );
 
   return (
