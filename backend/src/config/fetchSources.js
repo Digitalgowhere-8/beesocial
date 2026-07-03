@@ -16,6 +16,13 @@ function cleanDomain(value) {
     .toLowerCase();
 }
 
+function domainMatches(host, domain) {
+  const normalizedHost = cleanDomain(host);
+  const normalizedDomain = cleanDomain(domain);
+  if (!normalizedHost || !normalizedDomain) return false;
+  return normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`);
+}
+
 const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
   Singapore: [
     'mas.gov.sg',
@@ -87,7 +94,6 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'ft.com',
     'economist.com',
     'cityam.com',
-    'bloomberg.com',
     'bbc.com'
   ],
   'Dubai (UAE)': [
@@ -103,7 +109,6 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'gulfbusiness.com'
   ],
   'Montevideo (Uruguay)': [
-    'bbc.com',
     'en.mercopress.com',
     'montevideo.com.uy',
     'elpais.com.uy',
@@ -116,8 +121,7 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'exame.com',
     'infomoney.com.br',
     'braziljournal.com',
-    'agenciabrasil.ebc.com.br',
-    'bbc.com'
+    'agenciabrasil.ebc.com.br'
   ],
   'Saint Kitts & Nevis': [
     'thestkittsnevisobserver.com',
@@ -129,9 +133,7 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
   'Cayman Islands': [
     'caymancompass.com',
     'caymannewsservice.com',
-    'mondaq.com',
-    'caymaniantimes.ky',
-    'cnbc.com'
+    'caymaniantimes.ky'
   ],
   'Miami (United States)': [
     'miamiherald.com',
@@ -142,8 +144,7 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
   'British Virgin Islands': [
     'bvibeacon.com',
     'bvinews.com',
-    'virginislandsnewsonline.com',
-    'mondaq.com'
+    'virginislandsnewsonline.com'
   ]
 };
 
@@ -267,8 +268,7 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'gov.ky',
     'ciregistry.ky',
     'cima.ky',
-    'ditc.ky',
-    'dlp.jk.gov.in'
+    'ditc.ky'
   ],
   'Miami (United States)': [
     'miami.gov',
@@ -437,7 +437,7 @@ function defaultSourceDomainsForCountry(country, type = 'news') {
   const selected = canonicalCountry(country);
   if (type === 'govt') return GOVT_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
   if (type === 'competitor') return COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY[selected] || DEFAULT_COMPETITOR_SOURCE_DOMAINS;
-  return [...new Set([...(NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || []), ...GLOBAL_NEWS_SOURCE_DOMAINS])];
+  return NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
 }
 
 function configuredFetchCountries() {
@@ -470,6 +470,18 @@ function mergeSourceDomains({ country, type = 'news', userSources = [], strictSo
   };
 }
 
+function isAllowedDomainForCountry({ country, type = 'news', host = '', allowedDomains = [] }) {
+  const normalizedHost = cleanDomain(host);
+  if (!normalizedHost) return false;
+
+  const explicitDomains = cleanList(allowedDomains).map(cleanDomain).filter(Boolean);
+  const configuredDomains = defaultSourceDomainsForCountry(country, type).map(cleanDomain).filter(Boolean);
+  const domains = explicitDomains.length ? explicitDomains : configuredDomains;
+  if (!domains.length) return false;
+
+  return domains.some((domain) => domainMatches(normalizedHost, domain));
+}
+
 module.exports = {
   NEWS_SOURCE_DOMAINS_BY_COUNTRY,
   GOVT_SOURCE_DOMAINS_BY_COUNTRY,
@@ -481,5 +493,6 @@ module.exports = {
   configuredFetchCountries,
   defaultSourceDomainsForCountry,
   fetchSourceCatalog,
-  mergeSourceDomains
+  mergeSourceDomains,
+  isAllowedDomainForCountry
 };

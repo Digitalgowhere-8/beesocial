@@ -13,6 +13,7 @@ const {
   choosePreferredGovernmentItem
 } = require('./articleIntakePolicy');
 const { evaluateTopicArticle } = require('./articleTopicRules');
+const { canonicalCountry, isAllowedDomainForCountry } = require('../config/fetchSources');
 
 function cleanLogId(value) {
   const id = String(value || '').trim().replace(/^=+/, '');
@@ -47,6 +48,29 @@ function dedupeResultItems(items = []) {
 
 function cleanText(value) {
   return String(value || '').trim();
+}
+
+function normalizeDomain(value) {
+  return cleanText(value)
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]
+    .toLowerCase();
+}
+
+function resultAllowedDomains(item = {}) {
+  const rawAllowed = item.allowedDomains
+    || item.includeDomains
+    || item.include_domains
+    || item.rawData?.allowedDomains
+    || item.rawData?.includeDomains
+    || [];
+
+  if (Array.isArray(rawAllowed)) return rawAllowed;
+  if (typeof rawAllowed === 'string') {
+    return rawAllowed.split(',').map((value) => cleanText(value)).filter(Boolean);
+  }
+  return [];
 }
 
 function validSubcategoriesForCategory(category) {
@@ -134,6 +158,22 @@ function defaultCountry() {
   return String(process.env.DEFAULT_FETCH_COUNTRY || '').trim();
 }
 
+function isCrossCountySource(item = {}, body = {}) {
+  const articleType = normalizeArticleType(item);
+  if (!['news', 'govt', 'competitor', 'evergreen'].includes(articleType)) return false;
+
+  const country = canonicalCountry(item.country || body.country || defaultCountry());
+  const host = normalizeDomain(item.sourceType || item.source_type || item.domain || item.url);
+  if (!country || !host) return false;
+
+  return !isAllowedDomainForCountry({
+    country,
+    type: articleType === 'evergreen' ? 'news' : articleType,
+    host,
+    allowedDomains: resultAllowedDomains(item)
+  });
+}
+
 function minStoreScore(body = {}) {
   const fallback = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
   return Math.max(0, Math.min(100, Number(body.minStoreScore ?? fallback) || fallback));
@@ -149,6 +189,7 @@ async function persistProfileResults(body = {}, options = {}) {
     blockedDomain: 0,
     staticPage: 0,
     stale: 0,
+    crossCountyDomain: 0,
     topicRejected: 0,
     lowScore: 0,
     incomingDuplicate: 0,
@@ -175,6 +216,10 @@ async function persistProfileResults(body = {}, options = {}) {
     }
     const topicType = normalizeArticleType(item);
     item.type = topicType;
+    if (isCrossCountySource(item, body)) {
+      filteredCounts.crossCountyDomain += 1;
+      continue;
+    }
     const topicRule = evaluateTopicArticle({
       ...item,
       type: topicType

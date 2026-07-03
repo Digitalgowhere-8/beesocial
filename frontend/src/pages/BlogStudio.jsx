@@ -178,7 +178,7 @@ export default function BlogStudio() {
         <div className="flex h-full min-h-0 items-center justify-center -m-6 p-4">
           <div className="glass-panel p-8 text-center text-sm font-semibold text-gray-500 max-w-lg flex flex-col items-center justify-center gap-4">
             <Sparkles size={48} className="text-brand-crimson animate-pulse" />
-            <h2 className="text-xl font-black text-gray-900">Social Media Studio is Locked</h2>
+            <h2 className="text-xl font-black text-gray-900">Content Studio is Locked</h2>
             <p className="text-xs text-gray-500 leading-relaxed">
               AI content creation, blogging, and social media posting are not included in your current subscription plan. Contact your organization administrator or upgrade to a higher tier plan to unlock this feature.
             </p>
@@ -809,11 +809,11 @@ export default function BlogStudio() {
     try {
       const latestUser = await refreshMe();
       if (latestUser?.access?.canUseBlogStudio === false) {
-        setError('Social Media Studio access has been turned off by the super admin.');
+        setError('Content Studio access has been turned off by the super admin.');
         return;
       }
     } catch (err) {
-      setError(err.message || 'Could not verify Social Media Studio access');
+      setError(err.message || 'Could not verify Content Studio access');
       return;
     }
 

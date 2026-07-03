@@ -629,6 +629,9 @@ function articleFromResult(row, request, stats) {
   const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
   const articleDate = resultArticleDate(row);
   if (!title || !url) return rejectCandidate(stats, 'missing');
+  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) {
+    return rejectCandidate(stats, 'date');
+  }
   if (
     shouldEnforcePostSourceFilter(request.topic) &&
     !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])

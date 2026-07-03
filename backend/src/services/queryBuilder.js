@@ -216,6 +216,10 @@ function compactQuery(parts) {
   return query.slice(0, MAX_TAVILY_QUERY_LENGTH).trim();
 }
 
+function serviceAnchorTerms() {
+  return 'corporate services accounting tax compliance payroll hr employment immigration market entry company registration trust fiduciary fund administration business advisory';
+}
+
 function categoryQuery(category) {
   const selectedCategory = cleanText(category) || defaultCategory();
   return CATEGORY_QUERY_MAP[selectedCategory] || CATEGORIES[selectedCategory]?.keywords?.join(' ') || selectedCategory;
@@ -389,21 +393,21 @@ function buildCategoryQueryVariants(topic, category, profile = {}) {
 
   if (topic === 'news') {
     return [
-      compactQuery([country, base, 'business news market update latest', year]),
-      compactQuery([country, category, subcategoryTerms, keywordTerms, 'business news economy investment compliance update', year])
+      compactQuery([country, base, serviceAnchorTerms(), 'business news market update latest', year]),
+      compactQuery([country, category, subcategoryTerms, keywordTerms, serviceAnchorTerms(), 'business news economy investment compliance update', year])
     ].filter(Boolean);
   }
 
   if (topic === 'govt') {
     return [
-      compactQuery([country, category, keywordTerms, 'official government regulation policy circular announcement', year]),
-      compactQuery([country, authorityHints, category, 'tax employment licensing company registry compliance update', year])
+      compactQuery([country, category, keywordTerms, serviceAnchorTerms(), 'official government regulation policy circular announcement', year]),
+      compactQuery([country, authorityHints, category, serviceAnchorTerms(), 'tax employment licensing company registry compliance update', year])
     ].filter(Boolean);
   }
 
   return [
-    compactQuery([authorityHints, base, year]),
-    compactQuery([country, authorityHints, category, subcategoryTerms, year])
+    compactQuery([authorityHints, base, serviceAnchorTerms(), year]),
+    compactQuery([country, authorityHints, category, subcategoryTerms, serviceAnchorTerms(), year])
   ].filter(Boolean);
 }
 

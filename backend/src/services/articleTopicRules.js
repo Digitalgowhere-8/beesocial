@@ -1,3 +1,5 @@
+const { CATEGORIES } = require('../config/categories');
+
 function text(value) {
   return String(value || '').trim();
 }
@@ -30,6 +32,75 @@ function normalizeWords(value) {
 
 function includesAny(haystack, terms = []) {
   return terms.some((term) => haystack.includes(term));
+}
+
+function selectedCategories(profile = {}) {
+  const categories = []
+    .concat(Array.isArray(profile.categories) ? profile.categories : [])
+    .concat(profile.category ? [profile.category] : [])
+    .map((value) => text(value))
+    .filter(Boolean);
+  return [...new Set(categories)];
+}
+
+function selectedSubcategories(profile = {}) {
+  const subcategories = []
+    .concat(Array.isArray(profile.subcategoryOptions) ? profile.subcategoryOptions : [])
+    .concat(profile.subcategory ? [profile.subcategory] : [])
+    .map((value) => text(value))
+    .filter(Boolean)
+    .filter((value) => !/^all( sub[- ]?categor(?:y|ies))?$/i.test(value));
+  return [...new Set(subcategories)];
+}
+
+function serviceKeywordsForProfile(profile = {}) {
+  const categories = selectedCategories(profile);
+  const subcategories = selectedSubcategories(profile);
+  const keywords = new Set();
+
+  const addKeyword = (value) => {
+    const normalized = normalizeWords(value);
+    if (normalized && normalized.length > 2) keywords.add(normalized);
+  };
+
+  for (const category of categories) {
+    const entry = CATEGORIES[category];
+    if (!entry) continue;
+    addKeyword(category);
+    (entry.keywords || []).forEach(addKeyword);
+
+    const targetSubcategories = subcategories.length
+      ? subcategories.filter((subcategory) => entry.subcategories?.[subcategory])
+      : Object.keys(entry.subcategories || {});
+
+    for (const subcategory of targetSubcategories) {
+      addKeyword(subcategory);
+      (entry.subcategories?.[subcategory] || []).forEach(addKeyword);
+    }
+  }
+
+  if (!keywords.size) {
+    [
+      'corporate',
+      'company',
+      'business',
+      'tax',
+      'compliance',
+      'payroll',
+      'employment',
+      'market entry',
+      'trust',
+      'fund administration',
+      'foreign investment'
+    ].forEach(addKeyword);
+  }
+
+  return [...keywords];
+}
+
+function hasServiceMatch(body, profile = {}) {
+  const keywords = serviceKeywordsForProfile(profile);
+  return keywords.some((term) => body.includes(term));
 }
 
 function competitorMentions(textBody, competitors = [], source = '', url = '') {
@@ -91,6 +162,28 @@ function evaluateTopicArticle(item = {}, options = {}) {
     'thought leadership'
   ];
 
+  const unrelatedSectorTerms = [
+    'cancer',
+    'oncology',
+    'tumor',
+    'tumour',
+    'hospital',
+    'patient',
+    'medical',
+    'medicine',
+    'clinical trial',
+    'vaccine',
+    'pharma',
+    'pharmaceutical',
+    'biotech',
+    'healthcare treatment'
+  ];
+
+  const serviceMatch = hasServiceMatch(body, profile);
+  if (includesAny(body, unrelatedSectorTerms) && !serviceMatch) {
+    return { keep: false, reason: 'irrelevant-sector' };
+  }
+
   if (topic === 'govt') {
     const blockedGovtTerms = [
       ...genericReferenceTerms,
@@ -119,6 +212,7 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'licensing update'
     ];
     if (includesAny(body, blockedGovtTerms)) return { keep: false, reason: 'govt-static' };
+    if (!serviceMatch) return { keep: false, reason: 'govt-non-service' };
     if (!includesAny(body, positiveGovtTerms)) return { keep: false, reason: 'govt-non-update' };
     return { keep: true };
   }
@@ -154,6 +248,7 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'bloomberg'
     ];
     if (includesAny(body, blockedNewsTerms)) return { keep: false, reason: 'news-non-news' };
+    if (!serviceMatch) return { keep: false, reason: 'news-non-service' };
     if (!includesAny(body, positiveNewsTerms)) return { keep: false, reason: 'news-non-news' };
     return { keep: true };
   }
@@ -203,6 +298,7 @@ function evaluateTopicArticle(item = {}, options = {}) {
     if (competitors.length && !competitorMentions(body, competitors, item.source, item.url)) {
       return { keep: false, reason: 'competitor-missing-name' };
     }
+    if (!serviceMatch) return { keep: false, reason: 'competitor-non-service' };
     if (!includesAny(body, positiveCompetitorTerms)) return { keep: false, reason: 'competitor-non-activity' };
     return { keep: true };
   }
@@ -239,6 +335,7 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'acquisition'
     ];
     if (includesAny(body, blockedEvergreenTerms)) return { keep: false, reason: 'evergreen-non-evergreen' };
+    if (!serviceMatch) return { keep: false, reason: 'evergreen-non-service' };
     if (!includesAny(body, positiveEvergreenTerms)) return { keep: false, reason: 'evergreen-non-evergreen' };
     return { keep: true };
   }

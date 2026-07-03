@@ -37,7 +37,7 @@ const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
 const MEMBER_ACCESS_OPTIONS = [
   { key: 'canFetch', label: 'Fetch' },
   { key: 'canUseContentRepository', label: 'Content Repository' },
-  { key: 'canUseBlogStudio', label: 'Social Media Studio' },
+  { key: 'canUseBlogStudio', label: 'Content Studio' },
   { key: 'canUseSavedSearches', label: 'Saved' },
   { key: 'canUseScheduler', label: 'Schedule' }
 ];
@@ -306,8 +306,8 @@ export default function AdminPanel() {
           <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{isSuperAdmin ? 'Owner Console' : 'Profile'}</div>
-                <div className="mt-1 text-sm font-black text-gray-900">Quick Actions</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{isSuperAdmin ? 'Super Admin' : 'Profile'}</div>
+                <div className="mt-1 text-sm font-black text-gray-900">Sections</div>
               </div>
               <button
                 type="button"
@@ -450,18 +450,15 @@ function SuperAdminWorkspace({
 
   return (
     <section className="min-w-0">
-      <div className="xl:hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.97),rgba(255,246,248,0.93)_45%,rgba(243,248,255,0.94))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl mb-5 overflow-hidden">
-        <div className="h-1.5 bg-gradient-to-r from-brand-crimson via-rose-500 to-sky-400" />
+      <div className="xl:hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(252,248,249,0.95)_48%,rgba(247,250,255,0.95))] shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl mb-5 overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-brand-crimson/90 via-rose-400 to-sky-300" />
         <div className="px-4 py-5 sm:px-5">
           <div className="min-w-0">
             <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson ring-1 ring-brand-crimson/10 shadow-sm">
               <Crown size={12} />
-              Owner Console
+              Super Admin
             </div>
-            <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-gray-950 sm:text-[32px]">Super Admin</h1>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-gray-500">
-              {activeTabMeta?.hint || 'Platform-wide controls, analytics and system operations.'}
-            </p>
+            <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-gray-950 sm:text-[32px]">Control Center</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-full bg-gray-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm">
                 {activeTabMeta?.label || 'Platform'}
@@ -683,9 +680,9 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
                     <Gauge size={12} /> Usage Leaders
                   </div>
-                  <h3 className="text-xl font-black tracking-tight text-gray-900">Top users this month</h3>
+                  <h3 className="text-xl font-black tracking-tight text-gray-900">Top users</h3>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
                   <Gauge size={18} className="text-brand-crimson" />
                 </div>
               </div>
@@ -783,12 +780,9 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-crimson">
-              <BarChart3 size={12} /> Business Analytics
+              <BarChart3 size={12} /> Analytics
             </div>
             <h3 className="text-xl font-black tracking-tight text-gray-900">Visitor behaviour and engagement</h3>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-gray-500">
-              This analytics view resets every calendar month. See who is coming in, where people spend time, what gets clicked, and which sections deserve product or content focus.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex w-fit rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm">
@@ -874,11 +868,11 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
-              <Activity size={12} /> Recent Runs
+              <Activity size={12} /> Activity
             </div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">Platform activity</h3>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Recent platform activity</h3>
           </div>
-          <div className="h-10 w-10 rounded-full bg-brand-pink/40 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
              <Activity size={18} className="text-brand-crimson" />
           </div>
         </div>
@@ -942,10 +936,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
 
 function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   return (
-    <div className="premium-glass p-5 relative overflow-hidden group">
-      <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-500 pointer-events-none">
-        <Icon size={100} />
-      </div>
+    <div className="premium-glass p-5 relative overflow-hidden">
       <div className="relative z-10 flex items-start gap-4">
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
           <Icon size={20} />
@@ -3378,6 +3369,7 @@ function UsersTab({ dbPlans }) {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const [items, setItems] = useState([]);
+  const [userQuery, setUserQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -3388,9 +3380,9 @@ function UsersTab({ dbPlans }) {
     password: '',
     company: '',
     designation: '',
-    role: isSuperAdmin ? 'admin' : 'user',
+    role: isSuperAdmin ? '' : 'user',
     isActive: true,
-    subscriptionPlan: 'free',
+    subscriptionPlan: isSuperAdmin ? '' : 'free',
     memberLimit: 3,
     access: {
       canFetch: true,
@@ -3518,6 +3510,14 @@ function UsersTab({ dbPlans }) {
   const createUser = async (e) => {
     e.preventDefault();
     setErr('');
+    if (isSuperAdmin && !form.role) {
+      setErr('Please select a role.');
+      return;
+    }
+    if (isSuperAdmin && !form.subscriptionPlan) {
+      setErr('Please select a subscription plan.');
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/admin/users', form);
@@ -3527,9 +3527,9 @@ function UsersTab({ dbPlans }) {
         password: '',
         company: '',
         designation: '',
-        role: isSuperAdmin ? 'admin' : 'user',
+        role: isSuperAdmin ? '' : 'user',
         isActive: true,
-        subscriptionPlan: 'free',
+        subscriptionPlan: isSuperAdmin ? '' : 'free',
         memberLimit: 3,
         access: {
           canFetch: true,
@@ -3598,8 +3598,6 @@ function UsersTab({ dbPlans }) {
     }
   };
 
-  if (loading) return <Loader />;
-
   const currentUserId = currentUser?._id || currentUser?.id;
   const currentAccount = items.find((u) => currentUserId && String(u._id) === String(currentUserId));
   const managedUsers = items.filter((u) => !currentUserId || String(u._id) !== String(currentUserId));
@@ -3616,6 +3614,28 @@ function UsersTab({ dbPlans }) {
         ...managedUsers.filter((u) => u.role === 'user' && !adminById.has(String(u.tenantAdminId || '')))
       ]
     : managedUsers;
+  const normalizedUserQuery = userQuery.trim().toLowerCase();
+  const visibleUsers = useMemo(() => {
+    if (!normalizedUserQuery) return sortedUsers;
+    return sortedUsers.filter((u) => {
+      const haystack = [
+        u.name,
+        u.email,
+        u.company,
+        u.role,
+        !isSuperAdmin
+          ? ''
+          : u.role === 'admin'
+            ? 'Company admin'
+            : (adminById.get(String(u.tenantAdminId || ''))
+              ? `${adminById.get(String(u.tenantAdminId || ''))?.name || ''} ${adminById.get(String(u.tenantAdminId || ''))?.company || ''}`
+              : 'Unassigned')
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+      return haystack.includes(normalizedUserQuery);
+    });
+  }, [sortedUsers, normalizedUserQuery]);
 
   const teamLabel = (u) => {
     if (!isSuperAdmin) return '';
@@ -3635,6 +3655,8 @@ function UsersTab({ dbPlans }) {
     if (u.access && Object.prototype.hasOwnProperty.call(u.access, key)) return u.access[key] !== false;
     return defaults[key] !== false;
   };
+
+  if (loading) return <Loader />;
 
   return (
     <div className="space-y-5">
@@ -3716,10 +3738,14 @@ function UsersTab({ dbPlans }) {
           <input className="input min-h-[44px] rounded-xl" placeholder="Company" value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
           <input className="input min-h-[44px] rounded-xl" placeholder="Designation" value={form.designation} onChange={(e) => updateForm('designation', e.target.value)} />
           <div className="flex gap-2">
-            <select className="input min-h-[44px] rounded-xl" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
-              {isSuperAdmin && <option value="admin">Admin</option>}
-              <option value="user">Member</option>
-            </select>
+            <div className="flex-1">
+              <label className="sr-only">Role</label>
+              <select className="input min-h-[44px] rounded-xl" value={form.role} onChange={(e) => updateForm('role', e.target.value)}>
+                {isSuperAdmin && <option value="" disabled>Select role</option>}
+                {isSuperAdmin && <option value="admin">Admin</option>}
+                <option value="user">Member</option>
+              </select>
+            </div>
             <label className="flex items-center gap-2 text-xs text-ink-500 whitespace-nowrap px-2">
               <input type="checkbox" checked={form.isActive} onChange={(e) => updateForm('isActive', e.target.checked)} />
               Active
@@ -3730,6 +3756,7 @@ function UsersTab({ dbPlans }) {
               <div>
                 <label className="label text-gray-500 font-bold tracking-wider">Subscription Plan</label>
                 <select className="input" value={form.subscriptionPlan} onChange={(e) => updatePlan(e.target.value)}>
+                  <option value="" disabled>Select subscription plan</option>
                   <option value="premium">Premium - $99 / mo</option>
                   <option value="free">Free — $0 / mo</option>
                   <option value="growth">Growth — $29 / mo</option>
@@ -3738,10 +3765,22 @@ function UsersTab({ dbPlans }) {
                 </select>
                 <p className="mt-1 text-[10px] font-semibold text-gray-400">Changing plan auto-fills limits below.</p>
               </div>
-              <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
-              <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
-              <input className="input" type="number" min={0} placeholder="Monthly blog limit" value={form.limits.blogGenerationsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, blogGenerationsMonthly: Number(e.target.value) })} />
-              <input className="input" type="number" min={0} placeholder="Monthly post limit" value={form.limits.socialPostsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, socialPostsMonthly: Number(e.target.value) })} />
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Member Limit</label>
+                <input className="input" type="number" min={0} placeholder="Member limit" value={form.memberLimit} onChange={(e) => updateForm('memberLimit', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Fetch Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly fetch limit" value={form.limits.fetchesPerMonth} onChange={(e) => updateForm('limits', { ...form.limits, fetchesPerMonth: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Blog Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly blog limit" value={form.limits.blogGenerationsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, blogGenerationsMonthly: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label text-gray-500 font-bold tracking-wider">Monthly Post Limit</label>
+                <input className="input" type="number" min={0} placeholder="Monthly post limit" value={form.limits.socialPostsMonthly} onChange={(e) => updateForm('limits', { ...form.limits, socialPostsMonthly: Number(e.target.value) })} />
+              </div>
             </>
           )}
         </div>
@@ -3777,14 +3816,25 @@ function UsersTab({ dbPlans }) {
       </form>
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
+      <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-black text-gray-900">Members and admins</div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-            {managedUsers.length} managed accounts
+            {visibleUsers.length}{visibleUsers.length !== managedUsers.length ? ` of ${managedUsers.length}` : ''} managed accounts
           </div>
         </div>
-        <Users size={17} className="text-gray-400" />
+        <div className="flex items-center gap-3">
+          <div className="relative w-full min-w-0 lg:w-[300px]">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="input min-h-[42px] w-full rounded-xl pl-11"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+              placeholder="Search name, email, company..."
+            />
+          </div>
+          <Users size={17} className="hidden shrink-0 text-gray-400 sm:block" />
+        </div>
       </div>
       <div className="overflow-x-auto">
       <table className="w-full min-w-[1180px]">
@@ -3803,7 +3853,7 @@ function UsersTab({ dbPlans }) {
           </tr>
         </thead>
         <tbody>
-          {sortedUsers.map((u) => (
+          {visibleUsers.map((u) => (
             <tr key={u._id} className="border-t border-gray-100 hover:bg-gray-50/60">
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
@@ -3946,6 +3996,13 @@ function UsersTab({ dbPlans }) {
             <tr className="border-t border-gray-100">
               <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
                 No other users to manage.
+              </td>
+            </tr>
+          )}
+          {managedUsers.length > 0 && visibleUsers.length === 0 && (
+            <tr className="border-t border-gray-100">
+              <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-sm font-semibold text-gray-400">
+                No users match your search.
               </td>
             </tr>
           )}
@@ -4282,8 +4339,7 @@ function UsageMini({ label, value, sub, danger = false }) {
 function StatCard({ label, value, icon: Icon, accent, note, tint }) {
   return (
     <div className="premium-stat-card overflow-hidden p-5">
-      <div className={`absolute top-0 right-0 h-24 w-24 rounded-full opacity-20 blur-[40px] ${accent}`} />
-      <div className={`absolute inset-x-0 top-0 h-1.5 ${accent}`} />
+      <div className={`absolute inset-x-0 top-0 h-1 ${accent}`} />
       <div className="relative z-10">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -4296,7 +4352,7 @@ function StatCard({ label, value, icon: Icon, accent, note, tint }) {
             </span>
           ) : null}
         </div>
-        {note && <div className="mt-4 inline-flex rounded-full border border-gray-100 bg-white/80 px-3 py-1.5 text-[11px] font-bold text-gray-500 shadow-sm">{note}</div>}
+        {note && <div className="mt-4 text-xs font-semibold text-gray-500">{note}</div>}
       </div>
     </div>
   );
@@ -4830,6 +4886,18 @@ const MAIL_AUDIENCE_OPTIONS_UI = [
   { key: 'custom', label: 'Custom selection', help: 'Pick exact recipients from the user directory.' }
 ];
 
+const createMailCenterForm = () => ({
+  audience: 'all',
+  subject: '',
+  heading: '',
+  preview: '',
+  message: '',
+  ctaLabel: '',
+  ctaUrl: '',
+  footerNote: '',
+  userIds: []
+});
+
 function SuperAdminMailCenter() {
   const [audienceItems, setAudienceItems] = useState([]);
   const [loadingAudience, setLoadingAudience] = useState(true);
@@ -4840,17 +4908,7 @@ function SuperAdminMailCenter() {
   const [senderEmail, setSenderEmail] = useState('');
   const [replyToEmail, setReplyToEmail] = useState('');
   const [recipientQuery, setRecipientQuery] = useState('');
-  const [form, setForm] = useState({
-    audience: 'all',
-    subject: '',
-    heading: '',
-    preview: '',
-    message: '',
-    ctaLabel: '',
-    ctaUrl: '',
-    footerNote: '',
-    userIds: []
-  });
+  const [form, setForm] = useState(() => createMailCenterForm());
 
   const loadAudience = useCallback(async () => {
     setLoadingAudience(true);
@@ -4952,6 +5010,9 @@ function SuperAdminMailCenter() {
         footerNote: form.footerNote.trim()
       });
       setSendSuccess(data.message || 'Email sent successfully.');
+      setForm(createMailCenterForm());
+      setRecipientQuery('');
+      await loadAudience();
     } catch (err) {
       setSendError(err.response?.data?.message || err.message || 'Could not send email.');
     } finally {
@@ -5120,25 +5181,31 @@ function SuperAdminMailCenter() {
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Live preview</div>
-            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-[#faf0f2]">
-              <div className="bg-gradient-to-br from-brand-crimson to-brand-hoverred px-5 py-5 text-white">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/80">Super Admin Message</div>
-                <div className="mt-2 text-xl font-black leading-tight">{previewHeading}</div>
-                <div className="mt-2 text-sm font-medium leading-6 text-white/85">{previewIntro}</div>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
+              <div className="h-1.5 bg-gradient-to-r from-brand-pink/80 via-brand-crimson/80 to-brand-hoverred/90" />
+              <div className="border-b border-[#efe4e8] bg-gradient-to-b from-white to-[#faf5f7] px-6 py-6">
+                <div className="min-w-0">
+                  <img src="/logo.png" alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="inline-flex items-center rounded-full border border-[#f0d3dd] bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">Admin update</div>
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-gray-500">{previewIntro}</div>
+                </div>
+                <div className="mt-5 text-[30px] font-black leading-tight tracking-tight text-gray-900">{previewHeading}</div>
               </div>
-              <div className="space-y-4 bg-white px-5 py-5">
-                <div className="text-sm font-medium text-gray-600">
+              <div className="space-y-5 bg-white px-6 py-7">
+                <div className="text-base font-medium leading-7 text-gray-600">
                   Hi {selectedRecipients[0]?.name || selectedRecipients[0]?.email || 'recipient'},
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">{previewMessage}</div>
+                <div className="whitespace-pre-wrap text-[15px] leading-8 text-slate-600">{previewMessage}</div>
                 {form.ctaUrl.trim() ? (
                   <div>
-                    <span className="inline-flex items-center rounded-xl bg-brand-crimson px-4 py-2 text-sm font-black text-white">
+                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]">
                       {form.ctaLabel.trim() || 'Open link'}
                     </span>
                   </div>
                 ) : null}
-                <div className="border-t border-gray-100 pt-4 text-xs font-medium leading-6 text-gray-400">
+                <div className="border-t border-[#ece7ea] pt-5 text-xs font-medium leading-6 text-gray-400">
                   {form.footerNote.trim() || 'You received this email because your account is part of the platform workspace.'}
                 </div>
               </div>
@@ -5195,9 +5262,9 @@ function moveRegistryItem(items = [], trustKey, nextCredibility) {
 
 function ThemeColorField({ label, value, onChange, hint = '' }) {
   return (
-    <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
+    <label className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
       <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-3">
         <input
           type="color"
           value={value}
@@ -5231,7 +5298,7 @@ function SourceTrustCard({ item, onDragStart, onMove }) {
           {item.isDefault ? 'Default High' : 'Dynamic'}
         </span>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {item.types?.length ? (
           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
             {item.types.join(', ')}
@@ -5246,7 +5313,7 @@ function SourceTrustCard({ item, onDragStart, onMove }) {
           </span>
         ) : null}
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {SOURCE_TRUST_LEVELS.map((level) => (
           <button
             key={level.key}
@@ -5388,12 +5455,12 @@ function SystemSettingsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,245,247,0.95)_45%,rgba(248,251,255,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">System Settings</div>
-              <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Platform Control Center</h3>
+              <div className="eyebrow mb-1">System Settings</div>
+              <h3 className="text-2xl font-black tracking-tight text-gray-900">Platform Control Center</h3>
               <p className="mt-1 text-sm font-medium text-gray-500">Open a focused settings tab instead of scrolling through one long page.</p>
             </div>
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -5452,14 +5519,15 @@ function SystemSettingsTab() {
 
       {activeSection === 'ai' && (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">AI Engine</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">AI Model Settings</h3>
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+            <div className="eyebrow mb-1">AI Engine</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">AI Model Settings</h3>
+            <p className="mt-1 text-sm font-medium text-gray-500">Control the shared model and AI automation features used during fetch and classification.</p>
             <div className="space-y-5">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Active AI Model</label>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400">Active AI Model</label>
                 <select
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
+                  className="input min-h-[44px] rounded-xl"
                   value={aiModel}
                   onChange={e => setAiModel(e.target.value)}
                 >
@@ -5470,17 +5538,18 @@ function SystemSettingsTab() {
                 <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
               </div>
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">Feature Flags</div>
+                <div className="mb-3 text-[10px] font-black uppercase tracking-wider text-gray-400">Feature Flags</div>
                 <div className="space-y-2.5">
                   {aiToggles.map(({ label, help, val, set }, i) => (
-                    <div key={i} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all ${val ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
+                    <div key={i} className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3.5 transition-all ${val ? 'border-emerald-200 bg-emerald-50/80' : 'border-gray-100 bg-gray-50/70'}`}>
                       <div>
-                        <div className={`text-sm font-black ${val ? 'text-blue-800' : 'text-gray-700'}`}>{label}</div>
+                        <div className={`text-sm font-black ${val ? 'text-emerald-700' : 'text-gray-700'}`}>{label}</div>
                         <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => set(!val)}
-                        className={`flex-shrink-0 h-6 w-11 rounded-full flex items-center transition-all ${val ? 'bg-blue-500' : 'bg-gray-200'}`}
+                        className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'bg-emerald-500' : 'bg-gray-200'}`}
                       >
                         <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
                       </button>
@@ -5491,9 +5560,10 @@ function SystemSettingsTab() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1">Platform Snapshot</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900 mb-5">Current Configuration</h3>
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+            <div className="eyebrow mb-1">Platform Snapshot</div>
+            <h3 className="text-xl font-black tracking-tight text-gray-900">Current Configuration</h3>
+            <p className="mt-1 text-sm font-medium text-gray-500">Quick read-only summary of the settings that are currently active platform-wide.</p>
             <div className="space-y-3">
               <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
               <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
@@ -5506,7 +5576,7 @@ function SystemSettingsTab() {
 
       {activeSection === 'visual' && (
         <div className="space-y-6">
-          <div className="rounded-[30px] border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Visual Theme</div>
@@ -5720,24 +5790,25 @@ function SystemSettingsTab() {
       )}
 
       {activeSection === 'maintenance' && (
-        <div className={`bg-white rounded-2xl ring-1 shadow-sm p-6 border-2 transition-all ${maintenanceMode ? 'border-red-300 ring-red-100' : 'border-gray-200 ring-gray-100'}`}>
+        <div className={`rounded-2xl border bg-white p-5 shadow-sm transition-all sm:p-6 ${maintenanceMode ? 'border-red-200' : 'border-gray-100'}`}>
           <div className="flex items-center justify-between gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="mb-1.5 flex items-center gap-2">
                 <AlertTriangle size={16} className={maintenanceMode ? 'text-red-500' : 'text-gray-400'} />
                 <h3 className={`text-lg font-black ${maintenanceMode ? 'text-red-700' : 'text-gray-900'}`}>Maintenance Mode</h3>
               </div>
               <p className="text-sm font-medium text-gray-500">When enabled, all users except Super Admin see a maintenance screen. Use this during deployments or platform repair work.</p>
             </div>
             <button
+              type="button"
               onClick={() => setMaintenanceMode(!maintenanceMode)}
-              className={`flex-shrink-0 h-7 w-14 rounded-full flex items-center transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+              className={`flex h-7 w-14 shrink-0 items-center rounded-full transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
             >
               <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
             </button>
           </div>
           {maintenanceMode && (
-            <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-700">
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
               Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
             </div>
           )}
@@ -5748,7 +5819,7 @@ function SystemSettingsTab() {
         <button
           onClick={handleSaveSettings}
           disabled={savingSettings || loadingSettings}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
         >
           {savingSettings ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Settings</>}
         </button>

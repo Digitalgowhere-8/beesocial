@@ -347,9 +347,12 @@ async function decorateArticles(items = []) {
   return items.map((item) => ({
     ...item,
     sourceCredibility: resolveSourceCredibility({
+      type: item.type,
+      country: item.country,
       sourceId: item.sourceId,
       source: item.source,
-      sourceType: item.sourceType
+      sourceType: item.sourceType,
+      rawData: item.rawData
     }, settings.sourceTrustMapping)
   }));
 }

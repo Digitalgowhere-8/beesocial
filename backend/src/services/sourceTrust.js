@@ -4,6 +4,7 @@ const {
   COMPETITOR_SOURCES,
   ALL_SOURCES
 } = require('../config/sources');
+const { canonicalCountry, isAllowedDomainForCountry } = require('../config/fetchSources');
 
 const SOURCE_CREDIBILITY_LEVELS = ['high', 'moderate', 'low'];
 const SOURCE_CREDIBILITY_LABELS = {
@@ -108,6 +109,29 @@ function resolveSourceCredibility(source = {}, mapping = emptySourceTrustMapping
   const tokens = sourceIdentityTokens(source);
   const explicit = matchesMappedCredibility(tokens, mapping);
   if (explicit) return explicit;
+
+  const sourceType = cleanText(source.type || source.articleType || source.topic).toLowerCase();
+  const sourceHost = normalizeDomain(source.sourceType || source.origin || source.domain);
+  const sourceCountries = [
+    canonicalCountry(cleanText(source.country))
+  ]
+    .concat(Array.isArray(source.countries) ? source.countries.map((value) => canonicalCountry(cleanText(value))) : [])
+    .filter(Boolean);
+  if (
+    sourceHost &&
+    sourceType &&
+    ['news', 'govt', 'competitor', 'evergreen'].includes(sourceType) &&
+    sourceCountries.length &&
+    !sourceCountries.some((country) => isAllowedDomainForCountry({
+      country,
+      type: sourceType === 'evergreen' ? 'news' : sourceType,
+      host: sourceHost,
+      allowedDomains: source.allowedDomains || source.includeDomains || source.rawData?.allowedDomains || []
+    }))
+  ) {
+    return 'low';
+  }
+
   if (tokens.some((token) => DEFAULT_HIGH_TRUST_TOKENS.has(token))) {
     return 'high';
   }

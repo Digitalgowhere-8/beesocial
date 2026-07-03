@@ -69,6 +69,32 @@ function inferBrandName() {
   return 'BeeSocial';
 }
 
+function inferBrandLogoUrl() {
+  const explicit = String(process.env.EMAIL_BRAND_LOGO_URL || '').trim();
+  if (explicit) return explicit;
+
+  const frontendUrl = String(process.env.FRONTEND_URL || '').trim();
+  if (!frontendUrl) return '';
+
+  try {
+    return new URL('/logo.png', frontendUrl).toString();
+  } catch {
+    return '';
+  }
+}
+
+function isPublicHttpUrl(value) {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    return !['localhost', '127.0.0.1', '0.0.0.0'].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 function supportSignature() {
   const replyTo = String(process.env.EMAIL_REPLY_TO || '').trim();
   if (replyTo) return `If you need help, reply to ${replyTo}.`;
@@ -123,20 +149,23 @@ function buildPasswordResetEmail({ name, resetUrl, expiresMinutes }) {
 
 function buildAdminBroadcastEmail({ heading, preview, message, ctaLabel, ctaUrl, footerNote, recipientName }) {
   const brandName = inferBrandName();
+  const brandLogoUrl = inferBrandLogoUrl();
   const safeHeading = escapeHtml(heading || 'Platform update');
   const safePreview = escapeHtml(preview || `A message from the ${brandName} admin team.`);
   const safeFooterNote = escapeHtml(footerNote || `You received this email because your account is part of the ${brandName} workspace.`);
   const safeRecipientName = escapeHtml(recipientName || 'there');
   const safeCtaLabel = ctaLabel ? escapeHtml(ctaLabel) : '';
   const safeCtaUrl = ctaUrl ? escapeHtml(ctaUrl) : '';
+  const safeBrandName = escapeHtml(brandName);
+  const safeBrandLogoUrl = isPublicHttpUrl(brandLogoUrl) ? escapeHtml(brandLogoUrl) : '';
   const lines = String(message || '')
     .split(/\r?\n/)
     .map((line) => line.trimEnd());
 
   const htmlBody = lines
     .map((line) => (line
-      ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:#374151;">${escapeHtml(line)}</p>`
-      : '<div style="height:10px;"></div>'))
+      ? `<p style="margin:0 0 16px;font-size:16px;line-height:1.8;color:#3f4a5a;">${escapeHtml(line)}</p>`
+      : '<div style="height:12px;"></div>'))
     .join('');
 
   const text = [
@@ -151,22 +180,71 @@ function buildAdminBroadcastEmail({ heading, preview, message, ctaLabel, ctaUrl,
   ].filter(Boolean).join('\n');
 
   const html = `
-    <div style="margin:0;padding:24px;background:#faf0f2;font-family:Roboto,Arial,sans-serif;color:#111827;">
-      <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid rgba(209,18,67,0.08);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(209,18,67,0.08);">
-        <div style="padding:28px 28px 22px;background:linear-gradient(135deg,#d11243 0%,#8f0b2f 100%);color:#ffffff;">
-          <div style="font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;opacity:0.82;">${escapeHtml(brandName)} admin update</div>
-          <h1 style="margin:12px 0 8px;font-size:28px;line-height:1.15;font-weight:900;">${safeHeading}</h1>
-          <p style="margin:0;font-size:14px;line-height:1.7;color:rgba(255,255,255,0.86);">${safePreview}</p>
+    <style>
+      @media only screen and (max-width: 600px) {
+        .email-shell {
+          padding: 20px 10px !important;
+        }
+        .email-card {
+          border-radius: 18px !important;
+        }
+        .email-header {
+          padding: 22px 18px 18px !important;
+        }
+        .email-body {
+          padding: 24px 18px 24px !important;
+        }
+        .email-title {
+          margin-top: 18px !important;
+          font-size: 28px !important;
+          line-height: 1.2 !important;
+        }
+        .email-copy {
+          font-size: 15px !important;
+          line-height: 1.75 !important;
+        }
+        .email-preview {
+          font-size: 13px !important;
+          line-height: 1.65 !important;
+        }
+        .email-logo {
+          max-width: 150px !important;
+          height: 28px !important;
+        }
+        .email-cta-wrap {
+          margin: 24px 0 4px !important;
+        }
+        .email-cta {
+          display: block !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
+          text-align: center !important;
+          padding: 14px 18px !important;
+        }
+      }
+    </style>
+    <div class="email-shell" style="margin:0;padding:36px 16px;background:#f5f6f8;font-family:Roboto,Arial,sans-serif;color:#1f2937;">
+      <div class="email-card" style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e9d8df;border-radius:24px;overflow:hidden;box-shadow:0 22px 60px rgba(148,163,184,0.16);">
+        <div style="height:6px;background:linear-gradient(90deg,#f4c8d7 0%,#d11243 100%);"></div>
+        <div class="email-header" style="padding:28px 30px 22px;background:linear-gradient(180deg,#fffdfd 0%,#f9f4f6 100%);border-bottom:1px solid #efe4e8;">
+          <div style="min-width:0;">
+            ${safeBrandLogoUrl ? `<img class="email-logo" src="${safeBrandLogoUrl}" alt="${safeBrandName} logo" style="display:block;height:34px;width:auto;max-width:190px;" />` : `<div style="font-size:20px;font-weight:700;letter-spacing:0.01em;color:#1f2937;">${safeBrandName}</div>`}
+            <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#ffffff;color:#b42358;border:1px solid #f0d3dd;font-size:10px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">Admin update</div>
+            </div>
+            <div class="email-preview" style="margin-top:10px;font-size:14px;line-height:1.7;color:#667085;">${safePreview}</div>
+          </div>
+          <h1 class="email-title" style="margin:22px 0 0;font-size:34px;line-height:1.15;font-weight:700;letter-spacing:-0.02em;color:#1f2937;">${safeHeading}</h1>
         </div>
-        <div style="padding:28px;">
-          <p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hi ${safeRecipientName},</p>
+        <div class="email-body" style="padding:32px 30px 30px;">
+          <p class="email-copy" style="margin:0 0 20px;font-size:16px;line-height:1.75;color:#3f4a5a;">Hi ${safeRecipientName},</p>
           ${htmlBody}
           ${safeCtaUrl ? `
-            <div style="margin:24px 0;">
-              <a href="${safeCtaUrl}" style="display:inline-block;padding:14px 22px;border-radius:12px;background:linear-gradient(135deg,#d11243 0%,#8f0b2f 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">${safeCtaLabel || 'Open link'}</a>
+            <div class="email-cta-wrap" style="margin:28px 0 8px;">
+              <a class="email-cta" href="${safeCtaUrl}" style="display:inline-block;padding:13px 22px;border-radius:14px;background:linear-gradient(135deg,#d11243 0%,#b0123e 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.01em;box-shadow:0 12px 24px rgba(209,18,67,0.18);">${safeCtaLabel || 'Open link'}</a>
             </div>
           ` : ''}
-          <div style="margin-top:24px;border-top:1px solid #f1f5f9;padding-top:16px;font-size:12px;line-height:1.7;color:#6b7280;">
+          <div style="margin-top:30px;border-top:1px solid #ece7ea;padding-top:18px;font-size:12px;line-height:1.8;color:#8a94a6;">
             <div>${safeFooterNote}</div>
             <div style="margin-top:8px;">${escapeHtml(supportSignature())}</div>
           </div>
