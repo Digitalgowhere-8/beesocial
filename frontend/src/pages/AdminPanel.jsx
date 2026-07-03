@@ -4886,6 +4886,68 @@ const MAIL_AUDIENCE_OPTIONS_UI = [
   { key: 'custom', label: 'Custom selection', help: 'Pick exact recipients from the user directory.' }
 ];
 
+function renderInlineMailPreview(text) {
+  const parts = String(text || '').split(/(\*\*.+?\*\*)/g).filter(Boolean);
+  return parts.map((part, index) => (
+    /^\*\*.+\*\*$/.test(part)
+      ? <strong key={`${part}-${index}`} className="font-bold text-gray-800">{part.slice(2, -2)}</strong>
+      : <span key={`${part}-${index}`}>{part}</span>
+  ));
+}
+
+function MailPreviewBody({ message }) {
+  const lines = String(message || '').split(/\r?\n/).map((line) => line.trimEnd());
+  const blocks = [];
+  let bullets = [];
+
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    blocks.push(
+      <ul key={`bullets-${blocks.length}`} className="mb-4 list-disc space-y-2 pl-5 text-[15px] leading-7 text-slate-600">
+        {bullets.map((item, index) => (
+          <li key={`${item}-${index}`}>{renderInlineMailPreview(item)}</li>
+        ))}
+      </ul>
+    );
+    bullets = [];
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushBullets();
+      blocks.push(<div key={`space-${index}`} className="h-2" />);
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      bullets.push(bulletMatch[1]);
+      return;
+    }
+
+    flushBullets();
+
+    if (/:\s*$/.test(trimmed) && trimmed.length <= 80) {
+      blocks.push(
+        <p key={`heading-${index}`} className="mb-3 text-base font-bold leading-6 text-slate-700">
+          {renderInlineMailPreview(trimmed)}
+        </p>
+      );
+      return;
+    }
+
+    blocks.push(
+      <p key={`line-${index}`} className="mb-3 text-[15px] leading-7 text-slate-600">
+        {renderInlineMailPreview(trimmed)}
+      </p>
+    );
+  });
+
+  flushBullets();
+  return <div>{blocks}</div>;
+}
+
 const createMailCenterForm = () => ({
   audience: 'all',
   subject: '',
@@ -5057,6 +5119,7 @@ function SuperAdminMailCenter() {
             <div className="md:col-span-2">
               <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Message body</label>
               <textarea className="input min-h-[220px] rounded-2xl py-3" value={form.message} onChange={(e) => updateForm('message', e.target.value)} placeholder={'Write your message here.\n\nYou can use multiple paragraphs.\nEach line break is preserved in the final email.'} />
+              <p className="mt-2 text-xs font-medium text-gray-400">Formatting: use `- item` for bullets, blank lines for spacing, and `**text**` for bold.</p>
             </div>
           </div>
 
@@ -5197,7 +5260,7 @@ function SuperAdminMailCenter() {
                 <div className="text-base font-medium leading-7 text-gray-600">
                   Hi {selectedRecipients[0]?.name || selectedRecipients[0]?.email || 'recipient'},
                 </div>
-                <div className="whitespace-pre-wrap text-[15px] leading-8 text-slate-600">{previewMessage}</div>
+                <MailPreviewBody message={previewMessage} />
                 {form.ctaUrl.trim() ? (
                   <div>
                     <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]">

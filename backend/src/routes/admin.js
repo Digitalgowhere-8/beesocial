@@ -63,6 +63,7 @@ const AVG_TOKENS_PER_BLOG = Number(process.env.AVG_TOKENS_PER_BLOG || 5000);
 const AVG_TOKENS_PER_SOCIAL_POST = Number(process.env.AVG_TOKENS_PER_SOCIAL_POST || 800);
 const PAID_PLANS = ['growth', 'scale', 'enterprise', 'premium'];
 const ACCESS_KEYS = ['canFetch', 'canCreateMembers', 'canUseContentRepository', 'canUseBlogStudio', 'canUseSavedSearches', 'canUseScheduler'];
+const MAIL_SEND_CHUNK_SIZE = Math.max(1, Number(process.env.MAIL_SEND_CHUNK_SIZE || 10));
 const DEFAULT_MEMBER_ACCESS = {
   canFetch: true,
   canCreateMembers: false,
@@ -292,6 +293,38 @@ async function resolveMailRecipients({ audience = 'all', userIds = [] } = {}) {
     .select('name email role company isActive')
     .sort({ role: 1, name: 1, email: 1 })
     .lean();
+}
+
+async function sendAdminBroadcastToRecipients(recipients, payloadBuilder) {
+  const sent = [];
+  const failed = [];
+
+  for (let index = 0; index < recipients.length; index += MAIL_SEND_CHUNK_SIZE) {
+    const batch = recipients.slice(index, index + MAIL_SEND_CHUNK_SIZE);
+    const batchResults = await Promise.allSettled(batch.map(async (recipient) => {
+      const payload = payloadBuilder(recipient);
+      await sendEmail({
+        to: recipient.email,
+        replyTo: process.env.EMAIL_REPLY_TO || undefined,
+        ...payload
+      });
+      return recipient;
+    }));
+
+    batchResults.forEach((result, batchIndex) => {
+      const recipient = batch[batchIndex];
+      if (result.status === 'fulfilled') {
+        sent.push(recipient.email);
+      } else {
+        failed.push({
+          email: recipient.email,
+          error: result.reason?.message || 'Send failed'
+        });
+      }
+    });
+  }
+
+  return { sent, failed };
 }
 
 // Every route here requires an operational admin.
@@ -1191,7 +1224,8 @@ router.post('/email/send', requireRole('super_admin'), asyncHandler(async (req, 
     return res.status(400).json({ message: 'No recipients found for this audience.' });
   }
 
-  for (const recipient of recipients) {
+  const subjectLine = subject;
+  const { sent, failed } = await sendAdminBroadcastToRecipients(recipients, (recipient) => {
     const payload = buildAdminBroadcastEmail({
       heading,
       preview,
@@ -1201,20 +1235,32 @@ router.post('/email/send', requireRole('super_admin'), asyncHandler(async (req, 
       footerNote,
       recipientName: recipient.name || recipient.email
     });
-
-    await sendEmail({
-      to: recipient.email,
-      subject,
-      replyTo: process.env.EMAIL_REPLY_TO || undefined,
+    return {
+      subject: subjectLine,
       ...payload
+    };
+  });
+
+  if (!sent.length && failed.length) {
+    return res.status(502).json({
+      message: `Email could not be sent. ${failed.length} recipient${failed.length === 1 ? '' : 's'} failed.`,
+      success: false,
+      sent: 0,
+      failed: failed.length,
+      failures: failed.slice(0, 10)
     });
   }
 
   res.json({
     success: true,
-    message: `Email sent to ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}.`,
-    sent: recipients.length,
-    audience
+    message: failed.length
+      ? `Email sent to ${sent.length} recipient${sent.length === 1 ? '' : 's'}. ${failed.length} failed and can be retried.`
+      : `Email sent to ${sent.length} recipient${sent.length === 1 ? '' : 's'}.`,
+    sent: sent.length,
+    failed: failed.length,
+    failures: failed.slice(0, 10),
+    audience,
+    chunkSize: MAIL_SEND_CHUNK_SIZE
   });
 }));
 

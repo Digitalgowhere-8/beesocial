@@ -4,6 +4,14 @@ function isConfigured() {
   return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 }
 
+function senderIdentity() {
+  const rawFrom = String(process.env.EMAIL_FROM || '').trim();
+  const displayName = String(process.env.EMAIL_FROM_NAME || '').trim();
+  if (!rawFrom) return '';
+  if (!displayName || /<.+@.+>/.test(rawFrom)) return rawFrom;
+  return `"${displayName.replace(/"/g, '\\"')}" <${rawFrom}>`;
+}
+
 async function sendEmail({ to, subject, html, text, replyTo }) {
   if (!isConfigured()) {
     const err = new Error('Email delivery is not configured on the server');
@@ -18,7 +26,7 @@ async function sendEmail({ to, subject, html, text, replyTo }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: process.env.EMAIL_FROM,
+      from: senderIdentity(),
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
@@ -101,6 +109,52 @@ function supportSignature() {
   return 'If you did not expect this message, you can ignore it.';
 }
 
+function applyInlineEmailFormatting(text) {
+  return escapeHtml(text).replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:700;color:#1f2937;">$1</strong>');
+}
+
+function renderAdminEmailBody(lines) {
+  const chunks = [];
+  let bulletItems = [];
+
+  const flushBullets = () => {
+    if (!bulletItems.length) return;
+    chunks.push(`
+      <ul style="margin:0 0 18px;padding:0 0 0 18px;color:#3f4a5a;">
+        ${bulletItems.map((item) => `<li style="margin:0 0 10px;line-height:1.65;font-size:15px;">${applyInlineEmailFormatting(item)}</li>`).join('')}
+      </ul>
+    `);
+    bulletItems = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) {
+      flushBullets();
+      chunks.push('<div style="height:8px;"></div>');
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      bulletItems.push(bulletMatch[1]);
+      return;
+    }
+
+    flushBullets();
+
+    if (/:\s*$/.test(trimmed) && trimmed.length <= 80) {
+      chunks.push(`<p style="margin:0 0 12px;font-size:16px;line-height:1.55;font-weight:700;color:#253041;">${applyInlineEmailFormatting(trimmed)}</p>`);
+      return;
+    }
+
+    chunks.push(`<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#3f4a5a;">${applyInlineEmailFormatting(trimmed)}</p>`);
+  });
+
+  flushBullets();
+  return chunks.join('');
+}
+
 function buildPasswordResetEmail({ name, resetUrl, expiresMinutes }) {
   const brandName = inferBrandName();
   const safeName = escapeHtml(name || 'there');
@@ -162,11 +216,7 @@ function buildAdminBroadcastEmail({ heading, preview, message, ctaLabel, ctaUrl,
     .split(/\r?\n/)
     .map((line) => line.trimEnd());
 
-  const htmlBody = lines
-    .map((line) => (line
-      ? `<p style="margin:0 0 16px;font-size:16px;line-height:1.8;color:#3f4a5a;">${escapeHtml(line)}</p>`
-      : '<div style="height:12px;"></div>'))
-    .join('');
+  const htmlBody = renderAdminEmailBody(lines);
 
   const text = [
     `Hi ${recipientName || 'there'},`,
