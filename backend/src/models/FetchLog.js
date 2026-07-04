@@ -1,5 +1,26 @@
 const mongoose = require('mongoose');
 
+const MAX_FETCH_LOG_QUERY_LENGTH = 300;
+
+function normalizeFetchLogQuery(value) {
+  const text = typeof value === 'string' ? value : String(value ?? '');
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= MAX_FETCH_LOG_QUERY_LENGTH) return normalized;
+  return `${normalized.slice(0, MAX_FETCH_LOG_QUERY_LENGTH - 3).trimEnd()}...`;
+}
+
+function applyQueryNormalization(update) {
+  if (!update || typeof update !== 'object') return;
+
+  if (Object.prototype.hasOwnProperty.call(update, 'query')) {
+    update.query = normalizeFetchLogQuery(update.query);
+  }
+
+  if (update.$set && Object.prototype.hasOwnProperty.call(update.$set, 'query')) {
+    update.$set.query = normalizeFetchLogQuery(update.$set.query);
+  }
+}
+
 /**
  * FETCH LOG
  * ---------
@@ -27,7 +48,7 @@ const fetchLogSchema = new mongoose.Schema(
     country: { type: String, default: '' },
     region: { type: String, default: '' },
     sector: { type: String, default: '', maxlength: 100 },
-    query: { type: String, default: '', maxlength: 300 },
+    query: { type: String, default: '', maxlength: MAX_FETCH_LOG_QUERY_LENGTH, set: normalizeFetchLogQuery },
     resultCount: { type: Number, default: 0 },
 
     status: {
@@ -59,5 +80,17 @@ const fetchLogSchema = new mongoose.Schema(
 fetchLogSchema.index({ startedAt: -1 });
 // Auto-delete logs older than 90 days to prevent unbounded storage growth
 fetchLogSchema.index({ startedAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+
+fetchLogSchema.pre('validate', function normalizeDocumentQuery(next) {
+  this.query = normalizeFetchLogQuery(this.query);
+  next();
+});
+
+['findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'updateMany'].forEach((hook) => {
+  fetchLogSchema.pre(hook, function normalizeUpdatedQuery(next) {
+    applyQueryNormalization(this.getUpdate());
+    next();
+  });
+});
 
 module.exports = mongoose.model('FetchLog', fetchLogSchema);
