@@ -15,3 +15,15 @@ az containerapp logs show \
   --name beesocial-backend \
   --resource-group DGW-RG-BS \
   --tail 100
+
+# Force-restart the frontend to pull down the newly pushed  image layer
+az containerapp revision restart \
+  --name beesocial-frontend \
+  --resource-group DGW-RG-BS \
+  --revision $(az containerapp revision list --name beesocial-frontend --resource-group DGW-RG-BS --query "[0].name" -o tsv)
+
+# Force-restart the backend as well
+az containerapp revision restart \
+  --name beesocial-backend \
+  --resource-group DGW-RG-BS \
+  --revision $(az containerapp revision list --name beesocial-backend --resource-group DGW-RG-BS --query "[0].name" -o tsv)
