@@ -32,6 +32,17 @@ const PLAN_BADGE = {
   premium:    'bg-gradient-to-r from-amber-100 to-yellow-50 text-amber-800 ring-1 ring-amber-200/50 shadow-sm'
 };
 
+function formatPlanLabel(planId, dbPlans = []) {
+  const normalized = String(planId || '').trim().toLowerCase();
+  const dbPlan = Array.isArray(dbPlans) ? dbPlans.find((plan) => String(plan?.planId || '').toLowerCase() === normalized) : null;
+  if (dbPlan?.label) {
+    const price = String(dbPlan.price || '').trim();
+    return price ? `${dbPlan.label} (${price})` : dbPlan.label;
+  }
+  if (!normalized) return 'Not assigned';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
 
 const MEMBER_ACCESS_OPTIONS = [
@@ -3656,6 +3667,16 @@ function UsersTab({ dbPlans }) {
     return defaults[key] !== false;
   };
 
+  const planOptions = useMemo(() => (
+    (Array.isArray(dbPlans) && dbPlans.length
+      ? dbPlans
+      : ['premium', 'free', 'growth', 'scale', 'enterprise'].map((planId) => ({ planId })))
+      .map((plan) => ({
+        value: plan.planId,
+        label: formatPlanLabel(plan.planId, dbPlans)
+      }))
+  ), [dbPlans]);
+
   if (loading) return <Loader />;
 
   return (
@@ -3899,11 +3920,9 @@ function UsersTab({ dbPlans }) {
                           onChange={(e) => updateTablePlan(u, e.target.value)}
                           className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
                         >
-                          <option value="premium">Premium ($99)</option>
-                          <option value="free">Free ($0)</option>
-                          <option value="growth">Growth ($29)</option>
-                          <option value="scale">Scale ($99)</option>
-                          <option value="enterprise">Enterprise ($299+)</option>
+                          {planOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
                         </select>
                         <p className="mt-1 text-[9px] font-medium text-gray-400">Auto-fills limits on save</p>
                       </div>
@@ -3923,7 +3942,13 @@ function UsersTab({ dbPlans }) {
                     </div>
                   ) : (
                     <div className="min-w-[240px] rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs font-semibold text-gray-400">
-                      Members inherit plan and usage limits from their admin account.
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`tag px-2.5 py-1 ${PLAN_BADGE[adminById.get(String(u.tenantAdminId || ''))?.subscriptionPlan || 'free'] || PLAN_BADGE.free}`}>
+                          {formatPlanLabel(adminById.get(String(u.tenantAdminId || ''))?.subscriptionPlan || 'free', dbPlans)}
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Inherited</span>
+                      </div>
+                      <div className="mt-2">Members inherit plan and usage limits from their admin account.</div>
                     </div>
                   )}
                 </td>
