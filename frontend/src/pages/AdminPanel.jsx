@@ -3891,35 +3891,41 @@ function UsersTab({ dbPlans }) {
               </td>
               {isSuperAdmin && (
                 <td className="py-3 px-4">
-                  <div className="grid min-w-[240px] grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <select
-                        value={u.subscriptionPlan || 'free'}
-                        onChange={(e) => updateTablePlan(u, e.target.value)}
-                        className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
-                      >
-                        <option value="premium">Premium ($99)</option>
-                        <option value="free">Free ($0)</option>
-                        <option value="growth">Growth ($29)</option>
-                        <option value="scale">Scale ($99)</option>
-                        <option value="enterprise">Enterprise ($299+)</option>
-                      </select>
-                      <p className="mt-1 text-[9px] font-medium text-gray-400">Auto-fills limits on save</p>
+                  {u.role === 'admin' ? (
+                    <div className="grid min-w-[240px] grid-cols-2 gap-2">
+                      <div className="col-span-2">
+                        <select
+                          value={u.subscriptionPlan || 'free'}
+                          onChange={(e) => updateTablePlan(u, e.target.value)}
+                          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
+                        >
+                          <option value="premium">Premium ($99)</option>
+                          <option value="free">Free ($0)</option>
+                          <option value="growth">Growth ($29)</option>
+                          <option value="scale">Scale ($99)</option>
+                          <option value="enterprise">Enterprise ($299+)</option>
+                        </select>
+                        <p className="mt-1 text-[9px] font-medium text-gray-400">Auto-fills limits on save</p>
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={u.memberLimit ?? 3}
+                        onChange={(e) => updateUserAccess(u, { memberLimit: Number(e.target.value) })}
+                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
+                        title="Member limit"
+                      />
+                      <LimitInput label="Fetch" value={u.limits?.fetchesPerMonth ?? 30} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), fetchesPerMonth: value } })} />
+                      <LimitInput label="Tokens" value={u.limits?.tokenBudgetMonthly ?? 100000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), tokenBudgetMonthly: value } })} />
+                      <LimitInput label="Storage" value={u.limits?.storageItems ?? 1000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), storageItems: value } })} />
+                      <LimitInput label="Blogs" value={u.limits?.blogGenerationsMonthly ?? 10} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), blogGenerationsMonthly: value } })} />
+                      <LimitInput label="Posts" value={u.limits?.socialPostsMonthly ?? 20} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), socialPostsMonthly: value } })} />
                     </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={u.memberLimit ?? 3}
-                      onChange={(e) => updateUserAccess(u, { memberLimit: Number(e.target.value) })}
-                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600"
-                      title="Member limit"
-                    />
-                    <LimitInput label="Fetch" value={u.limits?.fetchesPerMonth ?? 30} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), fetchesPerMonth: value } })} />
-                    <LimitInput label="Tokens" value={u.limits?.tokenBudgetMonthly ?? 100000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), tokenBudgetMonthly: value } })} />
-                    <LimitInput label="Storage" value={u.limits?.storageItems ?? 1000} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), storageItems: value } })} />
-                    <LimitInput label="Blogs" value={u.limits?.blogGenerationsMonthly ?? 10} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), blogGenerationsMonthly: value } })} />
-                    <LimitInput label="Posts" value={u.limits?.socialPostsMonthly ?? 20} onSave={(value) => updateUserAccess(u, { limits: { ...(u.limits || {}), socialPostsMonthly: value } })} />
-                  </div>
+                  ) : (
+                    <div className="min-w-[240px] rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs font-semibold text-gray-400">
+                      Members inherit plan and usage limits from their admin account.
+                    </div>
+                  )}
                 </td>
               )}
               <td className="py-3 px-4">

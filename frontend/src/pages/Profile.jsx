@@ -27,6 +27,14 @@ const roleLabel = (role) => {
   return 'Member';
 };
 
+const planLabel = (plan) => {
+  const value = String(plan || '').trim();
+  if (!value) return 'Not assigned';
+  if (value === 'free') return 'Free';
+  if (value === 'premium') return 'Premium';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
 const initialFormFromUser = (user) => ({
   name: user?.name || '',
   company: user?.company || '',
@@ -335,6 +343,7 @@ export default function Profile() {
 
               <div className="mt-4 space-y-2">
                 <InfoTile icon={Building2} label="Organization" value={form.company || 'Not set'} />
+                <InfoTile icon={RefreshCw} label="Subscription Plan" value={planLabel(user?.subscriptionPlan)} />
               </div>
 
               {avatar ? (
