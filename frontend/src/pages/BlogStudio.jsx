@@ -739,9 +739,9 @@ export default function BlogStudio() {
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
       setGenProgress(null);
-      setGenerating(false);
     } finally {
-      // The backend completes generation in the background; AuthContext polling opens the finished draft.
+      // The running overlay is driven by global generation progress after the request is accepted.
+      setGenerating(false);
     }
   };
 
@@ -833,8 +833,10 @@ export default function BlogStudio() {
       });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
-      setGeneratingLinkedin(false);
       setGenProgress(null);
+    } finally {
+      // Keep the overlay tied to global generation progress instead of a sticky local flag.
+      setGeneratingLinkedin(false);
     }
   };
 
@@ -1024,7 +1026,7 @@ export default function BlogStudio() {
       <div className="relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
         <div className={(CONTENT_STUDIO_UPCOMING_MODE || generationLocked) ? 'pointer-events-none select-none blur-[5px] saturate-[0.82] transition-all duration-300' : 'transition-all duration-300'}>
         {error && (
-          <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
+          <div className="mb-3 rounded-xl border border-red-200/50 bg-red-50/80 px-5 py-4 text-sm font-semibold text-red-700 shadow-sm backdrop-blur-md animate-fade-in-up stagger-2">
             {error}
           </div>
         )}

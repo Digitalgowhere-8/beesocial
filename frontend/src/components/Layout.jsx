@@ -947,9 +947,7 @@ export default function Layout({ children, headerActions = null }) {
                 <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-crimson text-white text-[10px] font-bold flex items-center justify-center">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
-                ) : (
-                  !isSuperAdmin && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand-crimson animate-ping" />
-                )}
+                ) : null}
               </button>
               {showNotifications && !isSuperAdmin && (
                 <NotificationsMenu
