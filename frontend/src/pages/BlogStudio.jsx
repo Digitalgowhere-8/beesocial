@@ -222,7 +222,7 @@ export default function BlogStudio() {
   // Derive generating flags from global genProgress so they survive tab switches
   const isGenerating = generating || (genProgress?.status === 'running' && genProgress?.type === 'blog');
   const isGeneratingLinkedin = generatingLinkedin || (genProgress?.status === 'running' && genProgress?.type === 'linkedin');
-  const generationLocked = isGenerating || isGeneratingLinkedin;
+  const generationLocked = isGenerating || isGeneratingLinkedin || generationFinalizing;
 
   const [generationStepIndex, setGenerationStepIndex] = useState(0);
 
@@ -330,6 +330,7 @@ export default function BlogStudio() {
   useEffect(() => {
     genProgressRef.current = genProgress;
   }, [genProgress]);
+  const generationOwnerRef = useRef('');
 
 
   const selectArticleById = useCallback((articleId) => {
@@ -434,7 +435,7 @@ export default function BlogStudio() {
       excerpt: item.excerpt || '',
       bodyMarkdown: item.bodyMarkdown || ''
     });
-    setPendingDraftId(item._id || '');
+    setPendingDraftId('');
     setDraftDrawerOpen(true);
     setDraftEditorOpen(true);
     setBlogs((prev) => [item, ...prev.filter((blog) => blog._id !== item._id)]);
@@ -445,18 +446,36 @@ export default function BlogStudio() {
     return item;
   }, [loadBlogs]);
 
+  const waitForGenerationCompletion = useCallback(async (expectedType, ownerKey) => {
+    const maxAttempts = 160;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (generationOwnerRef.current !== ownerKey) {
+        throw new Error('Generation tracking was interrupted.');
+      }
+
+      const { data } = await api.get('/blogs/generation-status');
+      if (data) {
+        setGenProgress(data);
+        if (data.type === expectedType) {
+          if (data.status === 'completed') return data;
+          if (data.status === 'failed') throw new Error(data.error || 'Generation failed');
+          if (data.status === 'cancelled') throw new Error('Generation was cancelled');
+        }
+      }
+
+      await delay(750);
+    }
+
+    throw new Error('Generation is taking too long. Please check Drafts & Publishing.');
+  }, [setGenProgress]);
+
   // Listen to global generation progress updates to handle background success, failure or cancellation
   useEffect(() => {
+    if (generationOwnerRef.current) return;
     if (!genProgress) return;
 
     if (genProgress.status === 'completed') {
       const handleCompleted = async () => {
-        // Clear overlay states FIRST so the modal disappears immediately
-        api.post('/blogs/generation-clear').catch(() => {});
-        setGenerating(false);
-        setGeneratingLinkedin(false);
-        setGenProgress(null);
-
         setGenerationFinalizing(true);
         try {
           if (genProgress.type === 'blog') {
@@ -470,6 +489,10 @@ export default function BlogStudio() {
         } catch (err) {
           setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
         } finally {
+          api.post('/blogs/generation-clear').catch(() => {});
+          setGenerating(false);
+          setGeneratingLinkedin(false);
+          setGenProgress(null);
           setGenerationFinalizing(false);
         }
       };
@@ -497,6 +520,25 @@ export default function BlogStudio() {
       const detail = event?.detail || {};
       if (!detail.scope || detail.scope === 'blogs') {
         if (detail.id) {
+          const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
+          if (detail.action === 'generated' && isActivelyGenerating) {
+            setGenerationFinalizing(true);
+            openGeneratedDraft(detail.id)
+              .then(() => {
+                setGenerating(false);
+                setGeneratingLinkedin(false);
+                setGenProgress(null);
+                api.post('/blogs/generation-clear').catch(() => {});
+              })
+              .catch((err) => {
+                setError(err.response?.data?.message || err.message || 'Failed to open generated draft');
+              })
+              .finally(() => {
+                setGenerationFinalizing(false);
+              });
+            return;
+          }
+
           // Fetch the updated blog post
           api.get(`/blogs/${detail.id}`).then(({ data }) => {
             if (data.item) {
@@ -509,35 +551,11 @@ export default function BlogStudio() {
                 return [data.item, ...prev]; // PREPEND new drafts!
               });
               
-              // If this user was actively generating, open the draft and close overlay instantly!
-              const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
-              if (detail.action === 'generated' && isActivelyGenerating) {
-                // Instantly close the overlay
-                setGenerating(false);
-                setGeneratingLinkedin(false);
-                setGenProgress(null);
-                api.post('/blogs/generation-clear').catch(() => {});
-
-                // Open the draft drawer
-                setContentType('blog');
-                setBlogQuery('');
-                setSelectedBlog(data.item);
-                setDraftForm({
-                  title: data.item.title || '',
-                  excerpt: data.item.excerpt || '',
-                  bodyMarkdown: data.item.bodyMarkdown || ''
-                });
-                setPendingDraftId(data.item._id || '');
-                setDraftDrawerOpen(true);
-                setDraftEditorOpen(true);
-                loadBlogsRef.current?.({ page: 1, reset: true, q: '' });
-              } else {
-                // Also update selected blog if it matches
-                if (selectedBlogRef.current?._id === data.item._id) {
-                  if (selectedBlogRef.current.status !== data.item.status || 
-                      selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
-                    setSelectedBlog(data.item);
-                  }
+              // Also update selected blog if it matches
+              if (selectedBlogRef.current?._id === data.item._id) {
+                if (selectedBlogRef.current.status !== data.item.status || 
+                    selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
+                  setSelectedBlog(data.item);
                 }
               }
             }
@@ -729,6 +747,8 @@ export default function BlogStudio() {
     setError('');
     setGenerating(true);
     setGenProgress({ type: 'blog', status: 'running', startedAt: new Date().toISOString() });
+    const ownerKey = `blog:${Date.now()}`;
+    generationOwnerRef.current = ownerKey;
     try {
       await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
@@ -736,11 +756,20 @@ export default function BlogStudio() {
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
         status: 'draft'
       });
+
+      const completed = await waitForGenerationCompletion('blog', ownerKey);
+      setGenerationFinalizing(true);
+      const item = await openGeneratedDraft(completed.resultId);
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || completed.resultId || '' });
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
+      api.post('/blogs/generation-clear').catch(() => {});
       setGenProgress(null);
     } finally {
-      // The running overlay is driven by global generation progress after the request is accepted.
+      generationOwnerRef.current = '';
+      setGenerationFinalizing(false);
       setGenerating(false);
     }
   };
@@ -904,10 +933,14 @@ export default function BlogStudio() {
 
   const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
   const ActiveContentIcon = activeContentTab.icon;
-  const generationOverlayTitle = isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft';
-  const generationOverlaySubtitle = isGeneratingLinkedin
-    ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
-    : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.';
+  const generationOverlayTitle = generationFinalizing
+    ? (genProgress?.type === 'linkedin' ? 'Opening LinkedIn Preview' : 'Opening Blog Draft')
+    : (isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft');
+  const generationOverlaySubtitle = generationFinalizing
+    ? 'Finalizing your content. It will open automatically in a moment.'
+    : (isGeneratingLinkedin
+      ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
+      : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.');
   const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
@@ -1371,7 +1404,7 @@ export default function BlogStudio() {
 
                 {/* Plain, premium text */}
                 <h3 className="text-base font-black text-gray-900 tracking-tight">{generationOverlayTitle}</h3>
-                <p className="mt-1 text-xs font-semibold text-gray-400">AI is crafting your post. Please wait...</p>
+                <p className="mt-1 text-xs font-semibold text-gray-400">{generationOverlaySubtitle}</p>
 
                 {/* Extremely minimal cancel link */}
                 <div className="mt-6 flex justify-center">

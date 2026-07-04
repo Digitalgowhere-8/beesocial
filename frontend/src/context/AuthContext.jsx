@@ -347,17 +347,49 @@ export function AuthProvider({ children }) {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
     let stream = null;
     let closed = false;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
     setRealtimeConnected(false);
 
+    const closeStream = () => {
+      if (stream) {
+        stream.close();
+        stream = null;
+      }
+    };
+
+    const scheduleReconnect = (delayMs = 3000) => {
+      if (closed || reconnectTimer) return;
+      const nextDelay = Math.min(delayMs * (2 ** reconnectAttempt), 30000);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, nextDelay);
+    };
+
     const connect = async () => {
+      closeStream();
+
       try {
         const { data } = await api.post('/auth/realtime-token');
         if (closed || !data?.token) return;
 
         const streamUrl = `${baseUrl}/realtime/stream?token=${encodeURIComponent(data.token)}`;
         stream = new EventSource(streamUrl);
-        stream.addEventListener('ready', () => setRealtimeConnected(true));
-        stream.onerror = () => setRealtimeConnected(false);
+        stream.addEventListener('ready', () => {
+          reconnectAttempt = 0;
+          setRealtimeConnected(true);
+          if (reconnectTimer) {
+            window.clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+          }
+        });
+        stream.onerror = () => {
+          setRealtimeConnected(false);
+          closeStream();
+          scheduleReconnect();
+        };
 
         const handleContent = (event) => {
           try {
@@ -376,7 +408,7 @@ export function AuthProvider({ children }) {
         stream.addEventListener('auth', handleAuth);
       } catch {
         setRealtimeConnected(false);
-        // Ignore realtime bootstrap failures; polling/refresh paths still work.
+        scheduleReconnect();
       }
     };
 
@@ -384,8 +416,11 @@ export function AuthProvider({ children }) {
 
     return () => {
       closed = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
       setRealtimeConnected(false);
-      stream?.close();
+      closeStream();
     };
   }, [refreshMe, user?._id]);
 
