@@ -343,7 +343,7 @@ export default function Profile() {
 
               <div className="mt-4 space-y-2">
                 <InfoTile icon={Building2} label="Organization" value={form.company || 'Not set'} />
-                <InfoTile icon={RefreshCw} label="Subscription Plan" value={planLabel(user?.subscriptionPlan)} />
+                <InfoTile icon={RefreshCw} label="Subscription Plan" value={planLabel(user?.effectiveSubscriptionPlan || user?.subscriptionPlan)} />
               </div>
 
               {avatar ? (

@@ -43,6 +43,8 @@ function authSignature(user, session, uiSettings) {
     role: user?.role || '',
     isActive: Boolean(user?.isActive),
     sessionId: session?.sessionId || '',
+    subscriptionPlan: user?.subscriptionPlan || '',
+    effectiveSubscriptionPlan: user?.effectiveSubscriptionPlan || '',
     access: user?.access || null,
     uiSettings: uiSettings || null
   });
