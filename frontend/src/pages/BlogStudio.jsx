@@ -855,16 +855,28 @@ export default function BlogStudio() {
     setError('');
     setGeneratingLinkedin(true);
     setGenProgress({ type: 'linkedin', status: 'running', startedAt: new Date().toISOString() });
+    const ownerKey = `linkedin:${Date.now()}`;
+    generationOwnerRef.current = ownerKey;
     try {
       await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
         options: linkedinForm
       });
+
+      const completed = await waitForGenerationCompletion('linkedin', ownerKey);
+      setGenerationFinalizing(true);
+      setLinkedinOutput(stampLinkedinOutput(completed.data));
+      setContentType('social');
+      loadSocialPosts();
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
+      api.post('/blogs/generation-clear').catch(() => {});
       setGenProgress(null);
     } finally {
-      // Keep the overlay tied to global generation progress instead of a sticky local flag.
+      generationOwnerRef.current = '';
+      setGenerationFinalizing(false);
       setGeneratingLinkedin(false);
     }
   };
