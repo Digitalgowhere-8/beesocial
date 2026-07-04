@@ -73,6 +73,7 @@ function ArticleCard({
   compact = false,
   selectable = false,
   selected = false,
+  compactFooter = null,
   onSelect,
   onSaveToggle,
   saving = false,
@@ -297,6 +298,12 @@ function ArticleCard({
           </a>
         </div>
       </div>
+
+      {compactFooter && (
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          {compactFooter}
+        </div>
+      )}
 
       {adminActions && (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pl-3 pt-3">

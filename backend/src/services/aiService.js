@@ -143,6 +143,23 @@ function blogSourceContext(article = {}) {
     .slice(0, 12000);
 }
 
+function socialSourceContext(article = {}) {
+  return [
+    article.summary,
+    article.aiSummary,
+    article.tavilyAnswer || article.tavily_answer,
+    article.blogContext || article.blog_context,
+    article.rawContent || article.raw_content,
+    article.rawData?.rawContent,
+    article.sourceQuery ? `Search query: ${article.sourceQuery}` : '',
+    article.relevanceReason ? `Relevance reason: ${article.relevanceReason}` : ''
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .slice(0, 4000);
+}
+
 function uniqueStrings(values = []) {
   const seen = new Set();
   return values.filter((value) => {
@@ -1174,7 +1191,7 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
     return fallbackLinkedInPost({ article, options });
   }
 
-  const sourceContext = blogSourceContext(article);
+  const sourceContext = socialSourceContext(article);
   const postGoal = options.postGoal || 'thought_leadership';
   const tone = options.tone || 'professional';
   const audience = options.audience || 'business decision-makers';
