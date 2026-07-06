@@ -222,7 +222,7 @@ export default function BlogStudio() {
   // Derive generating flags from global genProgress so they survive tab switches
   const isGenerating = generating || (genProgress?.status === 'running' && genProgress?.type === 'blog');
   const isGeneratingLinkedin = generatingLinkedin || (genProgress?.status === 'running' && genProgress?.type === 'linkedin');
-  const generationLocked = isGenerating || isGeneratingLinkedin;
+  const generationLocked = isGenerating || isGeneratingLinkedin || generationFinalizing;
 
   const [generationStepIndex, setGenerationStepIndex] = useState(0);
 
@@ -317,6 +317,10 @@ export default function BlogStudio() {
     selectedBlogRef.current = selectedBlog;
   }, [selectedBlog]);
 
+  const stampLinkedinOutput = useCallback((value) => (
+    value ? { ...value, previewToken: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` } : value
+  ), []);
+
   const generatingRef = useRef(generating);
   useEffect(() => {
     generatingRef.current = generating;
@@ -326,6 +330,7 @@ export default function BlogStudio() {
   useEffect(() => {
     genProgressRef.current = genProgress;
   }, [genProgress]);
+  const generationOwnerRef = useRef('');
 
 
   const selectArticleById = useCallback((articleId) => {
@@ -430,7 +435,7 @@ export default function BlogStudio() {
       excerpt: item.excerpt || '',
       bodyMarkdown: item.bodyMarkdown || ''
     });
-    setPendingDraftId(item._id || '');
+    setPendingDraftId('');
     setDraftDrawerOpen(true);
     setDraftEditorOpen(true);
     setBlogs((prev) => [item, ...prev.filter((blog) => blog._id !== item._id)]);
@@ -441,32 +446,53 @@ export default function BlogStudio() {
     return item;
   }, [loadBlogs]);
 
+  const waitForGenerationCompletion = useCallback(async (expectedType, ownerKey) => {
+    const maxAttempts = 160;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (generationOwnerRef.current !== ownerKey) {
+        throw new Error('Generation tracking was interrupted.');
+      }
+
+      const { data } = await api.get('/blogs/generation-status');
+      if (data) {
+        setGenProgress(data);
+        if (data.type === expectedType) {
+          if (data.status === 'completed') return data;
+          if (data.status === 'failed') throw new Error(data.error || 'Generation failed');
+          if (data.status === 'cancelled') throw new Error('Generation was cancelled');
+        }
+      }
+
+      await delay(750);
+    }
+
+    throw new Error('Generation is taking too long. Please check Drafts & Publishing.');
+  }, [setGenProgress]);
+
   // Listen to global generation progress updates to handle background success, failure or cancellation
   useEffect(() => {
+    if (generationOwnerRef.current) return;
     if (!genProgress) return;
 
     if (genProgress.status === 'completed') {
       const handleCompleted = async () => {
-        // Clear overlay states FIRST so the modal disappears immediately
-        api.post('/blogs/generation-clear').catch(() => {});
-        setGenerating(false);
-        setGeneratingLinkedin(false);
-        setGenProgress(null);
-
         setGenerationFinalizing(true);
         try {
           if (genProgress.type === 'blog') {
             const item = await openGeneratedDraft(genProgress.resultId);
             emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || genProgress.resultId || '' });
           } else if (genProgress.type === 'linkedin') {
-            setLinkedinOutput(genProgress.data);
+            setLinkedinOutput(stampLinkedinOutput(genProgress.data));
             setContentType('social');
-            setOutputDrawerOpen(true);
             loadSocialPosts();
           }
         } catch (err) {
           setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
         } finally {
+          api.post('/blogs/generation-clear').catch(() => {});
+          setGenerating(false);
+          setGeneratingLinkedin(false);
+          setGenProgress(null);
           setGenerationFinalizing(false);
         }
       };
@@ -486,7 +512,7 @@ export default function BlogStudio() {
       setGeneratingLinkedin(false);
       setGenProgress(null);
     }
-  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, setLinkedinOutput]);
+  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, setLinkedinOutput, stampLinkedinOutput]);
 
   // Real-time listener: handles updates pushed to other tabs/users in real-time
   useEffect(() => {
@@ -494,6 +520,25 @@ export default function BlogStudio() {
       const detail = event?.detail || {};
       if (!detail.scope || detail.scope === 'blogs') {
         if (detail.id) {
+          const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
+          if (detail.action === 'generated' && isActivelyGenerating) {
+            setGenerationFinalizing(true);
+            openGeneratedDraft(detail.id)
+              .then(() => {
+                setGenerating(false);
+                setGeneratingLinkedin(false);
+                setGenProgress(null);
+                api.post('/blogs/generation-clear').catch(() => {});
+              })
+              .catch((err) => {
+                setError(err.response?.data?.message || err.message || 'Failed to open generated draft');
+              })
+              .finally(() => {
+                setGenerationFinalizing(false);
+              });
+            return;
+          }
+
           // Fetch the updated blog post
           api.get(`/blogs/${detail.id}`).then(({ data }) => {
             if (data.item) {
@@ -506,35 +551,11 @@ export default function BlogStudio() {
                 return [data.item, ...prev]; // PREPEND new drafts!
               });
               
-              // If this user was actively generating, open the draft and close overlay instantly!
-              const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'blog');
-              if (detail.action === 'generated' && isActivelyGenerating) {
-                // Instantly close the overlay
-                setGenerating(false);
-                setGeneratingLinkedin(false);
-                setGenProgress(null);
-                api.post('/blogs/generation-clear').catch(() => {});
-
-                // Open the draft drawer
-                setContentType('blog');
-                setBlogQuery('');
-                setSelectedBlog(data.item);
-                setDraftForm({
-                  title: data.item.title || '',
-                  excerpt: data.item.excerpt || '',
-                  bodyMarkdown: data.item.bodyMarkdown || ''
-                });
-                setPendingDraftId(data.item._id || '');
-                setDraftDrawerOpen(true);
-                setDraftEditorOpen(true);
-                loadBlogsRef.current?.({ page: 1, reset: true, q: '' });
-              } else {
-                // Also update selected blog if it matches
-                if (selectedBlogRef.current?._id === data.item._id) {
-                  if (selectedBlogRef.current.status !== data.item.status || 
-                      selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
-                    setSelectedBlog(data.item);
-                  }
+              // Also update selected blog if it matches
+              if (selectedBlogRef.current?._id === data.item._id) {
+                if (selectedBlogRef.current.status !== data.item.status || 
+                    selectedBlogRef.current.updatedAt !== data.item.updatedAt) {
+                  setSelectedBlog(data.item);
                 }
               }
             }
@@ -564,9 +585,8 @@ export default function BlogStudio() {
           api.post('/blogs/generation-clear').catch(() => {});
 
           // Set output and open preview drawer
-          setLinkedinOutput(detail.data);
+          setLinkedinOutput(stampLinkedinOutput(detail.data));
           setContentType('social');
-          setOutputDrawerOpen(true);
         }
       }
     };
@@ -575,7 +595,7 @@ export default function BlogStudio() {
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     };
-  }, []);
+  }, [stampLinkedinOutput]);
 
   useEffect(() => {
     if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
@@ -727,6 +747,8 @@ export default function BlogStudio() {
     setError('');
     setGenerating(true);
     setGenProgress({ type: 'blog', status: 'running', startedAt: new Date().toISOString() });
+    const ownerKey = `blog:${Date.now()}`;
+    generationOwnerRef.current = ownerKey;
     try {
       await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
@@ -734,12 +756,21 @@ export default function BlogStudio() {
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
         status: 'draft'
       });
+
+      const completed = await waitForGenerationCompletion('blog', ownerKey);
+      setGenerationFinalizing(true);
+      const item = await openGeneratedDraft(completed.resultId);
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || completed.resultId || '' });
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Blog generation failed');
+      api.post('/blogs/generation-clear').catch(() => {});
       setGenProgress(null);
-      setGenerating(false);
     } finally {
-      // The backend completes generation in the background; AuthContext polling opens the finished draft.
+      generationOwnerRef.current = '';
+      setGenerationFinalizing(false);
+      setGenerating(false);
     }
   };
 
@@ -824,15 +855,29 @@ export default function BlogStudio() {
     setError('');
     setGeneratingLinkedin(true);
     setGenProgress({ type: 'linkedin', status: 'running', startedAt: new Date().toISOString() });
+    const ownerKey = `linkedin:${Date.now()}`;
+    generationOwnerRef.current = ownerKey;
     try {
       await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
         options: linkedinForm
       });
+
+      const completed = await waitForGenerationCompletion('linkedin', ownerKey);
+      setGenerationFinalizing(true);
+      setLinkedinOutput(stampLinkedinOutput(completed.data));
+      setContentType('social');
+      loadSocialPosts();
+      api.post('/blogs/generation-clear').catch(() => {});
+      setGenProgress(null);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'LinkedIn post generation failed');
-      setGeneratingLinkedin(false);
+      api.post('/blogs/generation-clear').catch(() => {});
       setGenProgress(null);
+    } finally {
+      generationOwnerRef.current = '';
+      setGenerationFinalizing(false);
+      setGeneratingLinkedin(false);
     }
   };
 
@@ -900,10 +945,14 @@ export default function BlogStudio() {
 
   const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
   const ActiveContentIcon = activeContentTab.icon;
-  const generationOverlayTitle = isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft';
-  const generationOverlaySubtitle = isGeneratingLinkedin
-    ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
-    : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.';
+  const generationOverlayTitle = generationFinalizing
+    ? (genProgress?.type === 'linkedin' ? 'Opening LinkedIn Preview' : 'Opening Blog Draft')
+    : (isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft');
+  const generationOverlaySubtitle = generationFinalizing
+    ? 'Finalizing your content. It will open automatically in a moment.'
+    : (isGeneratingLinkedin
+      ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
+      : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.');
   const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
@@ -1022,7 +1071,7 @@ export default function BlogStudio() {
       <div className="relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
         <div className={(CONTENT_STUDIO_UPCOMING_MODE || generationLocked) ? 'pointer-events-none select-none blur-[5px] saturate-[0.82] transition-all duration-300' : 'transition-all duration-300'}>
         {error && (
-          <div className="rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
+          <div className="mb-3 rounded-xl border border-red-200/50 bg-red-50/80 px-5 py-4 text-sm font-semibold text-red-700 shadow-sm backdrop-blur-md animate-fade-in-up stagger-2">
             {error}
           </div>
         )}
@@ -1102,31 +1151,20 @@ export default function BlogStudio() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                         }}
-                        className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'opacity-50 scale-95' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+                        className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'} ${isSelected ? 'ring-2 ring-brand-crimson/70 ring-offset-2 ring-offset-rose-50/70' : ''}`}
                       >
-                        <ArticleCard item={item} compact selected={isSelected} />
-                        <div className={`relative mt-0 flex items-center justify-between rounded-b-xl border-x border-b px-3 py-3 text-xs transition-all ${isSelected ? 'border-brand-crimson bg-brand-crimson text-white' : 'border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(253,242,246,0.96)_100%)] text-gray-600 group-hover/panel:border-brand-crimson/25'}`}>
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_8px_18px_rgba(209,18,67,0.10)]'}`}>
-                              {isSelected ? <Check size={13} /> : <MousePointer2 size={13} />}
-                            </span>
-                            <div className="min-w-0">
-                              <div className={`truncate text-[11px] font-black tracking-[0.16em] uppercase ${isSelected ? 'text-white' : 'text-brand-crimson'}`}>
-                                {isSelected ? 'Ready to Generate' : 'Select Topic'}
-                              </div>
-                              <div className={`truncate text-[11px] font-medium ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
-                                {isSelected ? 'Topic selected for blog generation' : 'Click once or drag this card into the generator'}
-                              </div>
-                            </div>
-                          </div>
-                          {isSelected ? (
-                            <Sparkles size={14} className="shrink-0" />
-                          ) : (
-                            <div className="shrink-0 rounded-full border border-brand-crimson/10 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-sm">
-                              Select
-                            </div>
+                        <ArticleCard
+                          item={item}
+                          compact
+                          selected={isSelected}
+                          compactFooter={(
+                            <TopicSelectionFooter
+                              isSelected={isSelected}
+                              idleHint="Click once or drag this card into the generator"
+                              selectedHint="Topic selected for blog generation"
+                            />
                           )}
-                        </div>
+                        />
                       </div>
                     );
                   })}
@@ -1378,7 +1416,7 @@ export default function BlogStudio() {
 
                 {/* Plain, premium text */}
                 <h3 className="text-base font-black text-gray-900 tracking-tight">{generationOverlayTitle}</h3>
-                <p className="mt-1 text-xs font-semibold text-gray-400">AI is crafting your post. Please wait...</p>
+                <p className="mt-1 text-xs font-semibold text-gray-400">{generationOverlaySubtitle}</p>
 
                 {/* Extremely minimal cancel link */}
                 <div className="mt-6 flex justify-center">
@@ -1897,48 +1935,74 @@ function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions
   const [open, setOpen] = useState(false);
   const hasFilters = Object.values(filters).some(Boolean);
   const activeCount = Object.values(filters).filter(Boolean).length;
+  const activeLabels = [
+    filters.type && (types || EMPTY_META.types).find((item) => item.id === filters.type)?.label,
+    filters.category,
+    filters.subcategory,
+    filters.country,
+    filters.saved === 'true' ? 'Saved only' : '',
+    filters.q ? 'Search' : '',
+  ].filter(Boolean).slice(0, 3);
   const clearFilters = () => {
     ['q', 'type', 'category', 'subcategory', 'country', 'saved'].forEach((key) => onChange(key, ''));
   };
 
   return (
-    <div className="border-b border-gray-100 bg-white">
+    <div className="border-b border-gray-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(252,247,249,0.96)_100%)]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-all hover:bg-gray-50 sm:px-4"
+        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-all hover:bg-white sm:px-4"
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-pink/40 text-brand-crimson ring-1 ring-brand-crimson/10">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-pink/55 to-rose-100 text-brand-crimson ring-1 ring-brand-crimson/10 shadow-[0_10px_24px_rgba(209,18,67,0.10)]">
             <MoreHorizontal size={16} />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[11px] font-black uppercase tracking-[0.16em] text-gray-700">Filters</div>
-            {activeCount ? <div className="text-[11px] font-bold text-brand-crimson">{activeCount} active</div> : null}
+            <div className="truncate text-[11px] font-black uppercase tracking-[0.18em] text-gray-700">Filters</div>
+            <div className="mt-0.5 flex min-h-[18px] min-w-0 flex-wrap items-center gap-1.5">
+              {activeCount ? (
+                <>
+                  <span className="rounded-full bg-brand-crimson px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                    {activeCount} active
+                  </span>
+                  {activeLabels.map((label) => (
+                    <span key={label} className="truncate rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                      {label}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <span className="text-[11px] font-semibold text-gray-400">Refine by type, category, country, or saved topics</span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {hasFilters ? (
-            <span
+            <button
+              type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 clearFilters();
               }}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-gray-500 shadow-sm transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
             >
               Clear
-            </span>
+            </button>
           ) : null}
-          <ChevronDown size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 shadow-sm">
+            <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
         </div>
       </button>
 
       {open && (
-      <div className="grid grid-cols-1 gap-2 px-3 pb-3 sm:grid-cols-2 sm:px-4 sm:pb-4">
+      <div className="grid grid-cols-1 gap-3 border-t border-gray-100/80 bg-white/70 px-3 pb-4 pt-2 sm:grid-cols-2 sm:px-4">
         <div className="relative sm:col-span-2">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            className="input min-h-[42px] rounded-xl pl-9 transition-colors hover:border-gray-300 focus:border-brand-crimson"
+            className="input min-h-[46px] rounded-2xl border-gray-200 bg-white pl-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-colors hover:border-gray-300 focus:border-brand-crimson"
             value={filters.q}
             onChange={(e) => onChange('q', e.target.value)}
             placeholder="Search intelligence topics..."
@@ -1983,9 +2047,9 @@ function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions
 function TopicSelect({ label, value, onChange, children, disabled = false }) {
   return (
     <label className="block min-w-0">
-      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
+      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.16em] text-gray-500">{label}</span>
       <select
-        className="select min-h-[42px] w-full rounded-xl transition-colors hover:border-gray-300 focus:border-brand-crimson disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+        className="select min-h-[46px] w-full rounded-2xl border-gray-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.6),inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:border-gray-300 focus:border-brand-crimson disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -1993,6 +2057,43 @@ function TopicSelect({ label, value, onChange, children, disabled = false }) {
         {children}
       </select>
     </label>
+  );
+}
+
+function TopicSelectionFooter({ isSelected, idleHint, selectedHint }) {
+  return (
+    <div
+      className={[
+        'relative flex items-center justify-between gap-3 rounded-[20px] border px-3.5 py-3.5 text-xs transition-all',
+        isSelected
+          ? 'border-brand-crimson/70 bg-[linear-gradient(135deg,#d11243_0%,#b40f39_100%)] text-white shadow-[0_16px_32px_rgba(180,15,57,0.26)]'
+          : 'border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,244,247,0.98)_100%)] text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-hover/topic:border-brand-crimson/30 group-hover/topic:shadow-[0_12px_24px_rgba(209,18,67,0.10)]'
+      ].join(' ')}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_10px_20px_rgba(209,18,67,0.10)]'}`}>
+          {isSelected ? <Check size={14} /> : <MousePointer2 size={14} />}
+        </span>
+        <div className="min-w-0">
+          <div className={`truncate text-[11px] font-black uppercase tracking-[0.18em] ${isSelected ? 'text-white' : 'text-brand-crimson'}`}>
+            {isSelected ? 'Ready to Generate' : 'Select Topic'}
+          </div>
+          <div className={`mt-0.5 text-[11px] font-medium leading-relaxed ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+            {isSelected ? selectedHint : idleHint}
+          </div>
+        </div>
+      </div>
+      {isSelected ? (
+        <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+          <Sparkles size={12} />
+          Active
+        </div>
+      ) : (
+        <div className="inline-flex shrink-0 items-center rounded-full border border-brand-crimson/10 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-sm">
+          Select
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2042,7 +2143,7 @@ function LinkedInStudio({
       return;
     }
     if (linkedinOutput?.postText) setOutputDrawerOpen(true);
-  }, [linkedinOutput?._id, linkedinOutput?.postText]);
+  }, [linkedinOutput?._id, linkedinOutput?.postText, linkedinOutput?.previewToken]);
 
   useEffect(() => {
     onPreviewOpenChange?.(outputDrawerOpen);
@@ -2084,31 +2185,20 @@ function LinkedInStudio({
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                     }}
-                    className={`w-full cursor-grab rounded-xl text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-95 opacity-50' : 'hover:-translate-y-0.5'} ${isSelected ? 'ring-2 ring-brand-crimson ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
+                    className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'} ${isSelected ? 'ring-2 ring-brand-crimson/70 ring-offset-2 ring-offset-rose-50/70' : ''}`}
                   >
-                    <ArticleCard item={item} compact selected={isSelected} />
-                    <div className={`relative mt-0 flex items-center justify-between rounded-b-xl border-x border-b px-3 py-3 text-xs transition-all ${isSelected ? 'border-brand-crimson bg-brand-crimson text-white' : 'border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(253,242,246,0.96)_100%)] text-gray-600'}`}>
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_8px_18px_rgba(209,18,67,0.10)]'}`}>
-                          {isSelected ? <Check size={13} /> : <MousePointer2 size={13} />}
-                        </span>
-                        <div className="min-w-0">
-                          <div className={`truncate text-[11px] font-black tracking-[0.16em] uppercase ${isSelected ? 'text-white' : 'text-brand-crimson'}`}>
-                            {isSelected ? 'Ready to Generate' : 'Select Topic'}
-                          </div>
-                          <div className={`truncate text-[11px] font-medium ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
-                            {isSelected ? 'Topic selected for social post' : 'Click once or drag this card into the builder'}
-                          </div>
-                        </div>
-                      </div>
-                      {isSelected ? (
-                        <Sparkles size={14} className="shrink-0" />
-                      ) : (
-                        <div className="shrink-0 rounded-full border border-brand-crimson/10 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-sm">
-                          Select
-                        </div>
+                    <ArticleCard
+                      item={item}
+                      compact
+                      selected={isSelected}
+                      compactFooter={(
+                        <TopicSelectionFooter
+                          isSelected={isSelected}
+                          idleHint="Click once or drag this card into the builder"
+                          selectedHint="Topic selected for social post"
+                        />
                       )}
-                    </div>
+                    />
                   </div>
                 );
               })}

@@ -66,11 +66,11 @@ const ACCESS_KEYS = ['canFetch', 'canCreateMembers', 'canUseContentRepository', 
 const MAIL_SEND_CHUNK_SIZE = Math.max(1, Number(process.env.MAIL_SEND_CHUNK_SIZE || 10));
 const DEFAULT_MEMBER_ACCESS = {
   canFetch: true,
-  canCreateMembers: false,
+  canCreateMembers: true,
   canUseContentRepository: true,
-  canUseBlogStudio: false,
+  canUseBlogStudio: true,
   canUseSavedSearches: true,
-  canUseScheduler: false
+  canUseScheduler: true
 };
 const MAIL_AUDIENCE_OPTIONS = ['all', 'admins', 'members', 'inactive', 'custom'];
 
@@ -1422,10 +1422,15 @@ router.post('/users', asyncHandler(async (req, res) => {
       : DEFAULT_MEMBER_LIMIT,
     subscriptionPlan: resolvedPlan,
     access: req.user.role === 'super_admin'
-      ? {
-          ...resolvedDefaults.access,
-          ...normalizeAccessPatch(access, { allowMemberManagement: role === 'admin' })
-        }
+      ? (role === 'user'
+        ? {
+            ...DEFAULT_MEMBER_ACCESS,
+            ...normalizeAccessPatch(access)
+          }
+        : {
+            ...resolvedDefaults.access,
+            ...normalizeAccessPatch(access, { allowMemberManagement: role === 'admin' })
+          })
       : {
           ...DEFAULT_MEMBER_ACCESS,
           ...normalizeAccessPatch(access)

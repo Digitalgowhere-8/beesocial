@@ -21,11 +21,11 @@ const userSchema = new mongoose.Schema(
     subscriptionPlan: { type: String, enum: ['free', 'growth', 'scale', 'enterprise', 'premium'], default: 'free', index: true },
     access: {
       canFetch: { type: Boolean, default: true },
-      canCreateMembers: { type: Boolean, default: false },
+      canCreateMembers: { type: Boolean, default: true },
       canUseContentRepository: { type: Boolean, default: true },
-      canUseBlogStudio: { type: Boolean, default: false },
+      canUseBlogStudio: { type: Boolean, default: true },
       canUseSavedSearches: { type: Boolean, default: true },
-      canUseScheduler: { type: Boolean, default: false }
+      canUseScheduler: { type: Boolean, default: true }
     },
     limits: {
       fetchesPerMonth: { type: Number, default: 30, min: 0, max: 100000 },

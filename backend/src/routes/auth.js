@@ -79,6 +79,20 @@ async function deletedTenantAdminForUser(user) {
   return User.findById(user.tenantAdminId).withDeleted().select('_id deletedAt isActive').lean();
 }
 
+async function buildPublicUser(user) {
+  const publicUser = user?.toPublicJSON ? user.toPublicJSON() : { ...(user || {}) };
+  if (!publicUser?._id) return publicUser;
+
+  if (publicUser.role === 'user' && publicUser.tenantAdminId && String(publicUser.tenantAdminId) !== String(publicUser._id)) {
+    const tenantAdmin = await User.findById(publicUser.tenantAdminId).select('subscriptionPlan').lean();
+    publicUser.effectiveSubscriptionPlan = tenantAdmin?.subscriptionPlan || publicUser.subscriptionPlan || 'free';
+  } else {
+    publicUser.effectiveSubscriptionPlan = publicUser.subscriptionPlan || 'free';
+  }
+
+  return publicUser;
+}
+
 // Strict email validation - rejects patterns like jitesh@gmail.com.com
 function isValidEmail(email) {
   const str = String(email || '').trim();
@@ -230,7 +244,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: 'Registration submitted. A super admin must approve your admin account before you can sign in.',
-    user: user.toPublicJSON()
+    user: await buildPublicUser(user)
   });
 }));
 
@@ -274,7 +288,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = signToken(user, session.sessionId);
   const settings = await getSystemSettings();
-  res.json({ token, user: user.toPublicJSON(), session: session.toObject(), uiSettings: publicUiSettings(settings) });
+  res.json({ token, user: await buildPublicUser(user), session: session.toObject(), uiSettings: publicUiSettings(settings) });
 }));
 
 // POST /api/auth/forgot-password
@@ -360,7 +374,7 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 // GET /api/auth/me
 router.get('/me', protect, asyncHandler(async (req, res) => {
   const settings = await getSystemSettings();
-  res.json({ user: req.user.toPublicJSON(), session: req.session?.toObject?.() || null, uiSettings: publicUiSettings(settings) });
+  res.json({ user: await buildPublicUser(req.user), session: req.session?.toObject?.() || null, uiSettings: publicUiSettings(settings) });
 }));
 
 function fetchScheduleSignature(schedule = {}, fallbackTimezone = 'Asia/Kolkata') {
@@ -473,7 +487,7 @@ router.patch('/me', protect, asyncHandler(async (req, res) => {
 
   Object.assign(req.user, update);
   await req.user.save();
-  res.json({ user: req.user.toPublicJSON() });
+  res.json({ user: await buildPublicUser(req.user) });
 }));
 
 // POST /api/auth/change-password
@@ -510,7 +524,7 @@ router.post('/change-password', protect, asyncHandler(async (req, res) => {
   });
   const token = signToken(user, session.sessionId);
 
-  res.json({ message: 'Password updated', token, user: user.toPublicJSON(), session: session.toObject() });
+  res.json({ message: 'Password updated', token, user: await buildPublicUser(user), session: session.toObject() });
 }));
 
 module.exports = router;
