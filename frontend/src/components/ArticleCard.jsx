@@ -39,12 +39,6 @@ function sourceHost(url) {
   }
 }
 
-function shortSourceLabel(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  return text.replace(/^www\./i, '').slice(0, 18);
-}
-
 function articleDescription(item = {}) {
   const safeItem = item && typeof item === 'object' ? item : {};
   const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
@@ -104,7 +98,6 @@ function ArticleCard({
   const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
-  const compactSourceLabel = shortSourceLabel(sourceDomain);
   const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
 
   return (
@@ -241,7 +234,7 @@ function ArticleCard({
             rel="noopener noreferrer"
             className={[
               'flex min-w-0 items-center rounded-xl transition-all hover:bg-white/90',
-              compact ? 'gap-1.5 px-2 py-1.5 2xl:gap-2' : 'gap-2 px-2 py-1.5'
+              compact ? 'justify-between gap-2 px-2 py-1.5 2xl:justify-start 2xl:gap-2' : 'gap-2 px-2 py-1.5'
             ].join(' ')}
             title={sourceDomain}
             data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
@@ -254,29 +247,18 @@ function ArticleCard({
             >
               <Globe size={13} />
             </span>
-            <span className="min-w-0 flex-1">
-              {compact ? (
-                <span
-                  className="block truncate text-[10px] font-black leading-none"
-                  style={{ color: sourceTone.text }}
-                >
-                  {compactSourceLabel}
-                </span>
-              ) : (
-                <>
-                  <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
-                  <span
-                    className="block truncate text-[11px] font-black"
-                    style={{ color: sourceTone.text }}
-                  >
-                    {sourceDomain}
-                  </span>
-                </>
-              )}
+            <span className={compact ? 'hidden min-w-0 2xl:block 2xl:flex-1' : 'min-w-0 flex-1'}>
+              <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
+              <span
+                className="block truncate text-[11px] font-black"
+                style={{ color: sourceTone.text }}
+              >
+                {sourceDomain}
+              </span>
             </span>
             <span
               className={[
-                'rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
+                'shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
                 compact ? 'inline-flex' : 'hidden sm:inline-flex'
               ].join(' ')}
               style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
