@@ -182,17 +182,34 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
       className="min-h-0 overflow-hidden rounded-[26px] border shadow-card flex flex-col"
       style={{ borderColor: column.border, background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,251,0.94))' }}
     >
-      <div className="border-b px-4 py-3.5" style={{ borderColor: column.border, background: column.soft }}>
+      <div
+        className="border-b px-5 py-4"
+        style={{
+          borderColor: column.border,
+          background: `linear-gradient(180deg, ${column.soft}, #fff5f8)`,
+        }}
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#ffffffcc', border: `1px solid ${column.border}` }}>
-              <Icon size={15} style={{ color: column.text }} />
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: '#fff7fa', border: `1px solid ${column.border}` }}
+            >
+              <Icon size={16} style={{ color: '#d11243' }} />
             </span>
             <div className="min-w-0">
-              <h2 className="font-black text-[14px] text-gray-900 truncate">{column.label}</h2>
+              <h2
+                className="truncate font-black text-[16px] xl:text-[17px]"
+                style={{ color: '#d11243' }}
+              >
+                {column.label}
+              </h2>
             </div>
           </div>
-          <span className="rounded-xl px-2.5 py-1 text-[11px] font-black" style={{ color: column.text, background: '#ffffffcc', border: `1px solid ${column.border}` }}>
+          <span
+            className="inline-flex min-w-[52px] items-center justify-center rounded-xl px-3 py-1.5 text-[13px] font-black"
+            style={{ color: '#d11243', background: '#fff7fa', border: `1px solid ${column.border}` }}
+          >
             {loading ? '...' : totalCount}
           </span>
         </div>
@@ -202,7 +219,7 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
-            ? items.map(item => renderArticle(item, { compact: true }))
+            ? items.map(item => renderArticle(item, { compact: true, hideTypeLabel: true }))
             : <EmptyState icon={Icon} isAdmin={isAdmin} />}
         {!loading && hasMore ? (
           <div ref={sentinelRef} className="flex items-center justify-center py-2 text-[11px] font-bold text-gray-400">
@@ -1194,11 +1211,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full" style={{ background: col.accent }} />
                           <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl" style={{ background: col.soft, border: `1px solid ${col.border}` }}>
-                            <col.icon size={15} style={{ color: col.text }} />
+                            <col.icon size={15} style={{ color: '#d11243' }} />
                           </span>
-                          <h2 className="font-bold text-[15px] text-gray-800">{col.label}</h2>
+                          <h2 className="font-black text-[16px] xl:text-[17px]" style={{ color: '#d11243' }}>{col.label}</h2>
                         </div>
-                        <span className="rounded-full px-2.5 py-1 text-[11px] uppercase tracking-wider font-mono" style={{ color: col.text, background: '#ffffffcc', border: `1px solid ${col.border}` }}>
+                        <span className="inline-flex min-w-[52px] items-center justify-center rounded-xl px-3 py-1.5 text-[13px] font-black" style={{ color: '#d11243', background: '#ffffffcc', border: `1px solid ${col.border}` }}>
                           {currentFeedState[col.key]?.loadingInitial ? '...' : currentFeedState[col.key]?.total || 0}
                         </span>
                       </div>
@@ -1208,8 +1225,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
                           </div>
                         ) : rankedData[col.key]?.length ? (
-                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                            {rankedData[col.key].map(item => renderDraggableArticle(item))}
+                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                            {rankedData[col.key].map(item => renderDraggableArticle(item, { compact: true, hideTypeLabel: true }))}
                             {currentFeedState[col.key]?.hasMore ? (
                               <div ref={activeFeedLoadMoreRef} className="col-span-full flex items-center justify-center py-2 text-xs font-bold text-gray-400">
                                 {currentFeedState[col.key]?.loadingMore ? 'Loading more...' : 'Scroll for more'}

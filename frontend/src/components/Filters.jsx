@@ -4,6 +4,7 @@ import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 
 const CRIMSON = '#D11243';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
+const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
 
 export default function Filters({ initial = {}, onChange, showAdmin = false, showSavedFilter = true, showStatusFilter = showAdmin, metaParams = null }) {
   const initialWithoutRegion = useMemo(() => {
@@ -84,7 +85,10 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
     return dynamicTree || configuredTree || {};
   }, [meta]);
 
-  const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+  const categoryOptions = useMemo(
+    () => Object.keys(categoryTree).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category)),
+    [categoryTree]
+  );
 
   const subcatOptions = useMemo(() => {
     if (!filters.category) return [];

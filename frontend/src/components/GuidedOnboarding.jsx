@@ -89,7 +89,7 @@ function stepListForUser(user) {
       route: '/profile',
       selector: profileNavSelector,
       title: 'My Hive Profile',
-      description: 'Your profile is where you manage account details, password settings, and the personalization rules behind your intelligence feed.'
+      description: 'Your profile is where you manage account details, password settings, and the personalisation rules behind your intelligence feed.'
     },
     {
       id: 'profile-tabs',

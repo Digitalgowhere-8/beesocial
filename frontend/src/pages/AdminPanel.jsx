@@ -2499,7 +2499,7 @@ export function FetchTab({ embedded = false }) {
   };
 
   const countryOptions = [...new Set((profileMeta?.fetchCountries || []).filter(Boolean))];
-  const categoryOptions = Object.keys(profileMeta?.categories || {});
+  const categoryOptions = Object.keys(profileMeta?.categories || {}).filter((category) => category !== 'Competitor Intelligence');
   const selectedCategories = Array.isArray(form.categories) && form.categories.length
     ? form.categories
     : (form.category ? [form.category] : []);

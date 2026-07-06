@@ -6,7 +6,7 @@ import ArticleCard from '../components/ArticleCard';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 import useInfiniteScroll from '../hooks/useInfiniteScroll';
-import { ArrowLeft, Ban, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
+import { ArrowLeft, Ban, BookOpenText, Check, ChevronDown, Copy, FileText, GripVertical, Loader2, MessageSquareText, MoreHorizontal, MousePointer2, PenLine, RefreshCw, Search, Settings2, SlidersHorizontal, Sparkles, Layers, Square, CheckSquare, X } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -27,6 +27,7 @@ const CONTENT_STUDIO_CACHE_VERSION = 'v1';
 const STUDIO_PAGE_SIZE = 12;
 const GENERATED_DRAFT_RETRY_COUNT = 10;
 const GENERATED_DRAFT_RETRY_DELAY_MS = 500;
+const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -281,7 +282,10 @@ export default function BlogStudio() {
     const dataCategories = topicMeta.dataCategories || {};
     return Object.keys(dataCategories).length ? dataCategories : topicMeta.categories || {};
   }, [topicMeta]);
-  const categoryOptions = useMemo(() => Object.keys(categoryTree), [categoryTree]);
+  const categoryOptions = useMemo(
+    () => Object.keys(categoryTree).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category)),
+    [categoryTree]
+  );
   const countryOptions = useMemo(() => {
     const directCountries = Array.isArray(topicMeta.countries)
       ? topicMeta.countries.map((value) => String(value || '').trim()).filter(Boolean)
@@ -1948,35 +1952,20 @@ function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions
   };
 
   return (
-    <div className="border-b border-gray-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(252,247,249,0.96)_100%)]">
+    <div className="overflow-hidden rounded-[16px] border border-brand-crimson/10 bg-white shadow-[0_1px_8px_rgba(209,18,67,0.05)]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-all hover:bg-white sm:px-4"
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-all hover:bg-white"
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-pink/55 to-rose-100 text-brand-crimson ring-1 ring-brand-crimson/10 shadow-[0_10px_24px_rgba(209,18,67,0.10)]">
-            <MoreHorizontal size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-[11px] font-black uppercase tracking-[0.18em] text-gray-700">Filters</div>
-            <div className="mt-0.5 flex min-h-[18px] min-w-0 flex-wrap items-center gap-1.5">
-              {activeCount ? (
-                <>
-                  <span className="rounded-full bg-brand-crimson px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-white">
-                    {activeCount} active
-                  </span>
-                  {activeLabels.map((label) => (
-                    <span key={label} className="truncate rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-500">
-                      {label}
-                    </span>
-                  ))}
-                </>
-              ) : (
-                <span className="text-[11px] font-semibold text-gray-400">Refine by type, category, country, or saved topics</span>
-              )}
-            </div>
-          </div>
+          <SlidersHorizontal size={14} className="shrink-0 text-brand-crimson" />
+          <div className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-gray-600">Filters</div>
+          {activeCount > 0 && (
+            <span className="rounded-full bg-brand-crimson px-1.5 py-0.5 text-[10px] font-bold text-white">
+              {activeCount}
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {hasFilters ? (
@@ -1986,19 +1975,20 @@ function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions
                 event.stopPropagation();
                 clearFilters();
               }}
-              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-gray-500 shadow-sm transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+              className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400 transition-colors hover:text-red-500"
             >
+              <X size={11} />
               Clear
             </button>
           ) : null}
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 shadow-sm">
-            <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-gray-400">
+            <ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
           </span>
         </div>
       </button>
 
       {open && (
-      <div className="grid grid-cols-1 gap-3 border-t border-gray-100/80 bg-white/70 px-3 pb-4 pt-2 sm:grid-cols-2 sm:px-4">
+      <div className="grid grid-cols-1 gap-3 border-t border-brand-crimson/10 bg-white/70 px-4 pb-4 pt-3 sm:grid-cols-2">
         <div className="relative sm:col-span-2">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
