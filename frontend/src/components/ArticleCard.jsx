@@ -39,6 +39,12 @@ function sourceHost(url) {
   }
 }
 
+function shortSourceLabel(value) {
+  const text = String(value || '').trim().replace(/^www\./i, '');
+  if (!text) return '';
+  return text.length > 14 ? `${text.slice(0, 14)}...` : text;
+}
+
 function articleDescription(item = {}) {
   const safeItem = item && typeof item === 'object' ? item : {};
   const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
@@ -98,6 +104,7 @@ function ArticleCard({
   const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
+  const compactSourceLabel = shortSourceLabel(sourceDomain);
   const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
 
   return (
@@ -234,7 +241,7 @@ function ArticleCard({
             rel="noopener noreferrer"
             className={[
               'flex min-w-0 items-center rounded-xl transition-all hover:bg-white/90',
-              compact ? 'justify-between gap-2 px-2 py-1.5 2xl:justify-start 2xl:gap-2' : 'gap-2 px-2 py-1.5'
+              compact ? 'gap-2 px-2 py-1.5 2xl:justify-start 2xl:gap-2' : 'gap-2 px-2 py-1.5'
             ].join(' ')}
             title={sourceDomain}
             data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
@@ -247,18 +254,43 @@ function ArticleCard({
             >
               <Globe size={13} />
             </span>
-            <span className={compact ? 'hidden min-w-0 2xl:block 2xl:flex-1' : 'min-w-0 flex-1'}>
-              <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
-              <span
-                className="block truncate text-[11px] font-black"
-                style={{ color: sourceTone.text }}
-              >
-                {sourceDomain}
-              </span>
+            <span className={compact ? 'min-w-0 flex-1 2xl:block' : 'min-w-0 flex-1'}>
+              {compact ? (
+                <>
+                  <span className="block text-[9px] font-black uppercase tracking-wider 2xl:hidden" style={{ color: sourceTone.text }}>
+                    Source
+                  </span>
+                  <span
+                    className="block truncate text-[11px] font-black 2xl:hidden"
+                    style={{ color: sourceTone.text }}
+                  >
+                    {compactSourceLabel}
+                  </span>
+                  <span className="hidden text-[9px] font-black uppercase tracking-wider 2xl:block" style={{ color: sourceTone.text }}>
+                    Source
+                  </span>
+                  <span
+                    className="hidden truncate text-[11px] font-black 2xl:block"
+                    style={{ color: sourceTone.text }}
+                  >
+                    {sourceDomain}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
+                  <span
+                    className="block truncate text-[11px] font-black"
+                    style={{ color: sourceTone.text }}
+                  >
+                    {sourceDomain}
+                  </span>
+                </>
+              )}
             </span>
             <span
               className={[
-                'shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
+                'ml-auto shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
                 compact ? 'inline-flex' : 'hidden sm:inline-flex'
               ].join(' ')}
               style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
