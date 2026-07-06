@@ -220,7 +220,14 @@ function ArticleCard({
           </MetaPill>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white">
+        <div
+          className={[
+            'rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white',
+            compact
+              ? 'flex flex-col gap-2 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_auto]'
+              : 'grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5'
+          ].join(' ')}
+        >
           <a
             href={item.url}
             target="_blank"
@@ -250,52 +257,57 @@ function ArticleCard({
               </span>
             </span>
             <span
-              className="hidden rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider sm:inline-flex"
+              className={[
+                'hidden rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
+                compact ? '2xl:inline-flex' : 'sm:inline-flex'
+              ].join(' ')}
               style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
             >
               {item.sourceCredibility || 'moderate'}
             </span>
           </a>
-          {onSaveToggle && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onSaveToggle(item);
-              }}
+          <div className={['flex flex-wrap items-center gap-1.5', compact ? 'justify-end 2xl:justify-start' : 'justify-end'].join(' ')}>
+            {onSaveToggle && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSaveToggle(item);
+                }}
+                className={[
+                  'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
+                  compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
+                  item.isSaved
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                    : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+                  saving ? 'cursor-wait opacity-70' : ''
+                ].join(' ')}
+                aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
+                title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+              >
+                {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
+                {!compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>}
+              </button>
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
               className={[
-                'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
-                compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
-                item.isSaved
-                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                  : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
-                saving ? 'cursor-wait opacity-70' : ''
+                'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
+                compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3'
               ].join(' ')}
-              aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
-              title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+              style={{ color: typeStyle.text }}
+              title="Open source article"
+              aria-label="Open source article"
+              data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
+              onClick={(event) => event.stopPropagation()}
             >
-              {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
-              {!compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>}
-            </button>
-          )}
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={[
-              'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
-              compact ? 'w-9 px-0' : 'w-9 px-0 sm:w-auto sm:px-3'
-            ].join(' ')}
-            style={{ color: typeStyle.text }}
-            title="Open source article"
-            aria-label="Open source article"
-            data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {!compact && <span className="hidden sm:inline">Source</span>} <ExternalLink size={12} />
-          </a>
+              {!compact && <span className="hidden sm:inline">Source</span>} <ExternalLink size={12} />
+            </a>
+          </div>
         </div>
       </div>
 
