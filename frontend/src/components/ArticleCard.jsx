@@ -39,12 +39,6 @@ function sourceHost(url) {
   }
 }
 
-function shortSourceLabel(value) {
-  const text = String(value || '').trim().replace(/^www\./i, '');
-  if (!text) return '';
-  return text.length > 14 ? `${text.slice(0, 14)}...` : text;
-}
-
 function articleDescription(item = {}) {
   const safeItem = item && typeof item === 'object' ? item : {};
   const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
@@ -56,6 +50,12 @@ function articleDescription(item = {}) {
     ''
   );
   return typeof value === 'string' ? value : String(value || '');
+}
+
+function compactCredibilityLabel(value) {
+  const text = String(value || '').trim().toUpperCase();
+  if (text === 'MODERATE') return 'MOD';
+  return text || 'MOD';
 }
 
 function MetaPill({ icon: Icon, children, title, relaxed = false }) {
@@ -104,8 +104,9 @@ function ArticleCard({
   const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
-  const compactSourceLabel = shortSourceLabel(sourceDomain);
   const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
+  const sourceCredibilityLabel = String(item.sourceCredibility || 'moderate').toUpperCase();
+  const compactSourceCredibilityLabel = compactCredibilityLabel(item.sourceCredibility);
 
   return (
     <article
@@ -113,7 +114,7 @@ function ArticleCard({
       className={[
         'group relative isolate flex flex-col overflow-hidden rounded-[22px] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,251,0.94))] font-sans fade-in',
         'transition-all duration-200 hover:-translate-y-0.5',
-        compact ? 'p-3 xl:p-3 2xl:p-4' : 'p-4 sm:p-5',
+        compact ? 'p-3 xl:p-4' : 'p-4 sm:p-5',
         selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
@@ -126,7 +127,7 @@ function ArticleCard({
     >
       <div className="absolute left-0 top-0 h-full w-1 opacity-90" style={{ background: typeStyle.accent }} />
 
-      <div className={['flex items-start justify-between gap-3', compact ? 'mb-2.5 pl-2.5 2xl:mb-3 2xl:pl-3' : 'mb-3 pl-3'].join(' ')}>
+      <div className={['flex items-start justify-between gap-3', compact ? 'mb-2.5 pl-2.5 xl:mb-3 xl:pl-3' : 'mb-3 pl-3'].join(' ')}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span
             className="inline-flex items-center rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider"
@@ -169,7 +170,7 @@ function ArticleCard({
         </div>
       </div>
 
-      <div className={['flex min-w-0 flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400', compact ? 'mb-2.5 pl-2.5 2xl:mb-3 2xl:pl-3' : 'mb-3 pl-3'].join(' ')}>
+      <div className={['flex min-w-0 flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400', compact ? 'mb-2.5 pl-2.5 xl:mb-3 xl:pl-3' : 'mb-3 pl-3'].join(' ')}>
         {item.category && item.category !== 'General' && (
           <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-gray-50 px-2 py-1 ring-1 ring-gray-100">
             <Folder size={11} className="shrink-0" />
@@ -184,12 +185,12 @@ function ArticleCard({
         )}
       </div>
 
-      <h3 className={['font-black leading-snug text-gray-900 transition-colors duration-200 group-hover:text-brand-crimson', compact ? 'mb-2 pl-2.5 text-[14px] 2xl:mb-2.5 2xl:pl-3 2xl:text-[15px]' : 'mb-2.5 pl-3 text-[15px]'].join(' ')}>
+      <h3 className={['font-black leading-snug text-gray-900 transition-colors duration-200 group-hover:text-brand-crimson', compact ? 'mb-2 pl-2.5 text-[14px] xl:mb-2.5 xl:pl-3 xl:text-[15px]' : 'mb-2.5 pl-3 text-[15px]'].join(' ')}>
         <a
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className={['hover:underline decoration-brand-crimson/30 underline-offset-2', compact ? 'line-clamp-2 2xl:line-clamp-3' : 'line-clamp-3'].join(' ')}
+          className={['hover:underline decoration-brand-crimson/30 underline-offset-2', compact ? 'line-clamp-2 xl:line-clamp-3' : 'line-clamp-3'].join(' ')}
           data-analytics-click={`Article title: ${item.title || 'Untitled'}`}
         >
           {item.title}
@@ -197,18 +198,18 @@ function ArticleCard({
       </h3>
 
       {summary && (
-        <p className={['flex-1 leading-relaxed text-gray-500', compact ? 'mb-3 pl-2.5 text-[12px] line-clamp-2 2xl:mb-4 2xl:pl-3 2xl:text-[13px] 2xl:line-clamp-3' : 'mb-4 pl-3 text-[13px] line-clamp-3'].join(' ')}>
+        <p className={['flex-1 leading-relaxed text-gray-500', compact ? 'mb-3 pl-2.5 text-[12px] line-clamp-2 xl:mb-4 xl:pl-3 xl:text-[13px] xl:line-clamp-3' : 'mb-4 pl-3 text-[13px] line-clamp-3'].join(' ')}>
           {summary}
         </p>
       )}
 
-      <div className={['mt-auto border-t border-gray-100/80 pt-3', compact ? 'pl-0 sm:pl-2.5 2xl:pl-3' : 'pl-0 sm:pl-3'].join(' ')}>
-        <div className={['grid grid-cols-1 gap-2', compact ? 'mb-1.5 2xl:mb-2' : 'mb-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
+      <div className={['mt-auto border-t border-gray-100/80 pt-3', compact ? 'pl-0 sm:pl-2.5 xl:pl-3' : 'pl-0 sm:pl-3'].join(' ')}>
+        <div className={['grid grid-cols-1 gap-2', compact ? 'mb-1.5 xl:mb-2' : 'mb-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
           <MetaPill icon={MapPin} title="Country or region">{[region, country].filter(Boolean).join(', ')}</MetaPill>
           <MetaPill icon={Globe} title={`Source: ${source}`}>{source}</MetaPill>
         </div>
         {(item.sector || opportunityType) && (
-          <div className={['grid grid-cols-1 gap-2', compact ? 'mb-1.5 2xl:mb-2' : 'mb-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
+          <div className={['grid grid-cols-1 gap-2', compact ? 'mb-1.5 xl:mb-2' : 'mb-2', compact ? '' : 'sm:grid-cols-2'].join(' ')}>
             <MetaPill icon={Folder} title="Service focus">{item.sector}</MetaPill>
             <MetaPill icon={Tag} title="Opportunity type">{opportunityType}</MetaPill>
           </div>
@@ -221,7 +222,7 @@ function ArticleCard({
             {item.relevanceReason}
           </div>
         )}
-        <div className={compact ? 'mb-2 2xl:mb-3' : 'mb-3'}>
+        <div className={compact ? 'mb-2 xl:mb-3' : 'mb-3'}>
           <MetaPill icon={Clock3} title={updatedAt ? `Updated ${updatedAt}` : updatedLabel} relaxed>
             {updatedLabel}
           </MetaPill>
@@ -231,7 +232,7 @@ function ArticleCard({
           className={[
             'rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white',
             compact
-              ? 'flex flex-col gap-2 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_auto]'
+              ? 'flex flex-col gap-2 xl:grid xl:grid-cols-[minmax(0,1fr)_auto]'
               : 'grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5'
           ].join(' ')}
         >
@@ -240,8 +241,8 @@ function ArticleCard({
             target="_blank"
             rel="noopener noreferrer"
             className={[
-              'flex min-w-0 items-center rounded-xl transition-all hover:bg-white/90',
-              compact ? 'gap-2 px-2 py-1.5 2xl:justify-start 2xl:gap-2' : 'gap-2 px-2 py-1.5'
+              'min-w-0 items-center rounded-xl transition-all hover:bg-white/90',
+              compact ? 'grid grid-cols-[32px_minmax(0,1fr)] gap-2 px-2 py-1.5 xl:flex xl:justify-start xl:gap-2' : 'flex gap-2 px-2 py-1.5'
             ].join(' ')}
             title={sourceDomain}
             data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
@@ -254,51 +255,26 @@ function ArticleCard({
             >
               <Globe size={13} />
             </span>
-            <span className={compact ? 'min-w-0 flex-1 2xl:block' : 'min-w-0 flex-1'}>
-              {compact ? (
-                <>
-                  <span className="block text-[9px] font-black uppercase tracking-wider 2xl:hidden" style={{ color: sourceTone.text }}>
-                    Source
-                  </span>
-                  <span
-                    className="block truncate text-[11px] font-black 2xl:hidden"
-                    style={{ color: sourceTone.text }}
-                  >
-                    {compactSourceLabel}
-                  </span>
-                  <span className="hidden text-[9px] font-black uppercase tracking-wider 2xl:block" style={{ color: sourceTone.text }}>
-                    Source
-                  </span>
-                  <span
-                    className="hidden truncate text-[11px] font-black 2xl:block"
-                    style={{ color: sourceTone.text }}
-                  >
-                    {sourceDomain}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
-                  <span
-                    className="block truncate text-[11px] font-black"
-                    style={{ color: sourceTone.text }}
-                  >
-                    {sourceDomain}
-                  </span>
-                </>
-              )}
+            <span className={compact ? 'hidden min-w-0 2xl:block 2xl:flex-1' : 'min-w-0 flex-1'}>
+              <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
+              <span
+                className="block truncate text-[11px] font-black"
+                style={{ color: sourceTone.text }}
+              >
+                {sourceDomain}
+              </span>
             </span>
             <span
               className={[
-                'ml-auto shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider',
-                compact ? 'inline-flex' : 'hidden sm:inline-flex'
+                'shrink-0 rounded-full font-black uppercase justify-self-end',
+                compact ? 'inline-flex items-center justify-center min-w-[74px] px-1.5 py-1 text-[8px] tracking-normal xl:ml-auto xl:min-w-0 xl:px-2 xl:text-[9px] xl:tracking-wider' : 'hidden sm:inline-flex px-2 py-1 text-[9px] tracking-wider'
               ].join(' ')}
               style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
             >
-              {item.sourceCredibility || 'moderate'}
+              {compact ? compactSourceCredibilityLabel : sourceCredibilityLabel}
             </span>
           </a>
-          <div className={['flex flex-wrap items-center gap-1.5', compact ? 'justify-end 2xl:justify-start' : 'justify-end'].join(' ')}>
+          <div className={['flex flex-wrap items-center gap-1.5', compact ? 'justify-end xl:justify-start' : 'justify-end'].join(' ')}>
             {onSaveToggle && (
               <button
                 type="button"
@@ -310,7 +286,7 @@ function ArticleCard({
                 }}
                 className={[
                   'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
-                  compact ? 'h-8 w-8 px-0 2xl:h-9 2xl:w-9' : 'w-9 px-0 sm:w-auto sm:px-3',
+                  compact ? 'h-8 w-8 px-0 xl:h-9 xl:w-9' : 'w-9 px-0 sm:w-auto sm:px-3',
                   item.isSaved
                     ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
                     : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
@@ -329,7 +305,7 @@ function ArticleCard({
               rel="noopener noreferrer"
               className={[
                 'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
-                compact ? 'h-8 w-8 px-0 2xl:h-9 2xl:w-9' : 'w-9 px-0 sm:w-auto sm:px-3'
+                compact ? 'h-8 w-8 px-0 xl:h-9 xl:w-9' : 'w-9 px-0 sm:w-auto sm:px-3'
               ].join(' ')}
               style={{ color: typeStyle.text }}
               title="Open source article"
