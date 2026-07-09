@@ -139,7 +139,7 @@ function stepListForUser(user) {
   steps.push({
     id: 'done',
     title: 'You are ready',
-    description: 'You can now explore signals, apply filters, personalize your setup, and use the admin area when needed. You can reopen this tour anytime from the profile menu.',
+    description: 'You can now explore signals, apply filters, personalise your setup, and use the admin area when needed. You can reopen this tour anytime from the profile menu.',
     cta: 'Finish'
   });
 

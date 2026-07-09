@@ -28,6 +28,7 @@ function SideNavItem({
   dataTour = '',
   navigationLocked = false,
   onNavigationBlocked,
+  onNavigate,
 }) {
   return (
     <NavLink
@@ -43,10 +44,13 @@ function SideNavItem({
         if (isCurrentPath) {
           event.preventDefault();
           onActiveClick?.();
+          onNavigate?.();
+          return;
         }
+        onNavigate?.();
       }}
       className={({ isActive }) =>
-        `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all duration-150 group ${
+        `grid h-11 w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${
           isActive ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'
         }`
       }
@@ -57,10 +61,12 @@ function SideNavItem({
         fontSize: '13px',
       })}
     >
-      <Icon size={15} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="flex h-6 w-6 items-center justify-center">
+        <Icon size={15} />
+      </span>
+      <span className="min-w-0 truncate leading-none">{label}</span>
       {badge ? (
-        <span className="shrink-0 rounded-full border border-brand-crimson/10 bg-brand-crimson px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm">
+        <span className="justify-self-end rounded-full border border-brand-crimson/10 bg-brand-crimson px-1.5 py-0.5 text-[9px] font-black uppercase leading-none tracking-[0.1em] text-white shadow-sm">
           {badge}
         </span>
       ) : null}
@@ -293,7 +299,7 @@ function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className =
       <div className="space-y-2 p-3">
         <button onClick={onLogout} className="w-full flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50/80 px-4 py-3 text-left text-sm font-black text-red-600 transition-all hover:bg-red-100">
           <LogOut size={14} />
-          Sign off
+          Sign out
         </button>
       </div>
     </div>
@@ -573,13 +579,22 @@ export default function Layout({ children, headerActions = null }) {
     const isSameTarget = path.includes('?')
       ? currentPath === path
       : location.pathname.startsWith(path);
-    if (isSameTarget) return;
+    if (isSameTarget) return true;
     if (generationLocked) {
       showGenerationLockMessage();
-      return;
+      return false;
     }
     navigate(path);
+    return true;
   }, [generationLocked, location.pathname, location.search, navigate, showGenerationLockMessage]);
+
+  const navigateAndCollapseSidebar = useCallback((path) => {
+    if (navigateIfNeeded(path)) setCollapsed(true);
+  }, [navigateIfNeeded]);
+
+  const collapseSidebarPanel = useCallback(() => {
+    setCollapsed(true);
+  }, []);
 
   useEffect(() => {
     setShowNotifications(false);
@@ -644,7 +659,7 @@ export default function Layout({ children, headerActions = null }) {
   const mobileNavItems = isSuperAdmin
     ? []
     : [
-        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
+        { key: 'dashboard', label: 'The Hive', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
         { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigateIfNeeded('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
         ...(canUseContentRepository ? [
           { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigateIfNeeded('/blogs'), active: location.pathname.startsWith('/blogs') }
@@ -748,77 +763,43 @@ export default function Layout({ children, headerActions = null }) {
       {/* Sidebar */}
       <aside
         data-tour="layout-sidebar"
-        className="hidden xl:flex h-full flex-col bg-white border-r border-gray-100 transition-all duration-300 shrink-0 shadow-sm"
-        style={{ width: collapsed ? '60px' : '232px', minWidth: collapsed ? '60px' : '232px' }}
+        className="hidden xl:flex h-full flex-col bg-white border-r border-gray-100 transition-[width,min-width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 shadow-sm"
+        style={{ width: collapsed ? '64px' : '240px', minWidth: collapsed ? '64px' : '240px' }}
       >
         {/* Collapse toggle / logo */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 shrink-0">
+        <div className={`${collapsed ? 'relative justify-center px-2' : 'justify-between px-4'} flex h-[72px] items-center border-b border-gray-100 shrink-0 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]`}>
           {!collapsed ? (
             <div className="flex-1 flex justify-start pl-2">
               <img 
                 src="/logo.png" 
-                className="h-8 cursor-pointer object-contain" 
+                className="h-10 cursor-pointer object-contain" 
                 onClick={() => navigateIfNeeded('/dashboard')} 
                 alt="OpportunityOS AI Logo" 
               />
             </div>
           ) : (
-            <div className="w-9 h-9 rounded-xl bg-brand-pink flex items-center justify-center cursor-pointer mx-auto transition-all duration-200 hover:bg-brand-crimson/5 border border-brand-crimson/10" onClick={() => navigateIfNeeded('/dashboard')}>
-              <img src="/favicon.png" className="h-6 w-6 object-contain" alt="OpportunityOS AI Logo" />
-            </div>
+            <button
+              type="button"
+              title="Open sidebar"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-crimson/10 bg-white shadow-[0_10px_24px_rgba(209,18,67,0.14)] ring-4 ring-brand-pink/40 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-[0_14px_28px_rgba(209,18,67,0.18)]"
+              onClick={() => setCollapsed(false)}
+            >
+              <img src="/favicon.png" className="h-8 w-8 object-contain" alt="OpportunityOS AI Logo" />
+            </button>
           )}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 text-gray-400"
-          >
-            <ChevronLeft size={14} style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
-          </button>
+          {!collapsed ? (
+            <button
+              onClick={() => setCollapsed(true)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 text-gray-400"
+              aria-label="Collapse sidebar"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          ) : null}
         </div>
 
-        {/* User profile card */}
-        {!collapsed ? (
-          <div className="p-3 border-b border-gray-100 shrink-0">
-            <div className="p-2.5 rounded-xl cursor-pointer transition-all hover:bg-brand-pink/30 border border-gray-50" 
-              style={{ background: 'rgba(209,18,67,0.04)' }}
-                onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="relative shrink-0">
-                  {avatar ? (
-                    <img src={avatar} className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black"
-                      style={{ background: `linear-gradient(135deg, ${CRIMSON}, ${DARK_RED})` }}>
-                      {initials}
-                    </div>
-                  )}
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 border-2 border-white" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-bold text-gray-800 truncate leading-tight">{user?.name || 'User'}</div>
-                  <div className="text-[10px] text-gray-400 truncate leading-tight">{user?.email || ''}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-center py-3 border-b border-gray-100 cursor-pointer shrink-0" onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/profile')}>
-            <div className="relative">
-              {avatar ? (
-                <img src={avatar} className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
-              ) : (
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-black transition-all hover:opacity-85"
-                  style={{ background: `linear-gradient(135deg, ${CRIMSON}, ${DARK_RED})` }}>
-                  {initials}
-                </div>
-              )}
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 border border-white" />
-            </div>
-          </div>
-        )}
-
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-2 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
           {isSuperAdmin ? (
             collapsed ? (
               <div className="space-y-2">
@@ -841,8 +822,8 @@ export default function Layout({ children, headerActions = null }) {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
+                      onClick={() => navigateAndCollapseSidebar(`/admin?section=${key}`)}
+                      className={`grid h-11 w-full grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
                       style={{
                         background: active ? 'rgba(209,18,67,0.06)' : undefined,
                         color: active ? CRIMSON : undefined,
@@ -850,8 +831,10 @@ export default function Layout({ children, headerActions = null }) {
                         fontSize: '13px',
                       }}
                     >
-                      <Icon size={15} />
-                      <span className="truncate">{label}</span>
+                      <span className="flex h-6 w-6 items-center justify-center">
+                        <Icon size={15} />
+                      </span>
+                      <span className="min-w-0 truncate leading-none">{label}</span>
                     </button>
                   );
                 })}
@@ -861,7 +844,7 @@ export default function Layout({ children, headerActions = null }) {
           <>
           {collapsed ? (
             <>
-              <button onClick={() => navigateIfNeeded('/dashboard')} title="Dashboard" data-tour="nav-dashboard"
+              <button onClick={() => navigateIfNeeded('/dashboard')} title="The Hive" data-tour="nav-dashboard"
                 className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <LayoutDashboard size={16} />
               </button>
@@ -888,13 +871,13 @@ export default function Layout({ children, headerActions = null }) {
             </>
           ) : (
             <>
-              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
-              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />}
+              <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
+              <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               )}
-              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} />
+              <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
             </>
           )}
           </>
@@ -921,14 +904,14 @@ export default function Layout({ children, headerActions = null }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header */}
-        <header className="hidden xl:flex shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 py-3 xl:px-6"
+        <header className="hidden h-[72px] shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 xl:flex xl:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
           <div className="min-w-0 flex items-center gap-3">
             <span className="truncate text-base font-bold text-gray-800">{getPageTitle()}</span>
           </div>
 
           <div className="flex min-w-0 items-center gap-2">
-            {headerActions ? <div className="mr-2 flex min-w-0 max-w-[min(62vw,920px)] items-center overflow-hidden">{headerActions}</div> : null}
+            {headerActions ? <div className="mr-2 flex min-w-0 max-w-[min(62vw,920px)] items-center overflow-visible">{headerActions}</div> : null}
             <div className="relative" ref={notificationsRef}>
               <button
                 data-tour="header-notifications"
@@ -1048,6 +1031,7 @@ export default function Layout({ children, headerActions = null }) {
                 </div>
               </div>
             )}
+
           </div>
         </main>
       </div>

@@ -269,6 +269,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const match = await user.matchPassword(value.password);
   if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
+  const isFirstLogin = !user.lastLoginAt;
   user.lastLoginAt = new Date();
   user.lastSeenAt = user.lastLoginAt;
   await user.save();
@@ -288,7 +289,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = signToken(user, session.sessionId);
   const settings = await getSystemSettings();
-  res.json({ token, user: await buildPublicUser(user), session: session.toObject(), uiSettings: publicUiSettings(settings) });
+  res.json({ token, user: await buildPublicUser(user), session: session.toObject(), uiSettings: publicUiSettings(settings), isFirstLogin });
 }));
 
 // POST /api/auth/forgot-password

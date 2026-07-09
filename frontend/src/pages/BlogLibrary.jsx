@@ -421,7 +421,7 @@ export default function BlogLibrary() {
         <div className="relative min-w-0 max-w-xl flex-1">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
-            className="w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-gray-700 shadow-sm transition-all placeholder:text-gray-400 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40"
+            className="h-11 w-full rounded-2xl border border-gray-200 bg-white py-0 pl-10 pr-4 text-sm font-medium leading-normal text-gray-700 shadow-sm transition-all placeholder:text-gray-400 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -521,7 +521,7 @@ export default function BlogLibrary() {
           <div className="relative min-w-0 max-w-xl flex-1">
             <Search size={15} className="absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-gray-400" />
             <input
-              className="relative w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-gray-700 shadow-sm transition-all placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40 hover:border-gray-300"
+              className="relative h-11 w-full rounded-2xl border border-gray-200 bg-white py-0 pl-10 pr-4 text-sm font-medium leading-normal text-gray-700 shadow-sm transition-all placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40 hover:border-gray-300"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);

@@ -939,7 +939,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         <div className="flex items-center justify-between gap-3 sm:hidden">
           <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
             {intelDeskTab === 'intel' ? <Sparkles size={14} /> : intelDeskTab === 'tailored' ? <Newspaper size={14} /> : <Bookmark size={14} />}
-            {intelDeskTab === 'intel' ? 'Intelligence Library' : intelDeskTab === 'tailored' ? 'Personalized Feed' : 'Saved Briefs'}
+            {intelDeskTab === 'intel' ? 'Intelligence Library' : intelDeskTab === 'tailored' ? 'Personalised Feed' : 'Saved Briefs'}
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -964,7 +964,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         <div className="hidden w-full grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:grid sm:w-auto">
           {[
             { key: 'intel', label: 'Intelligence Library', mobileLabel: 'Intelligence Library', icon: Sparkles },
-            { key: 'tailored', label: 'Personalized Feed', mobileLabel: 'Personalized Feed', icon: Newspaper },
+            { key: 'tailored', label: 'Personalised Feed', mobileLabel: 'Personalised Feed', icon: Newspaper },
             { key: 'saved', label: 'Saved Briefs', mobileLabel: 'Saved Briefs', icon: Bookmark },
           ].map((item) => {
             const Icon = item.icon;
@@ -1083,7 +1083,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             <div className="space-y-2 p-3">
               {[
                 { key: 'intel', label: 'Intelligence Library' },
-                { key: 'tailored', label: 'Personalized Feed' },
+                { key: 'tailored', label: 'Personalised Feed' },
                 { key: 'saved', label: 'Saved Briefs' },
               ].map((item) => (
                 <button
@@ -1166,7 +1166,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             />
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalized intelligence feed">
+          <div className="flex min-h-0 flex-1 flex-col" data-analytics-section="Personalised intelligence feed">
             <div className="mb-4 shrink-0" data-tour="intel-filters">
               <Filters initial={intelFilters} onChange={setIntelFilters} showAdmin={isAdmin} showSavedFilter={false} showStatusFilter={false} metaParams={filterMetaParams} />
             </div>

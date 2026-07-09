@@ -39,8 +39,8 @@ export default function Login() {
     
     setLoading(true);
     try {
-      await login(form.email, form.password);
-      navigate(state?.from?.pathname || '/dashboard', { replace: true });
+      const auth = await login(form.email, form.password);
+      navigate(auth?.isFirstLogin ? '/profile' : '/dashboard', { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

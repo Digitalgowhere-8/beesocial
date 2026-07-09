@@ -116,6 +116,35 @@ function ArticleCard({
       : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
     saving ? 'cursor-wait opacity-70' : ''
   ].join(' ');
+  const saveActionButtonClass = [
+    'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-black transition-all',
+    item.isSaved
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+      : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+    saving ? 'cursor-wait opacity-70' : ''
+  ].join(' ');
+  const showSaveInActionRow = Boolean(onSaveToggle && selectable);
+  const renderSaveButton = (className, showLabel = false) => (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSaveToggle(item);
+      }}
+      className={className}
+      aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
+      title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+    >
+      {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
+      {showLabel ? (
+        <span>{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>
+      ) : (
+        !compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>
+      )}
+    </button>
+  );
 
   return (
     <article
@@ -124,10 +153,11 @@ function ArticleCard({
         'group relative isolate flex flex-col overflow-hidden font-sans fade-in',
         'transition-all duration-200 hover:-translate-y-0.5',
         compactCardShell,
-        selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
-        boxShadow: '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
+        boxShadow: selected
+          ? '0 10px 30px rgba(15,23,42,0.06), inset 0 0 0 2px rgba(209,18,67,0.38)'
+          : '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
         contentVisibility: 'auto',
         containIntrinsicSize: compact ? '320px' : '380px',
         contain: 'layout paint style',
@@ -159,7 +189,7 @@ function ArticleCard({
           </div>
         )}
 
-        <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex w-12 shrink-0 flex-col items-center gap-2">
           {score > 0 && (
             <span
               className={[
@@ -184,23 +214,7 @@ function ArticleCard({
               className="mt-0.5 rounded border-gray-200 text-brand-crimson focus:ring-brand-crimson/30"
             />
           )}
-          {onSaveToggle && !selectable && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onSaveToggle(item);
-              }}
-              className={saveButtonClass}
-              aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
-              title={item.isSaved ? 'Remove from saved' : 'Save this article'}
-            >
-              {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
-              {!compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>}
-            </button>
-          )}
+          {onSaveToggle && !showSaveInActionRow && renderSaveButton(saveButtonClass)}
         </div>
       </div>
 
@@ -303,7 +317,7 @@ function ArticleCard({
               <Globe size={13} />
             </span>
             <span className={compact ? 'min-w-0' : 'min-w-0 flex-1'}>
-              <span className={compact ? 'flex items-start justify-between gap-2' : 'block'}>
+              <span className={compact ? 'flex items-center justify-between gap-2' : 'block'}>
                 <span
                   className={[
                     'min-w-0 block text-[11px] font-black',
@@ -315,7 +329,7 @@ function ArticleCard({
                 </span>
                 {compact && (
                   <span
-                    className="inline-flex shrink-0 items-center justify-center self-start rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider"
+                    className="inline-flex shrink-0 items-center justify-center self-center rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider"
                     style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
                   >
                     {sourceCredibilityLabel}
@@ -328,7 +342,7 @@ function ArticleCard({
                 'shrink-0 rounded-full font-black uppercase',
                 compact
                   ? 'hidden'
-                  : 'hidden sm:inline-flex px-2 py-1 text-[9px] tracking-wider'
+                  : 'hidden sm:inline-flex items-center justify-center px-2 py-1 text-[9px] tracking-wider'
               ].join(' ')}
               style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
             >
@@ -344,9 +358,12 @@ function ArticleCard({
         </div>
       )}
 
-      {adminActions && (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pl-3 pt-3">
-          {adminActions}
+      {(showSaveInActionRow || adminActions) && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 sm:pl-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {adminActions}
+          </div>
+          {showSaveInActionRow ? renderSaveButton(saveActionButtonClass, true) : null}
         </div>
       )}
     </article>
