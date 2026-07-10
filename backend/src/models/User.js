@@ -69,6 +69,7 @@ const userSchema = new mongoose.Schema(
     passwordChangedAt: { type: Date },
     passwordResetToken: { type: String, select: false },
     passwordResetExpiresAt: { type: Date, select: false },
+    welcomeEmailSentAt: { type: Date, default: null },
 
     lastLoginAt: { type: Date },
     lastSeenAt: { type: Date },

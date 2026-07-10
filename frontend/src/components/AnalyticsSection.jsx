@@ -357,8 +357,7 @@ function formatCompactDateTime(value) {
 }
 
 function InsightItem({ item, color }) {
-  const { uiSettings } = useAuth();
-  const appearance = getDashboardAppearance(uiSettings);
+  const appearance = getDashboardAppearance();
   const score = Math.round(Number(item.relevanceScore || 0));
   const scoreBand = scoreBandForValue(score, appearance);
   const when = item.fetchedAt || item.publishedAt

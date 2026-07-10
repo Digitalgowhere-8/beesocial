@@ -179,43 +179,35 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
   return (
     <section
       data-analytics-section={`Intel feed: ${column.label}`}
-      className="min-h-0 overflow-hidden rounded-[26px] border shadow-card flex flex-col"
-      style={{ borderColor: column.border, background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,251,0.94))' }}
+      className="min-h-0 overflow-hidden rounded-[26px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,248,250,0.95)_0%,rgba(255,255,255,0.98)_42%,rgba(255,247,249,0.92)_100%)] shadow-card flex flex-col"
     >
       <div
-        className="border-b px-5 py-4"
-        style={{
-          borderColor: column.border,
-          background: `linear-gradient(180deg, ${column.soft}, #fff5f8)`,
-        }}
+        className="border-b border-brand-crimson/10 bg-brand-pink/70 px-5 py-4"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: '#fff7fa', border: `1px solid ${column.border}` }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-brand-crimson/10 bg-white/90 text-brand-crimson"
             >
-              <Icon size={16} style={{ color: '#d11243' }} />
+              <Icon size={16} />
             </span>
             <div className="min-w-0">
               <h2
-                className="truncate font-black text-[16px] xl:text-[17px]"
-                style={{ color: '#d11243' }}
+                className="truncate font-black text-[16px] text-brand-crimson xl:text-[17px]"
               >
                 {column.label}
               </h2>
             </div>
           </div>
           <span
-            className="inline-flex min-w-[52px] items-center justify-center rounded-xl px-3 py-1.5 text-[13px] font-black"
-            style={{ color: '#d11243', background: '#fff7fa', border: `1px solid ${column.border}` }}
+            className="inline-flex min-w-[52px] items-center justify-center rounded-xl border border-brand-crimson/20 bg-white/70 px-3 py-1.5 text-[13px] font-black text-brand-crimson"
           >
             {loading ? '...' : totalCount}
           </span>
         </div>
       </div>
 
-      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto p-4" style={{ background: column.soft }}>
+      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-brand-lightpink/50 p-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
@@ -232,7 +224,7 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
 });
 
 export default function Dashboard({ initialTab = 'analytics' }) {
-  const { user, isAdmin, isSuperAdmin, uiSettings } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const dashTab = initialTab;
   const analyticsCacheKey = user?._id ? `dashboard_analytics_state_${user._id}` : null;
@@ -272,11 +264,23 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const [savingArticleIds, setSavingArticleIds] = useState(new Set());
   const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
-  const dashboardAppearance = useMemo(() => getDashboardAppearance(uiSettings), [uiSettings]);
+  const [canDragCompose, setCanDragCompose] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1280px)').matches : true
+  ));
+  const dashboardAppearance = useMemo(() => getDashboardAppearance(), []);
   const feedColumns = useMemo(() => FEED_COLUMNS.map((column) => ({
     ...column,
     ...(dashboardAppearance.topicColors[column.key] || dashboardAppearance.topicColors.news)
   })), [dashboardAppearance]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(min-width: 1280px)');
+    const handleChange = () => setCanDragCompose(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener?.('change', handleChange);
+    return () => mediaQuery.removeEventListener?.('change', handleChange);
+  }, []);
   const feedRequestVersionRef = useRef(0);
   const feedScrollRequestRef = useRef(null);
   const feedStateRef = useRef(feedStateByTab);
@@ -725,6 +729,10 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   }, [canDeleteTailoredArticles, intelFilters.type, intelDeskTab]);
 
   const startArticleDrag = (event, item) => {
+    if (!canDragCompose) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.effectAllowed = 'copy';
     event.dataTransfer.setData('text/plain', item._id);
     setDraggedArticle(item);
@@ -881,11 +889,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   const renderDraggableArticle = (item, options = {}) => (
     <div
       key={item._id}
-      draggable
+      draggable={canDragCompose}
       onDragStart={(event) => startArticleDrag(event, item)}
       onDragEnd={endArticleDrag}
-      className="cursor-grab active:cursor-grabbing"
-      title="Drag to create blog or social post"
+      className={canDragCompose ? 'cursor-grab active:cursor-grabbing' : ''}
+      title={canDragCompose ? 'Drag to create blog or social post' : 'Use Blog or LinkedIn buttons to create content'}
     >
       <ArticleCard
         item={item}
@@ -1208,14 +1216,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                   return (
                     <>
                       <div className="flex items-center justify-between mb-4 px-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: col.accent }} />
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl" style={{ background: col.soft, border: `1px solid ${col.border}` }}>
-                            <col.icon size={15} style={{ color: '#d11243' }} />
-                          </span>
-                          <h2 className="font-black text-[16px] xl:text-[17px]" style={{ color: '#d11243' }}>{col.label}</h2>
-                        </div>
-                        <span className="inline-flex min-w-[52px] items-center justify-center rounded-xl px-3 py-1.5 text-[13px] font-black" style={{ color: '#d11243', background: '#ffffffcc', border: `1px solid ${col.border}` }}>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-brand-crimson" />
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl border border-gray-200 bg-white text-brand-crimson">
+                          <col.icon size={15} />
+                        </span>
+                        <h2 className="font-black text-[16px] text-brand-crimson xl:text-[17px]">{col.label}</h2>
+                      </div>
+                      <span className="inline-flex min-w-[52px] items-center justify-center rounded-xl border border-brand-crimson/15 bg-white px-3 py-1.5 text-[13px] font-black text-brand-crimson">
                           {currentFeedState[col.key]?.loadingInitial ? '...' : currentFeedState[col.key]?.total || 0}
                         </span>
                       </div>
@@ -1325,7 +1333,7 @@ function ComposerDropTray({ open, article, onDropMode }) {
     {
       mode: 'blog',
       title: 'Blog Generator',
-      subtitle: 'Draft a polished long-form article',
+      subtitle: 'Create review-ready long-form content',
       icon: BookOpenText,
       tint: 'from-rose-500 to-pink-500',
     },

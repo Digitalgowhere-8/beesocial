@@ -1,9 +1,9 @@
 export const DEFAULT_DASHBOARD_APPEARANCE = {
   topicColors: {
-    govt: { accent: '#2bb98a', soft: '#eefbf6', border: '#c4f1de', text: '#13795b' },
-    news: { accent: '#4c82ff', soft: '#eff4ff', border: '#cfe0ff', text: '#2857c5' },
-    evergreen: { accent: '#9a6bff', soft: '#f4efff', border: '#e1d2ff', text: '#6f43d6' },
-    competitor: { accent: '#f4a524', soft: '#fff6e8', border: '#ffe0ad', text: '#c87907' }
+    govt: { accent: '#d11243', soft: '#ffffff', border: '#e5e7eb', text: '#d11243' },
+    news: { accent: '#d11243', soft: '#ffffff', border: '#e5e7eb', text: '#d11243' },
+    evergreen: { accent: '#d11243', soft: '#ffffff', border: '#e5e7eb', text: '#d11243' },
+    competitor: { accent: '#d11243', soft: '#ffffff', border: '#e5e7eb', text: '#d11243' }
   },
   sourceTrustColors: {
     high: { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857', icon: '#10b981' },
@@ -11,29 +11,26 @@ export const DEFAULT_DASHBOARD_APPEARANCE = {
     low: { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c', icon: '#ef4444' }
   },
   relevanceScoreBands: [
-    { key: 'high', label: 'High Relevance', min: 80, bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' },
-    { key: 'medium', label: 'Qualified', min: 60, bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
-    { key: 'low', label: 'Low Relevance', min: 0, bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' }
+    { key: 'high', label: 'High Relevance', min: 80, bg: '#ffffff', border: '#d1d5db', text: '#111827' },
+    { key: 'medium', label: 'Qualified', min: 60, bg: '#ffffff', border: '#d1d5db', text: '#111827' },
+    { key: 'low', label: 'Low Relevance', min: 0, bg: '#ffffff', border: '#d1d5db', text: '#111827' }
   ]
 };
 
-export function getDashboardAppearance(uiSettings = {}) {
-  const incoming = uiSettings?.dashboardAppearance || {};
+export function getDashboardAppearance() {
   return {
     topicColors: {
-      govt: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.govt, ...(incoming.topicColors?.govt || {}) },
-      news: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.news, ...(incoming.topicColors?.news || {}) },
-      evergreen: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.evergreen, ...(incoming.topicColors?.evergreen || {}) },
-      competitor: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.competitor, ...(incoming.topicColors?.competitor || {}) }
+      govt: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.govt },
+      news: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.news },
+      evergreen: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.evergreen },
+      competitor: { ...DEFAULT_DASHBOARD_APPEARANCE.topicColors.competitor }
     },
     sourceTrustColors: {
-      high: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.high, ...(incoming.sourceTrustColors?.high || {}) },
-      moderate: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.moderate, ...(incoming.sourceTrustColors?.moderate || {}) },
-      low: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.low, ...(incoming.sourceTrustColors?.low || {}) }
+      high: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.high },
+      moderate: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.moderate },
+      low: { ...DEFAULT_DASHBOARD_APPEARANCE.sourceTrustColors.low }
     },
-    relevanceScoreBands: Array.isArray(incoming.relevanceScoreBands) && incoming.relevanceScoreBands.length
-      ? [...incoming.relevanceScoreBands].sort((a, b) => Number(b.min || 0) - Number(a.min || 0))
-      : DEFAULT_DASHBOARD_APPEARANCE.relevanceScoreBands
+    relevanceScoreBands: DEFAULT_DASHBOARD_APPEARANCE.relevanceScoreBands.map((band) => ({ ...band }))
   };
 }
 

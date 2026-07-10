@@ -40,7 +40,8 @@ export default function Login() {
     setLoading(true);
     try {
       const auth = await login(form.email, form.password);
-      navigate(auth?.isFirstLogin ? '/profile' : '/dashboard', { replace: true });
+      const defaultPath = auth?.user?.role === 'super_admin' ? '/admin' : '/dashboard';
+      navigate(auth?.isFirstLogin && auth?.user?.role !== 'super_admin' ? '/profile' : defaultPath, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

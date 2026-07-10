@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import GuidedOnboarding from './GuidedOnboarding';
 import {
-  LayoutDashboard, Shield, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
+  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -178,6 +178,16 @@ const articleTypeLabel = (type) => {
   return 'News update';
 };
 
+const compactBadgeCount = (count) => {
+  const value = Number(count || 0);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return value > 99 ? '99+' : String(value);
+};
+
+const isContentRepositoryNotificationKey = (key) => (
+  String(key || '').startsWith('blog:') || String(key || '').startsWith('linkedin:')
+);
+
 const normalizeNotificationFeed = ({ articles = [], blogs = [], socialPosts = [] }) => {
   const articleItems = articles.map((article) => ({
     key: `article:${article._id}`,
@@ -200,10 +210,71 @@ const normalizeNotificationFeed = ({ articles = [], blogs = [], socialPosts = []
     title: post.title || post.blogTitle || 'New LinkedIn post created',
     description: 'LinkedIn post is ready',
     createdAt: post.createdAt || post.updatedAt || post.publishedAt,
-    href: '/social-media-studio'
+    href: '/blogs'
   }));
 
   return uniqueByKey([...socialItems, ...blogItems, ...articleItems])
+    .sort((a, b) => itemTime(b.createdAt) - itemTime(a.createdAt))
+    .slice(0, NOTIFICATION_LIMIT);
+};
+
+const normalizeSuperAdminNotificationFeed = ({ admins = [], overview = {}, fetchStatus = {}, dbHealth = {} }) => {
+  const now = new Date().toISOString();
+  const inactiveAdmins = admins
+    .filter((admin) => admin?.role === 'admin' && admin.isActive === false)
+    .map((admin) => ({
+      key: `super-admin:pending-admin:${admin._id}`,
+      title: admin.company ? `${admin.company} admin pending approval` : 'Admin pending approval',
+      description: admin.email || admin.name || 'New admin account needs super admin review',
+      createdAt: admin.createdAt || admin.updatedAt || now,
+      href: '/admin?section=users'
+    }));
+
+  const recentRuns = Array.isArray(overview?.recentRuns) ? overview.recentRuns : [];
+  const latestRun = recentRuns[0];
+  const latestRunTime = latestRun?.finishedAt || latestRun?.startedAt || latestRun?.createdAt || null;
+  const latestRunItem = latestRun ? [{
+    key: `super-admin:latest-run:${latestRun._id || latestRun.status || latestRunTime}`,
+    title: latestRun.status === 'failed' ? 'Latest platform fetch failed' : 'Latest platform fetch completed',
+    description: `${latestRun.status || 'unknown'} • ${Number(latestRun.totalInserted || 0)} inserted • ${Number(latestRun.totalErrors || 0)} errors`,
+    createdAt: latestRunTime || now,
+    href: '/admin?section=fetch'
+  }] : [];
+
+  const runningFetchItem = fetchStatus?.running ? [{
+    key: `super-admin:platform-fetch-running:${fetchStatus.logId || fetchStatus.startedAt || 'active'}`,
+    title: 'Platform fetch is running',
+    description: fetchStatus.step || 'Super admin platform intelligence fetch is in progress',
+    createdAt: fetchStatus.startedAt || now,
+    href: '/admin?section=fetch'
+  }] : [];
+
+  const usage = overview?.usage || {};
+  const failedRuns = Number(usage.monthFailedRuns || 0);
+  const failureItem = failedRuns > 0 ? [{
+    key: `super-admin:failed-runs:${failedRuns}:${overview?.monthStart || ''}`,
+    title: `${failedRuns} failed fetch${failedRuns === 1 ? '' : 'es'} this month`,
+    description: `${Number(usage.failureRateThisMonth || 0)}% failure rate across platform runs`,
+    createdAt: latestRunTime || now,
+    href: '/admin?section=platform'
+  }] : [];
+
+  const pendingCleanup = Number(dbHealth?.analytics?.pendingCleanup || 0);
+  const cleanupItem = pendingCleanup > 0 ? [{
+    key: `super-admin:analytics-cleanup:${pendingCleanup}`,
+    title: 'Analytics cleanup recommended',
+    description: `${pendingCleanup} old analytics event${pendingCleanup === 1 ? '' : 's'} can be cleaned`,
+    createdAt: dbHealth.checkedAt || now,
+    href: '/admin?section=platform'
+  }] : [];
+
+  return uniqueByKey([
+    ...inactiveAdmins,
+    ...runningFetchItem,
+    ...latestRunItem,
+    ...failureItem,
+    ...cleanupItem
+  ])
     .sort((a, b) => itemTime(b.createdAt) - itemTime(a.createdAt))
     .slice(0, NOTIFICATION_LIMIT);
 };
@@ -333,6 +404,8 @@ export default function Layout({ children, headerActions = null }) {
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
   const unreadCount = notifications.unreadKeys.length;
+  const contentRepositoryUnreadCount = notifications.unreadKeys.filter(isContentRepositoryNotificationKey).length;
+  const contentRepositoryBadge = compactBadgeCount(contentRepositoryUnreadCount);
   const onboardingSeenKey = `app_onboarding_seen_${user?._id || 'guest'}`;
   const onboardingAutoShownKey = `app_onboarding_auto_shown_${user?._id || 'guest'}`;
   const onboardingSessionKey = `app_onboarding_session_${user?._id || 'guest'}`;
@@ -395,6 +468,21 @@ export default function Layout({ children, headerActions = null }) {
     }));
   }, [saveNotifications]);
 
+  const markContentRepositoryNotificationsRead = useCallback(() => {
+    saveNotifications((current) => {
+      const unreadKeys = (Array.isArray(current.unreadKeys) ? current.unreadKeys : [])
+        .filter((key) => !isContentRepositoryNotificationKey(key));
+
+      return {
+        ...current,
+        unreadKeys,
+        items: (Array.isArray(current.items) ? current.items : []).map((item) => (
+          isContentRepositoryNotificationKey(item.key) ? { ...item, unread: false } : item
+        ))
+      };
+    });
+  }, [saveNotifications]);
+
   const openNotificationItem = useCallback((item) => {
     if (item?.href && generationLocked) {
       showGenerationLockMessage();
@@ -407,10 +495,57 @@ export default function Layout({ children, headerActions = null }) {
     }
   }, [generationLocked, markAllNotificationsRead, navigate, showGenerationLockMessage]);
 
+  useEffect(() => {
+    if (location.pathname.startsWith('/blogs') && contentRepositoryUnreadCount > 0) {
+      markContentRepositoryNotificationsRead();
+    }
+  }, [contentRepositoryUnreadCount, location.pathname, markContentRepositoryNotificationsRead]);
+
   const pollNotifications = useCallback(async () => {
-    if (!user?._id || isSuperAdmin) return;
+    if (!user?._id) return;
 
     try {
+      if (isSuperAdmin) {
+        const [adminsResponse, overviewResponse, fetchStatusResponse, dbHealthResponse] = await Promise.all([
+          api.get('/admin/users', { params: { role: 'admin', limit: 50 } }),
+          api.get('/admin/super/overview'),
+          api.get('/admin/super/fetch/status'),
+          api.get('/admin/super/database-health')
+        ]);
+        const feed = normalizeSuperAdminNotificationFeed({
+          admins: adminsResponse?.data?.items || [],
+          overview: overviewResponse?.data || {},
+          fetchStatus: fetchStatusResponse?.data || {},
+          dbHealth: dbHealthResponse?.data || {}
+        });
+
+        saveNotifications((current) => {
+          const initialized = current?.initialized === true;
+          const knownKeys = new Set(Array.isArray(current?.knownKeys) ? current.knownKeys : []);
+          const currentUnread = new Set(Array.isArray(current?.unreadKeys) ? current.unreadKeys : []);
+          const dismissedKeys = new Set(Array.isArray(current?.dismissedKeys) ? current.dismissedKeys : []);
+          const newUnreadKeys = initialized
+            ? feed.filter((item) => !knownKeys.has(item.key) && !dismissedKeys.has(item.key)).map((item) => item.key)
+            : [];
+          const nextKnownKeys = feed.map((item) => item.key);
+          const mergedUnreadKeys = [...new Set([...newUnreadKeys, ...currentUnread])]
+            .filter((key) => nextKnownKeys.includes(key));
+          const visibleFeed = feed.filter((item) => !dismissedKeys.has(item.key));
+
+          return {
+            initialized: true,
+            knownKeys: nextKnownKeys,
+            dismissedKeys: Array.from(dismissedKeys).filter((key) => nextKnownKeys.includes(key)),
+            unreadKeys: mergedUnreadKeys,
+            items: visibleFeed.map((item) => ({
+              ...item,
+              unread: mergedUnreadKeys.includes(item.key)
+            }))
+          };
+        });
+        return;
+      }
+
       const requests = [
         api.get('/articles/dashboard', { params: { limit: 8, sharedOnly: true } }),
         api.get('/articles/dashboard', { params: { limit: 8, personalOnly: true } })
@@ -460,8 +595,9 @@ export default function Layout({ children, headerActions = null }) {
         const newUnreadKeys = initialized
           ? feed.filter((item) => !knownKeys.has(item.key) && !dismissedKeys.has(item.key)).map((item) => item.key)
           : [];
-        const mergedUnreadKeys = [...new Set([...newUnreadKeys, ...currentUnread])];
         const nextKnownKeys = feed.map((item) => item.key);
+        const mergedUnreadKeys = [...new Set([...newUnreadKeys, ...currentUnread])]
+          .filter((key) => nextKnownKeys.includes(key));
         const visibleFeed = feed.filter((item) => !dismissedKeys.has(item.key));
 
         return {
@@ -602,7 +738,7 @@ export default function Layout({ children, headerActions = null }) {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!user?._id || isSuperAdmin) return undefined;
+    if (!user?._id) return undefined;
 
     pollNotifications();
 
@@ -615,10 +751,16 @@ export default function Layout({ children, headerActions = null }) {
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     window.addEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
+    const refreshTimer = isSuperAdmin
+      ? window.setInterval(() => {
+          pollNotifications();
+        }, 60000)
+      : null;
 
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
       window.removeEventListener(APP_EVENT_AUTH_CHANGED, handleAuthChanged);
+      if (refreshTimer) window.clearInterval(refreshTimer);
     };
   }, [isSuperAdmin, pollNotifications, user?._id]);
 
@@ -644,7 +786,11 @@ export default function Layout({ children, headerActions = null }) {
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (isSuperAdmin) return 'Owner Console';
+    if (isSuperAdmin) {
+      if (path.startsWith('/profile')) return 'My Hive Profile';
+      const activeOwnerSection = SUPER_ADMIN_SECTIONS.find((section) => section.key === currentAdminSection);
+      return activeOwnerSection ? activeOwnerSection.label : 'Owner Console';
+    }
     if (path.startsWith('/admin')) return 'Admin Panel';
     if (path.startsWith('/profile')) return 'My Hive Profile';
     if (path.startsWith('/social-media-studio') || path.startsWith('/content-studio') || path.startsWith('/blog-studio')) return 'Content Studio';
@@ -657,7 +803,50 @@ export default function Layout({ children, headerActions = null }) {
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'U';
   const mobileNavItems = isSuperAdmin
-    ? []
+    ? [
+        {
+          key: 'platform',
+          label: 'Overview',
+          icon: Crown,
+          onClick: () => navigateIfNeeded('/admin?section=platform'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'platform'
+        },
+        {
+          key: 'articles',
+          label: 'Articles',
+          icon: FileText,
+          onClick: () => navigateIfNeeded('/admin?section=articles'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'articles'
+        },
+        {
+          key: 'fetch',
+          label: 'Fetch',
+          icon: Globe2,
+          onClick: () => navigateIfNeeded('/admin?section=fetch'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'fetch'
+        },
+        {
+          key: 'users',
+          label: 'Users',
+          icon: Users,
+          onClick: () => navigateIfNeeded('/admin?section=users'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'users'
+        },
+        {
+          key: 'plans',
+          label: 'Plans',
+          icon: Database,
+          onClick: () => navigateIfNeeded('/admin?section=plans'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'plans'
+        },
+        {
+          key: 'settings',
+          label: 'Settings',
+          icon: KeyRound,
+          onClick: () => navigateIfNeeded('/admin?section=settings'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'settings'
+        },
+      ]
     : [
         { key: 'dashboard', label: 'The Hive', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
         { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigateIfNeeded('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
@@ -696,13 +885,13 @@ export default function Layout({ children, headerActions = null }) {
               className="relative flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-brand-crimson/10 hover:bg-gray-50 hover:text-gray-600"
             >
               <Bell size={15} />
-              {!isSuperAdmin && unreadCount > 0 ? (
+              {unreadCount > 0 ? (
                 <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-crimson text-white text-[10px] font-bold flex items-center justify-center">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               ) : null}
             </button>
-            {showNotifications && !isSuperAdmin && (
+            {showNotifications && (
               <>
               <button
                 type="button"
@@ -773,7 +962,7 @@ export default function Layout({ children, headerActions = null }) {
               <img 
                 src="/logo.png" 
                 className="h-10 cursor-pointer object-contain" 
-                onClick={() => navigateIfNeeded('/dashboard')} 
+                onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/dashboard')} 
                 alt="OpportunityOS AI Logo" 
               />
             </div>
@@ -854,8 +1043,13 @@ export default function Layout({ children, headerActions = null }) {
               </button>
               {canUseContentRepository && (
                 <button onClick={() => navigateIfNeeded('/blogs')} title="Content Repository" data-tour="nav-content-repository"
-                  className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  className={`relative w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   <BookOpenText size={16} />
+                  {contentRepositoryBadge ? (
+                    <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-brand-crimson px-1.5 py-0.5 text-[9px] font-black leading-none text-white shadow-sm ring-2 ring-white">
+                      {contentRepositoryBadge}
+                    </span>
+                  ) : null}
                 </button>
               )}
               {canUseBlogStudio && (
@@ -873,7 +1067,7 @@ export default function Layout({ children, headerActions = null }) {
             <>
               <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" badge={contentRepositoryBadge} dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               {canUseBlogStudio && (
                 <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               )}
@@ -926,13 +1120,13 @@ export default function Layout({ children, headerActions = null }) {
                 className="relative p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all"
               >
                 <Bell size={15} />
-                {!isSuperAdmin && unreadCount > 0 ? (
+                {unreadCount > 0 ? (
                 <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-crimson text-white text-[10px] font-bold flex items-center justify-center">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
                 ) : null}
               </button>
-              {showNotifications && !isSuperAdmin && (
+              {showNotifications && (
                 <NotificationsMenu
                 items={notifications.items}
                 unreadCount={unreadCount}
@@ -1036,14 +1230,6 @@ export default function Layout({ children, headerActions = null }) {
         </main>
       </div>
 
-      {isSuperAdmin ? (
-        <nav className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 grid grid-cols-1 gap-1">
-          <button onClick={() => navigateIfNeeded('/admin')} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${location.pathname.startsWith('/admin') ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}>
-            <Shield size={16} />
-            Owner Console
-          </button>
-        </nav>
-      ) : (
       <nav
         className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
         style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}
@@ -1055,15 +1241,14 @@ export default function Layout({ children, headerActions = null }) {
               key={item.key}
               onClick={item.onClick}
               {...(item.dataTour ? { 'data-tour': item.dataTour } : {})}
-              className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${item.active ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-lg px-0.5 py-2 text-[9px] font-bold leading-tight sm:text-[10px] ${item.active ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}
             >
               <Icon size={16} />
-              {item.label}
+              <span className="max-w-full truncate">{item.label}</span>
             </button>
           );
         })}
       </nav>
-      )}
       <GuidedOnboarding
         user={user}
         open={tourOpen}

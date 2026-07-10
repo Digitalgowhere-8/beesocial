@@ -12,9 +12,11 @@ import SocialMediaStudio from './pages/BlogStudio';
 import BlogLibrary from './pages/BlogLibrary';
 import Premium from './pages/Premium';
 import useAnalyticsTracking from './hooks/useAnalyticsTracking';
+import { useAuth } from './context/AuthContext';
 
 function HomeRedirect() {
-  return <Navigate to="/dashboard" replace />;
+  const { isSuperAdmin } = useAuth();
+  return <Navigate to={isSuperAdmin ? '/admin' : '/dashboard'} replace />;
 }
 
 export default function App() {

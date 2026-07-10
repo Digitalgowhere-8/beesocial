@@ -13,6 +13,7 @@
 const Article = require('../models/Article');
 const FetchLog = require('../models/FetchLog');
 const aiService = require('./aiService');
+const { getSystemSettings } = require('./systemSettings');
 const { pLimit } = require('../utils/pLimit');
 const { publishGlobalEvent } = require('../utils/realtime');
 
@@ -23,16 +24,19 @@ const { scrapeAllEvergreen } = require('../scrapers/evergreenScraper');
 
 const DEFAULT_TYPES = ['news', 'govt', 'competitor', 'evergreen'];
 
-async function maybeEnrich(item) {
+async function maybeEnrich(item, settings = {}) {
   if (!aiService.isEnabled()) return item;
+  const aiConfig = { model: settings.aiModel };
 
   // AI summary
-  const ai = await aiService.summarizeArticle({ title: item.title, snippet: item.summary });
-  if (ai) item.aiSummary = ai;
+  if (settings.aiSummary) {
+    const ai = await aiService.summarizeArticle({ title: item.title, snippet: item.summary, aiConfig });
+    if (ai) item.aiSummary = ai;
+  }
 
   // AI category - only if rule-based fell back to General
-  if (item.category === 'General' || !item.category) {
-    const cls = await aiService.classifyCategory({ title: item.title, snippet: item.summary });
+  if (settings.aiCategory && (item.category === 'General' || !item.category)) {
+    const cls = await aiService.classifyCategory({ title: item.title, snippet: item.summary, aiConfig });
     if (cls?.category) {
       item.category = cls.category;
       item.subcategory = cls.subcategory || item.subcategory;
@@ -84,6 +88,7 @@ async function persist(items) {
 
 async function runAll({ triggeredBy = 'manual', triggeredByUser = null, types = null } = {}) {
   const startedAt = new Date();
+  const settings = await getSystemSettings();
   const wantedTypes = (Array.isArray(types) && types.length) ? types : DEFAULT_TYPES;
   const concurrency = parseInt(process.env.SCRAPE_CONCURRENCY, 10) || 4;
   const limit = pLimit(concurrency);
@@ -125,9 +130,9 @@ async function runAll({ triggeredBy = 'manual', triggeredByUser = null, types = 
   }
 
   // Optionally enrich with AI - run in parallel with a low concurrency
-  if (aiService.isEnabled()) {
+  if (aiService.isEnabled() && (settings.aiSummary || settings.aiCategory)) {
     const aiLimit = pLimit(3);
-    await Promise.all(allItems.map((it) => aiLimit(() => maybeEnrich(it))));
+    await Promise.all(allItems.map((it) => aiLimit(() => maybeEnrich(it, settings))));
   }
 
   // Persist

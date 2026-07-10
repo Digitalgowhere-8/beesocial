@@ -72,7 +72,7 @@ async function getDatabaseHealthSummary() {
       readCollectionStats(AnalyticsEvent, 'Analytics Events'),
       readCollectionStats(Article, 'Articles'),
       readCollectionStats(FetchLog, 'Fetch Logs'),
-      readCollectionStats(BlogPost, 'Blog Drafts'),
+      readCollectionStats(BlogPost, 'Blog Content'),
       readCollectionStats(SocialPost, 'Social Posts'),
       readCollectionStats(User, 'Users')
     ]),

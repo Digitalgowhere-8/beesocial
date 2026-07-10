@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
+import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import useInfiniteScroll from '../hooks/useInfiniteScroll';
 import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 
@@ -31,7 +32,7 @@ function safeSessionSet(key, value) {
 
 function renderInlineMarkdown(text = '') {
   const parts = [];
-  const pattern = /\*\*(.+?)\*\*/g;
+  const pattern = /(\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\))/g;
   let lastIndex = 0;
   let match;
 
@@ -39,7 +40,21 @@ function renderInlineMarkdown(text = '') {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    parts.push(<strong key={`${match.index}-${match[1]}`}>{match[1]}</strong>);
+    if (match[2]) {
+      parts.push(<strong key={`${match.index}-${match[2]}`}>{match[2]}</strong>);
+    } else {
+      parts.push(
+        <a
+          key={`${match.index}-${match[3]}`}
+          href={match[4]}
+          target="_blank"
+          rel="noreferrer"
+          className="font-bold text-brand-crimson underline decoration-brand-crimson/25 underline-offset-4 transition-colors hover:text-brand-hoverred"
+        >
+          {match[3]}
+        </a>
+      );
+    }
     lastIndex = match.index + match[0].length;
   }
 
@@ -48,6 +63,27 @@ function renderInlineMarkdown(text = '') {
   }
 
   return parts.length ? parts : text;
+}
+
+function escapeHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderInlineMarkdownHtml(text = '') {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
+
+function stripInlineMarkdown(text = '') {
+  return String(text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1 ($2)');
 }
 
 function normalizePreviewMarkdown(bodyMarkdown = '', title = '') {
@@ -75,6 +111,160 @@ function normalizePreviewMarkdown(bodyMarkdown = '', title = '') {
   }
 
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function isMarkdownTableRow(line = '') {
+  const trimmed = String(line || '').trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length > 2;
+}
+
+function isMarkdownTableDivider(line = '') {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function parseMarkdownTableRow(line = '') {
+  return String(line || '')
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function markdownToPlainText(bodyMarkdown = '', title = '') {
+  const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
+  const output = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line) {
+      if (output[output.length - 1]) output.push('');
+      i += 1;
+      continue;
+    }
+
+    if (/^#{2,3}\s+/.test(line)) {
+      output.push(stripInlineMarkdown(line.replace(/^#{2,3}\s+/, '')));
+      output.push('');
+      i += 1;
+      continue;
+    }
+
+    if (isMarkdownTableRow(line) && isMarkdownTableDivider(lines[i + 1] || '')) {
+      output.push(parseMarkdownTableRow(line).map(stripInlineMarkdown).join('\t'));
+      i += 2;
+      while (i < lines.length && isMarkdownTableRow(lines[i]) && !isMarkdownTableDivider(lines[i])) {
+        output.push(parseMarkdownTableRow(lines[i]).map(stripInlineMarkdown).join('\t'));
+        i += 1;
+      }
+      output.push('');
+      continue;
+    }
+
+    if (/^\s*-\s+/.test(line)) {
+      output.push(`- ${stripInlineMarkdown(line.replace(/^\s*-\s+/, '').trim())}`);
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      output.push(stripInlineMarkdown(line));
+      i += 1;
+      continue;
+    }
+
+    output.push(stripInlineMarkdown(line));
+    i += 1;
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function markdownToHtml(bodyMarkdown = '', title = '') {
+  const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line) {
+      i += 1;
+      continue;
+    }
+
+    if (/^###\s+/.test(line)) {
+      blocks.push(`<h3>${renderInlineMarkdownHtml(line.replace(/^###\s+/, ''))}</h3>`);
+      i += 1;
+      continue;
+    }
+
+    if (/^##\s+/.test(line)) {
+      blocks.push(`<h2>${renderInlineMarkdownHtml(line.replace(/^##\s+/, ''))}</h2>`);
+      i += 1;
+      continue;
+    }
+
+    if (isMarkdownTableRow(line) && isMarkdownTableDivider(lines[i + 1] || '')) {
+      const headers = parseMarkdownTableRow(line);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && isMarkdownTableRow(lines[i]) && !isMarkdownTableDivider(lines[i])) {
+        rows.push(parseMarkdownTableRow(lines[i]));
+        i += 1;
+      }
+      blocks.push([
+        '<table>',
+        '<thead><tr>',
+        headers.map((header) => `<th>${renderInlineMarkdownHtml(header)}</th>`).join(''),
+        '</tr></thead>',
+        '<tbody>',
+        rows.map((row) => `<tr>${headers.map((_, index) => `<td>${renderInlineMarkdownHtml(row[index] || '')}</td>`).join('')}</tr>`).join(''),
+        '</tbody></table>'
+      ].join(''));
+      continue;
+    }
+
+    if (/^\s*-\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*-\s+/, '').trim());
+        i += 1;
+      }
+      blocks.push(`<ul>${items.map((item) => `<li>${renderInlineMarkdownHtml(item)}</li>`).join('')}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        const itemLines = [lines[i].replace(/^\s*\d+\.\s+/, '').trim()];
+        i += 1;
+        while (i < lines.length) {
+          const next = lines[i].trim();
+          if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*\d+\.\s+/.test(next) || /^\s*-\s+/.test(next) || isMarkdownTableRow(next)) break;
+          itemLines.push(next);
+          i += 1;
+        }
+        items.push(itemLines.join(' '));
+        if (!lines[i]?.trim()) i += 1;
+      }
+      blocks.push(`<ol>${items.map((item) => `<li>${renderInlineMarkdownHtml(item)}</li>`).join('')}</ol>`);
+      continue;
+    }
+
+    const paragraphLines = [line];
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i].trim();
+      if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*-\s+/.test(next) || /^\s*\d+\.\s+/.test(next) || isMarkdownTableRow(next)) break;
+      paragraphLines.push(next);
+      i += 1;
+    }
+    blocks.push(`<p>${renderInlineMarkdownHtml(paragraphLines.join(' '))}</p>`);
+  }
+
+  return blocks.join('');
 }
 
 function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
@@ -128,6 +318,44 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
       continue;
     }
 
+    if (isMarkdownTableRow(line) && isMarkdownTableDivider(lines[i + 1] || '')) {
+      const headers = parseMarkdownTableRow(line);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && isMarkdownTableRow(lines[i]) && !isMarkdownTableDivider(lines[i])) {
+        rows.push(parseMarkdownTableRow(lines[i]));
+        i += 1;
+      }
+
+      blocks.push(
+        <div key={`table-${i}`} className="my-7 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                {headers.map((header, index) => (
+                  <th key={`${header}-${index}`} className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-gray-500">
+                    {renderInlineMarkdown(header)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`} className="align-top">
+                  {headers.map((header, cellIndex) => (
+                    <td key={`${header}-${rowIndex}-${cellIndex}`} className="px-4 py-3 text-[15px] font-medium leading-7 text-gray-700">
+                      {renderInlineMarkdown(row[cellIndex] || '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
     if (/^\s*-\s+/.test(line)) {
       const items = [];
       while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
@@ -144,11 +372,36 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
       continue;
     }
 
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        const firstLine = lines[i].replace(/^\s*\d+\.\s+/, '').trim();
+        const itemLines = [firstLine];
+        i += 1;
+        while (i < lines.length) {
+          const next = lines[i].trim();
+          if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*[-\d]+\.\s+/.test(next) || /^\s*-\s+/.test(next) || isMarkdownTableRow(next)) break;
+          itemLines.push(next);
+          i += 1;
+        }
+        items.push(itemLines.join(' '));
+        if (!lines[i]?.trim()) i += 1;
+      }
+      blocks.push(
+        <ol key={`ol-${i}`} className="my-5 list-decimal space-y-3 pl-6 text-[15px] leading-8 text-gray-700 marker:font-black marker:text-brand-crimson">
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
     const paragraphLines = [line];
     i += 1;
     while (i < lines.length) {
       const next = lines[i].trim();
-      if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*-\s+/.test(next)) break;
+      if (!next || /^##\s+/.test(next) || /^###\s+/.test(next) || /^\s*-\s+/.test(next) || /^\s*\d+\.\s+/.test(next) || isMarkdownTableRow(next)) break;
       paragraphLines.push(next);
       i += 1;
     }
@@ -206,8 +459,10 @@ export default function BlogLibrary() {
         reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]
       ));
       setSelected((prev) => {
-        if (prev && nextBlogs.some((item) => item._id === prev._id)) return prev;
-        return reset ? (nextBlogs[0] || null) : (prev || nextBlogs[0] || null);
+        if (prev?._id) {
+          return nextBlogs.find((item) => item._id === prev._id) || prev;
+        }
+        return nextBlogs[0] || null;
       });
       setBlogPage(page);
       setBlogHasMore(page < Number(data.pages || page));
@@ -230,8 +485,10 @@ export default function BlogLibrary() {
         reset ? nextSocial : [...prev, ...nextSocial.filter((item) => !prev.some((existing) => existing._id === item._id))]
       ));
       setSelectedSocial((prev) => {
-        if (prev && nextSocial.some((item) => item._id === prev._id)) return prev;
-        return reset ? (nextSocial[0] || null) : (prev || nextSocial[0] || null);
+        if (prev?._id) {
+          return nextSocial.find((item) => item._id === prev._id) || prev;
+        }
+        return nextSocial[0] || null;
       });
       setSocialPage(page);
       setSocialHasMore(page < Number(data.pages || page));
@@ -244,13 +501,11 @@ export default function BlogLibrary() {
 
   useEffect(() => {
     if (mode === 'blogs') {
-      if (cachedLibraryState?.items?.length && !query) return;
       loadBlogs({ page: 1, reset: true });
       return;
     }
-    if (cachedLibraryState?.socialItems?.length && !query) return;
     loadSocial({ page: 1, reset: true });
-  }, [cachedLibraryState?.items?.length, cachedLibraryState?.socialItems?.length, loadBlogs, loadSocial, mode, query]);
+  }, [loadBlogs, loadSocial, mode]);
 
   useEffect(() => {
     safeSessionSet(cacheKey, {
@@ -265,6 +520,21 @@ export default function BlogLibrary() {
       socialHasMore
     });
   }, [blogHasMore, blogPage, cacheKey, items, mode, selected, selectedSocial, socialHasMore, socialPage, socialItems]);
+
+  useEffect(() => {
+    const handleContentChanged = (event) => {
+      const scope = event.detail?.scope || '';
+      if (!scope || scope === 'blogs') {
+        loadBlogs({ page: 1, reset: true });
+      }
+      if (!scope || scope === 'social') {
+        loadSocial({ page: 1, reset: true });
+      }
+    };
+
+    window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+    return () => window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
+  }, [loadBlogs, loadSocial]);
 
   const blogLoadMoreRef = useInfiniteScroll({
     enabled: mode === 'blogs',
@@ -354,14 +624,45 @@ export default function BlogLibrary() {
 
   const copyBlogPost = useCallback(async () => {
     if (!selected) return;
-    const parts = [
+    const plainParts = [
       selected.title || '',
       selected.excerpt || '',
-      selected.bodyMarkdown || ''
+      markdownToPlainText(selected.bodyMarkdown || '', selected.title || '')
     ].filter(Boolean);
+    const plainText = plainParts.join('\n\n');
+    const html = `
+      <article>
+        <style>
+          article { color: #1f2937; font-family: Arial, sans-serif; line-height: 1.7; }
+          h1 { color: #111827; font-size: 30px; line-height: 1.2; margin: 0 0 18px; }
+          h2 { color: #111827; font-size: 22px; margin: 30px 0 12px; }
+          h3 { color: #111827; font-size: 18px; margin: 24px 0 10px; }
+          p { margin: 12px 0; }
+          blockquote { border-left: 4px solid #D11243; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
+          ul, ol { margin: 12px 0 18px 24px; padding: 0; }
+          li { margin: 6px 0; }
+          table { border-collapse: collapse; margin: 18px 0; width: 100%; }
+          th, td { border: 1px solid #d1d5db; padding: 9px 12px; text-align: left; vertical-align: top; }
+          th { background: #f3f4f6; color: #374151; font-weight: 700; }
+          a { color: #D11243; }
+        </style>
+        ${selected.title ? `<h1>${escapeHtml(selected.title)}</h1>` : ''}
+        ${selected.excerpt ? `<blockquote>${renderInlineMarkdownHtml(selected.excerpt)}</blockquote>` : ''}
+        ${markdownToHtml(selected.bodyMarkdown || '', selected.title || '')}
+      </article>
+    `;
 
     try {
-      await navigator.clipboard.writeText(parts.join('\n\n'));
+      if (navigator.clipboard.write && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' })
+          })
+        ]);
+      } else {
+        await navigator.clipboard.writeText(plainText);
+      }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch (err) {
@@ -730,7 +1031,7 @@ export default function BlogLibrary() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
                       <div>
                         <div className="text-sm font-black text-gray-900">Admin</div>
-                        <div className="text-xs font-semibold text-gray-400">LinkedIn draft</div>
+                        <div className="text-xs font-semibold text-gray-400">LinkedIn post</div>
                       </div>
                     </div>
                     <div className="whitespace-pre-wrap text-[15px] font-medium leading-loose text-gray-800">{selectedSocial.postText}</div>

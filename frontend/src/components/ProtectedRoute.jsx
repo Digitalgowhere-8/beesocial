@@ -8,6 +8,9 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
 
   if (loading) return <Loader label="Authenticating" />;
   if (!user) return <Navigate to="/login" state={{ from: loc }} replace />;
+  if (isSuperAdmin && (loc.pathname.startsWith('/dashboard') || loc.pathname.startsWith('/intel-desk'))) {
+    return <Navigate to="/admin" replace />;
+  }
   const memberHasFetchOrSchedule = user?.access?.canFetch === true || user?.access?.canUseScheduler === true;
   if (requireAdmin && !isAdmin && !memberHasFetchOrSchedule) return <Navigate to="/dashboard" replace />;
   const accessValue = user?.access?.[requireAccess];

@@ -1,8 +1,7 @@
 import { memo } from 'react';
 import { Bookmark, Check, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useAuth } from '../context/AuthContext';
-import { getDashboardAppearance, scoreBandForValue, sourceTrustTone } from '../utils/feedTheme';
+import { sourceTrustTone } from '../utils/feedTheme';
 
 const TYPE_STYLES = {
   news:       { label: 'News Articles' },
@@ -80,12 +79,8 @@ function ArticleCard({
   saving = false,
   adminActions = null,
 }) {
-  const { uiSettings } = useAuth();
-  const appearance = getDashboardAppearance(uiSettings);
-  const topicTheme = appearance.topicColors[item.type] || appearance.topicColors.news;
-  const typeStyle = { ...(TYPE_STYLES[item.type] || TYPE_STYLES.news), ...topicTheme };
+  const typeStyle = TYPE_STYLES[item.type] || TYPE_STYLES.news;
   const score = Math.round(Number(item.relevanceScore || 0));
-  const scoreBand = scoreBandForValue(score, appearance);
   const effectiveDate = item.fetchedAt || item.publishedAt;
   const when = effectiveDate
     ? formatDistanceToNow(new Date(effectiveDate), { addSuffix: true })
@@ -97,12 +92,12 @@ function ArticleCard({
   const region = item.region || '';
   const compactMetaPillClass = 'inline-flex min-w-0 items-center gap-1.5 rounded-xl bg-[#f8fafc] px-3 py-2 text-[11px] font-semibold text-[#6b7280] ring-1 ring-[#e8edf3]';
   const compactCardShell = compact
-    ? 'rounded-[26px] bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(255,247,250,0.96))] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4'
-    : 'rounded-[22px] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,251,0.94))] p-4 sm:p-5';
+    ? 'rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,249,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4'
+    : 'rounded-[22px] bg-white p-4 sm:p-5';
   const source = item.source || sourceHost(item.url) || 'Unknown source';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
-  const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
+  const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate');
   const sourceCredibilityLabel = String(item.sourceCredibility || 'moderate').toUpperCase();
   const compactScoreOnlyHeader = compact && hideTypeLabel;
   const compactCategoryBlockClass = compactScoreOnlyHeader
@@ -164,7 +159,7 @@ function ArticleCard({
         willChange: 'transform',
       }}
     >
-      {!compact && <div className="absolute left-0 top-0 h-full w-1 opacity-90" style={{ background: typeStyle.accent }} />}
+      {!compact && <div className="absolute left-0 top-0 h-full w-1 bg-brand-crimson opacity-90" />}
       <div
         className={[
           'flex gap-3',
@@ -179,10 +174,9 @@ function ArticleCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span
               className={[
-                'inline-flex items-center font-black uppercase',
+                'inline-flex items-center border border-gray-200 bg-white font-black uppercase text-brand-crimson',
                 compact ? 'rounded-lg px-3 py-1.5 text-[11px] tracking-[0.08em]' : 'rounded-md px-2.5 py-1 text-[10px] tracking-wider',
               ].join(' ')}
-              style={{ color: typeStyle.text, background: typeStyle.soft, border: `1px solid ${typeStyle.border}` }}
             >
               {typeStyle.label}
             </span>
@@ -193,10 +187,9 @@ function ArticleCard({
           {score > 0 && (
             <span
               className={[
-                'font-black tracking-wide',
+                'border border-gray-200 bg-white font-black tracking-wide text-gray-950',
                 compact ? 'rounded-xl px-3 py-1.5 text-[12px]' : 'rounded-md px-2 py-1 text-[10px]',
               ].join(' ')}
-              style={{ color: scoreBand.text, background: scoreBand.bg, border: `1px solid ${scoreBand.border}` }}
               title="Relevance score"
             >
               {score}
@@ -293,7 +286,7 @@ function ArticleCard({
         <div className={compact ? 'mb-4 hidden' : 'mb-3'} />
         <div
           className={[
-            'rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white',
+            'rounded-2xl bg-gray-50 p-2 ring-1 ring-gray-100 transition-colors group-hover:bg-white',
             'block'
           ].join(' ')}
         >
@@ -312,7 +305,7 @@ function ArticleCard({
           >
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: '#ffffffcc', color: sourceTone.icon }}
+              style={{ background: '#ffffff', color: sourceTone.icon }}
             >
               <Globe size={13} />
             </span>
@@ -330,7 +323,7 @@ function ArticleCard({
                 {compact && (
                   <span
                     className="inline-flex shrink-0 items-center justify-center self-center rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider"
-                    style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
+                    style={{ background: '#ffffff', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
                   >
                     {sourceCredibilityLabel}
                   </span>
@@ -344,7 +337,7 @@ function ArticleCard({
                   ? 'hidden'
                   : 'hidden sm:inline-flex items-center justify-center px-2 py-1 text-[9px] tracking-wider'
               ].join(' ')}
-              style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
+              style={{ background: '#ffffff', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
             >
               {sourceCredibilityLabel}
             </span>

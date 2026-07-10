@@ -6,7 +6,7 @@ const socialPostSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     sourceArticleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Article', index: true },
     platform: { type: String, enum: ['linkedin', 'instagram', 'facebook'], default: 'linkedin', index: true },
-    status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft', index: true },
+    status: { type: String, enum: ['draft', 'review', 'published', 'archived'], default: 'published', index: true },
     selectedTopic: { type: String, default: '', trim: true, maxlength: 300 },
     postText: { type: String, required: true, maxlength: 10000 },
     hashtags: [{ type: String, trim: true, maxlength: 80 }],

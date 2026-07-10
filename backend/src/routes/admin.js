@@ -23,6 +23,7 @@ const {
 } = require('../services/platformFetchService');
 const { cleanupAnalyticsRetention, getDatabaseHealthSummary } = require('../services/storageMaintenance');
 const { buildAdminBroadcastEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { sendWelcomeEmailOnce } = require('../services/welcomeEmailService');
 const { softDeleteUser, cleanupDeletedUsers, graceDays } = require('../services/userDeletionService');
 const { latestUsageResetAt, effectiveMonthlyStart, startOfMonth } = require('../utils/usageReset');
 const { publishTenantEvent, publishGlobalEvent, tenantKeyFor } = require('../utils/realtime');
@@ -1159,7 +1160,7 @@ router.get('/settings', requireRole('super_admin'), asyncHandler(async (_req, re
 }));
 
 router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res) => {
-  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'maintenanceMode', 'sourceTrustMapping', 'dashboardAppearance'];
+  const allowed = ['aiModel', 'aiSummary', 'aiCategory', 'contentStudioAi', 'maintenanceMode', 'sourceTrustMapping'];
   const patch = {};
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
@@ -1167,6 +1168,20 @@ router.put('/settings', requireRole('super_admin'), asyncHandler(async (req, res
     }
   }
   const settings = await saveSystemSettings(patch);
+  const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
+  res.json({
+    settings,
+    sourceTrust: {
+      registry: sourceRegistry,
+      groups: groupRegistryByCredibility(sourceRegistry)
+    }
+  });
+}));
+
+router.put('/settings/source-trust', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const settings = await saveSystemSettings({
+    sourceTrustMapping: req.body?.sourceTrustMapping || {}
+  });
   const sourceRegistry = await sourceRegistryForSettings(settings.sourceTrustMapping);
   res.json({
     settings,
@@ -1442,6 +1457,12 @@ router.post('/users', asyncHandler(async (req, res) => {
   if (role === 'admin' && !user.tenantAdminId) {
     user.tenantAdminId = user._id;
     await user.save();
+  }
+
+  try {
+    await sendWelcomeEmailOnce(user, { createdByName: req.user.name || req.user.email || 'your admin' });
+  } catch (sendError) {
+    console.warn('[admin] welcome email failed:', sendError.message);
   }
 
   res.status(201).json({ user: user.toPublicJSON() });

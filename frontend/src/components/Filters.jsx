@@ -324,7 +324,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
                   onFocus={handleFocus} onBlur={handleBlur}>
                   <option value="">All</option>
                   <option value="true">Published</option>
-                  <option value="false">Draft</option>
+                  <option value="false">Review</option>
                 </select>
               </div>
             )}

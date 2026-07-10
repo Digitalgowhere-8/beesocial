@@ -201,6 +201,82 @@ function buildPasswordResetEmail({ name, resetUrl, expiresMinutes }) {
   return { subject, text, html };
 }
 
+function buildWelcomeEmail({ name, loginUrl, accountStatus = 'active', role = 'user', company = '', createdByName = '' } = {}) {
+  const brandName = inferBrandName();
+  const brandLogoUrl = inferBrandLogoUrl();
+  const safeName = escapeHtml(name || 'there');
+  const safeBrandName = escapeHtml(brandName);
+  const safeBrandLogoUrl = isPublicHttpUrl(brandLogoUrl) ? escapeHtml(brandLogoUrl) : '';
+  const safeLoginUrl = loginUrl ? escapeHtml(loginUrl) : '';
+  const safeCompany = escapeHtml(company || '');
+  const safeCreator = escapeHtml(createdByName || 'your admin');
+  const isPending = accountStatus === 'pending';
+  const roleLabel = role === 'admin' ? 'admin' : role === 'super_admin' ? 'super admin' : 'member';
+  const subject = isPending ? `Welcome to ${brandName} - approval pending` : `Welcome to ${brandName}`;
+  const preview = isPending
+    ? 'Your account has been received and is waiting for approval.'
+    : 'Your account is ready. You can sign in and start using your workspace.';
+  const bodyLines = isPending
+    ? [
+        `Your ${brandName} account has been created and is currently waiting for super admin approval.`,
+        'Once approved, you will be able to sign in and start using your workspace.'
+      ]
+    : [
+        `Your ${brandName} ${roleLabel} account is ready${company ? ` for ${company}` : ''}.`,
+        `It was created by ${createdByName || 'your admin'}. You can now sign in and begin using your workspace.`,
+        'For security, use the password shared with you by your admin or reset your password from the login page.'
+      ];
+  const supportLine = supportSignature();
+
+  const text = [
+    `Hi ${name || 'there'},`,
+    '',
+    ...bodyLines,
+    '',
+    loginUrl ? `Sign in: ${loginUrl}` : '',
+    '',
+    supportLine
+  ].filter(Boolean).join('\n');
+
+  const html = `
+    <style>
+      @media only screen and (max-width: 600px) {
+        .welcome-shell { padding: 20px 10px !important; }
+        .welcome-card { border-radius: 18px !important; }
+        .welcome-header { padding: 24px 18px 20px !important; }
+        .welcome-body { padding: 24px 18px 24px !important; }
+        .welcome-title { font-size: 30px !important; line-height: 1.16 !important; }
+        .welcome-cta { display:block !important;width:100% !important;box-sizing:border-box !important;text-align:center !important; }
+      }
+    </style>
+    <div class="welcome-shell" style="margin:0;padding:36px 16px;background:#f7f8fb;font-family:Roboto,Arial,sans-serif;color:#1f2937;">
+      <div class="welcome-card" style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #ead8de;border-radius:24px;overflow:hidden;box-shadow:0 20px 56px rgba(148,163,184,0.18);">
+        <div style="height:6px;background:linear-gradient(90deg,#f4c8d7 0%,#d11243 100%);"></div>
+        <div class="welcome-header" style="padding:30px 30px 24px;background:linear-gradient(180deg,#fffdfd 0%,#fbf4f6 100%);border-bottom:1px solid #efe4e8;">
+          ${safeBrandLogoUrl ? `<img src="${safeBrandLogoUrl}" alt="${safeBrandName} logo" style="display:block;height:34px;width:auto;max-width:190px;" />` : `<div style="font-size:20px;font-weight:800;color:#1f2937;">${safeBrandName}</div>`}
+          <div style="margin-top:14px;display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#ffffff;color:#b42358;border:1px solid #f0d3dd;font-size:10px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">Welcome</div>
+          <h1 class="welcome-title" style="margin:18px 0 0;font-size:36px;line-height:1.12;font-weight:800;letter-spacing:-0.02em;color:#1f2937;">${escapeHtml(preview)}</h1>
+        </div>
+        <div class="welcome-body" style="padding:32px 30px 30px;">
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.75;color:#3f4a5a;">Hi ${safeName},</p>
+          ${bodyLines.map((line) => `<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3f4a5a;">${escapeHtml(line)}</p>`).join('')}
+          ${safeCompany && !isPending ? `<div style="margin:20px 0;padding:14px 16px;border-radius:14px;background:#faf5f7;border:1px solid #efdde4;color:#475467;font-size:14px;line-height:1.6;"><strong style="color:#1f2937;">Workspace:</strong> ${safeCompany}<br /><strong style="color:#1f2937;">Created by:</strong> ${safeCreator}</div>` : ''}
+          ${safeLoginUrl ? `
+            <div style="margin:26px 0 8px;">
+              <a class="welcome-cta" href="${safeLoginUrl}" style="display:inline-block;padding:13px 22px;border-radius:14px;background:linear-gradient(135deg,#d11243 0%,#b0123e 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;box-shadow:0 12px 24px rgba(209,18,67,0.18);">${isPending ? 'Open login page' : 'Sign in'}</a>
+            </div>
+          ` : ''}
+          <div style="margin-top:30px;border-top:1px solid #ece7ea;padding-top:18px;font-size:12px;line-height:1.8;color:#8a94a6;">
+            ${escapeHtml(supportLine)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return { subject, text, html };
+}
+
 function buildAdminBroadcastEmail({ heading, preview, message, ctaLabel, ctaUrl, footerNote, recipientName }) {
   const brandName = inferBrandName();
   const brandLogoUrl = inferBrandLogoUrl();
@@ -309,6 +385,7 @@ function buildAdminBroadcastEmail({ heading, preview, message, ctaLabel, ctaUrl,
 module.exports = {
   buildAdminBroadcastEmail,
   buildPasswordResetEmail,
+  buildWelcomeEmail,
   isConfigured,
   sendEmail
 };
