@@ -6,6 +6,7 @@ const Plan = require('../models/Plan');
 const UserSession = require('../models/UserSession');
 const { protect, signToken, signRealtimeToken } = require('../middleware/auth');
 const { buildPasswordResetEmail, isConfigured: isEmailConfigured, sendEmail } = require('../services/emailService');
+const { sendWelcomeEmailOnce } = require('../services/welcomeEmailService');
 const { getSystemSettings, publicUiSettings } = require('../services/systemSettings');
 
 const router = express.Router();
@@ -242,6 +243,12 @@ router.post('/register', asyncHandler(async (req, res) => {
   user.tenantAdminId = user._id;
   await user.save();
 
+  try {
+    await sendWelcomeEmailOnce(user, { createdByName: 'the admin team' });
+  } catch (sendError) {
+    console.warn('[auth] welcome email failed:', sendError.message);
+  }
+
   res.status(201).json({
     message: 'Registration submitted. A super admin must approve your admin account before you can sign in.',
     user: await buildPublicUser(user)
@@ -269,6 +276,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const match = await user.matchPassword(value.password);
   if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
+  const isFirstLogin = !user.lastLoginAt;
   user.lastLoginAt = new Date();
   user.lastSeenAt = user.lastLoginAt;
   await user.save();
@@ -288,7 +296,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = signToken(user, session.sessionId);
   const settings = await getSystemSettings();
-  res.json({ token, user: await buildPublicUser(user), session: session.toObject(), uiSettings: publicUiSettings(settings) });
+  res.json({ token, user: await buildPublicUser(user), session: session.toObject(), uiSettings: publicUiSettings(settings), isFirstLogin });
 }));
 
 // POST /api/auth/forgot-password
@@ -474,6 +482,14 @@ router.patch('/me', protect, asyncHandler(async (req, res) => {
   }
 
   if (update.fetchSchedule) {
+    if (
+      update.fetchSchedule.enabled === true
+      && req.user.role !== 'super_admin'
+      && req.user.access?.canUseScheduler === false
+    ) {
+      return res.status(403).json({ message: 'Scheduler access is disabled for this account.' });
+    }
+
     const previousSignature = fetchScheduleSignature(req.user.fetchSchedule, req.user.timezone);
     const nextSignature = fetchScheduleSignature(update.fetchSchedule, update.timezone || req.user.timezone);
     if (previousSignature !== nextSignature) {

@@ -11,6 +11,7 @@ const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageRes
 const { publishTenantEvent } = require('../utils/realtime');
 const { acquire } = require('../utils/concurrencyGate');
 const genProgress = require('../services/generationProgress');
+const { getSystemSettings } = require('../services/systemSettings');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -102,6 +103,25 @@ function blogSourceContext(article = {}) {
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 12000);
+}
+
+function blockedTopicMatch({ article = {}, userInput = {}, filtering = {} }) {
+  const blockedTopics = Array.isArray(filtering.blockedTopics) ? filtering.blockedTopics : [];
+  if (!filtering.blockUnsafeContent || !blockedTopics.length) return '';
+  const haystack = [
+    article.title,
+    article.summary,
+    article.aiSummary,
+    article.category,
+    article.subcategory,
+    article.type,
+    JSON.stringify(userInput || {})
+  ].map((value) => String(value || '').toLowerCase()).join('\n');
+
+  return blockedTopics.find((topic) => {
+    const normalized = String(topic || '').trim().toLowerCase();
+    return normalized && haystack.includes(normalized);
+  }) || '';
 }
 
 function limitReachedPayload({ message, limitType, used, limit }) {
@@ -224,7 +244,7 @@ const generateSchema = Joi.object({
   articleId: Joi.string().required(),
   style: styleSchema.default({}),
   keywords: Joi.array().items(Joi.string().max(80)).default([]),
-  status: Joi.string().valid('draft', 'review').default('draft')
+  status: Joi.string().valid('review', 'published').default('review')
 });
 
 const linkedinOptionsSchema = Joi.object({
@@ -256,7 +276,7 @@ const generateLinkedInSchema = Joi.object({
 const socialPostCreateSchema = Joi.object({
   sourceArticleId: Joi.string().allow('', null),
   platform: Joi.string().valid('linkedin', 'instagram', 'facebook').default('linkedin'),
-  status: Joi.string().valid('draft', 'published', 'archived').default('draft'),
+  status: Joi.string().valid('review', 'published', 'archived').default('published'),
   selectedTopic: Joi.string().allow('').max(300),
   postText: Joi.string().min(2).max(10000).required(),
   hashtags: Joi.array().items(Joi.string().max(80)).default([]),
@@ -271,7 +291,7 @@ const updateSchema = Joi.object({
   title: Joi.string().min(2).max(220),
   excerpt: Joi.string().allow('').max(600),
   bodyMarkdown: Joi.string().min(10).max(30000),
-  status: Joi.string().valid('draft', 'review', 'published', 'archived'),
+  status: Joi.string().valid('review', 'published', 'archived'),
   style: styleSchema,
   keywords: Joi.array().items(Joi.string().max(80))
 });
@@ -335,6 +355,15 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const tenantId = tenantAdminId(req.user);
+  const systemSettings = await getSystemSettings();
+  const contentStudioAi = systemSettings.contentStudioAi || {};
+  if (contentStudioAi.enabled === false) {
+    return res.status(503).json({ message: 'Content Studio AI generation is currently disabled by the super admin.' });
+  }
+  const blockedTopic = blockedTopicMatch({ article, userInput: { style: value.style, keywords: value.keywords }, filtering: contentStudioAi.filtering });
+  if (blockedTopic) {
+    return res.status(400).json({ message: `This topic is blocked by Content Studio AI policy: ${blockedTopic}` });
+  }
 
   // Reject if a generation is already running for this tenant
   const existing = genProgress.getGeneration(String(tenantId));
@@ -358,7 +387,8 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
         article,
         style: value.style,
         keywords: value.keywords,
-        company: { name: userObj.company || userObj.name }
+        company: { name: userObj.company || userObj.name },
+        aiConfig: { ...contentStudioAi.blog, filtering: contentStudioAi.filtering }
       });
 
       // Check again after the AI call returns
@@ -368,6 +398,7 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
 
       const slug = await uniqueSlug(tenantId, generated.title);
 
+      const generatedStatus = contentStudioAi.blog?.requireReview ? 'review' : 'published';
       const item = await BlogPost.create({
         tenantAdminId: tenantId,
         createdBy: userObj._id,
@@ -376,7 +407,7 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
         slug,
         excerpt: generated.excerpt,
         bodyMarkdown: generated.bodyMarkdown,
-        status: value.status,
+        status: generatedStatus,
         sourceSnapshot: {
           title: article.title,
           summary: article.summary || article.aiSummary || '',
@@ -398,8 +429,8 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
         keywords: generated.suggestedKeywords || value.keywords,
         language: article.language || 'en',
         model: generated.model || '',
-        generationPrompt: JSON.stringify({ style: value.style, keywords: value.keywords }),
-        publishedAt: value.status === 'published' ? new Date() : undefined
+        generationPrompt: JSON.stringify({ style: value.style, keywords: value.keywords, aiConfig: contentStudioAi.blog }),
+        publishedAt: generatedStatus === 'published' ? new Date() : undefined
       });
 
       publishTenantEvent(String(tenantId), 'content', {
@@ -431,6 +462,15 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const tenantId = tenantAdminId(req.user);
+  const systemSettings = await getSystemSettings();
+  const contentStudioAi = systemSettings.contentStudioAi || {};
+  if (contentStudioAi.enabled === false) {
+    return res.status(503).json({ message: 'Content Studio AI generation is currently disabled by the super admin.' });
+  }
+  const blockedTopic = blockedTopicMatch({ article, userInput: value.options, filtering: contentStudioAi.filtering });
+  if (blockedTopic) {
+    return res.status(400).json({ message: `This topic is blocked by Content Studio AI policy: ${blockedTopic}` });
+  }
 
   // Reject if a generation is already running for this tenant
   const existingGen = genProgress.getGeneration(String(tenantId));
@@ -451,7 +491,8 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
       const generated = await generateLinkedInPost({
         article,
         options: value.options,
-        company: { name: userObj.company || userObj.name }
+        company: { name: userObj.company || userObj.name },
+        aiConfig: { ...contentStudioAi.linkedin, filtering: contentStudioAi.filtering }
       });
 
       if (genProgress.isCancelled(String(tenantId))) {
@@ -474,11 +515,18 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
       const resultPayload = {
         ...generated,
         sourceArticleId: article._id,
-        status: 'draft',
+        status: contentStudioAi.linkedin?.requireReview ? 'review' : 'published',
         platform: 'linkedin',
         saved: false,
         sourceSnapshot,
-        options: value.options
+        options: value.options,
+        reviewRequired: Boolean(contentStudioAi.linkedin?.requireReview),
+        aiControls: {
+          model: contentStudioAi.linkedin?.model || generated.model || '',
+          temperature: contentStudioAi.linkedin?.temperature,
+          maxWords: contentStudioAi.linkedin?.maxWords,
+          filtering: contentStudioAi.filtering || {}
+        }
       };
 
       genProgress.completeGeneration(String(tenantId), null, resultPayload);

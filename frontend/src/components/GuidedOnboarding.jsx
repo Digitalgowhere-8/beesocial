@@ -68,7 +68,7 @@ function stepListForUser(user) {
       route: '/intel-desk',
       selector: '[data-tour="intel-feed"]',
       title: 'Signal cards',
-      description: 'Each card is a usable signal. Review the summary, open the source, save important items, or drag a signal into the Blog or LinkedIn action area to start generating content from Intel Desk.'
+      description: 'Each card is a usable signal. Review the summary, open the source, save important items, then use Blog or LinkedIn on mobile, or drag a signal on desktop, to start content from Intel Desk.'
     },
     ...(canUseContentRepository ? [{
       id: 'nav-content-repository',
@@ -139,7 +139,7 @@ function stepListForUser(user) {
   steps.push({
     id: 'done',
     title: 'You are ready',
-    description: 'You can now explore signals, apply filters, personalize your setup, and use the admin area when needed. You can reopen this tour anytime from the profile menu.',
+    description: 'You can now explore signals, apply filters, personalise your setup, and use the admin area when needed. You can reopen this tour anytime from the profile menu.',
     cta: 'Finish'
   });
 
@@ -193,12 +193,18 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
       }
       el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
       const r = el.getBoundingClientRect();
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const rawTop = r.top - SPOTLIGHT_PADDING;
+      const rawLeft = r.left - SPOTLIGHT_PADDING;
+      const rawWidth = r.width + SPOTLIGHT_PADDING * 2;
+      const rawHeight = r.height + SPOTLIGHT_PADDING * 2;
       if (!cancelled) {
         setSpotlightRect({
-          top: r.top - SPOTLIGHT_PADDING,
-          left: r.left - SPOTLIGHT_PADDING,
-          width: r.width + SPOTLIGHT_PADDING * 2,
-          height: r.height + SPOTLIGHT_PADDING * 2
+          top: Math.max(8, Math.min(rawTop, Math.max(8, viewportHeight - rawHeight - 8))),
+          left: Math.max(8, Math.min(rawLeft, Math.max(8, viewportWidth - rawWidth - 8))),
+          width: Math.min(rawWidth, Math.max(0, viewportWidth - 16)),
+          height: Math.min(rawHeight, Math.max(0, viewportHeight - 16))
         });
       }
     };
@@ -224,7 +230,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px]"
@@ -245,11 +251,11 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
       ) : null}
 
       {/* Modal card — always centered, never clips */}
-      <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl border border-white/20 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)] sm:max-w-[440px]"
-        style={{ maxHeight: 'calc(100dvh - 48px)' }}>
+      <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-[24px] border border-white/20 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)] sm:max-w-[440px] sm:rounded-3xl"
+        style={{ maxHeight: 'calc(100dvh - 24px)' }}>
 
         {/* Gradient top decoration */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-3xl bg-[radial-gradient(circle_at_20%_0%,rgba(225,29,72,0.13),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.10),transparent_50%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-[24px] bg-[radial-gradient(circle_at_20%_0%,rgba(225,29,72,0.13),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.10),transparent_50%)] sm:rounded-t-3xl" />
 
         {/* Close button */}
         <button
@@ -261,7 +267,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
         </button>
 
         {/* ── Scrollable content ── */}
-        <div className="relative flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-2 sm:px-6 sm:pt-6">
+        <div className="relative flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
 
           {/* Badge */}
           <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-rose-600">
@@ -275,7 +281,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 Step {stepIndex + 1} of {steps.length}
               </p>
-              <h2 className="mt-1.5 text-2xl font-black leading-tight tracking-tight text-slate-900 sm:text-[1.7rem]">
+              <h2 className="mt-1.5 text-xl font-black leading-tight tracking-tight text-slate-900 sm:text-[1.7rem]">
                 {step.title}
               </h2>
             </div>
@@ -313,14 +319,14 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
             {/* Animated drag-to-generate flow (intel-feed step) */}
             {showAnimatedFlow ? (
               <div className="mt-4 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/80 to-slate-50/80 p-3.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2 shadow-sm">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Intel signal</div>
-                    <div className="mt-0.5 text-sm font-black text-slate-800">Drag this card</div>
+                    <div className="mt-0.5 text-sm font-black text-slate-800">Use this signal</div>
                   </div>
-                  <div className="flex items-center gap-2 text-rose-600">
+                  <div className="flex items-center justify-center gap-2 text-rose-600">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                    <span className="text-[11px] font-black uppercase tracking-widest">Drop to generate</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest">Tap or drop to generate</span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-3">
@@ -339,15 +345,15 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
         </div>
 
         {/* ── Sticky footer — always visible ── */}
-        <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 sm:px-6">
-          <div className="flex items-center justify-between gap-3">
+        <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: back or label */}
             <div className="flex items-center gap-3">
               {!isFirst ? (
                 <button
                   type="button"
                   onClick={prevStep}
-                  className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900"
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 sm:w-auto"
                 >
                   <ChevronLeft size={14} />
                   Back
@@ -360,12 +366,12 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
             </div>
 
             {/* Right: skip + next */}
-            <div className="flex items-center gap-2">
+            <div className={isLast ? 'grid items-center gap-2 sm:flex' : 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-center gap-2 sm:flex'}>
               {!isLast ? (
                 <button
                   type="button"
                   onClick={() => onClose?.(false)}
-                  className="text-[12px] font-black uppercase tracking-[0.14em] text-slate-400 transition hover:text-slate-700"
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-2xl px-2 text-[12px] font-black uppercase tracking-[0.12em] text-slate-400 transition hover:text-slate-700"
                 >
                   Skip tour
                 </button>
@@ -373,7 +379,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
               <button
                 type="button"
                 onClick={nextStep}
-                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 px-5 py-2.5 text-[13px] font-black text-white shadow-[0_8px_24px_rgba(225,29,72,0.28)] transition hover:brightness-105 active:scale-[0.98]"
+                className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 px-4 py-2.5 text-[13px] font-black text-white shadow-[0_8px_24px_rgba(225,29,72,0.28)] transition hover:brightness-105 active:scale-[0.98] sm:px-5"
               >
                 {isLast ? <Check size={14} /> : <ArrowRight size={14} />}
                 {step.cta || (isLast ? 'Finish' : 'Next step')}

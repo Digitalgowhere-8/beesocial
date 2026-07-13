@@ -46,7 +46,14 @@ function minutesInZone(date, timezone) {
   return Number(parts.hour) * 60 + Number(parts.minute);
 }
 
+function hasSchedulerAccess(user = {}) {
+  if (user.role === 'super_admin') return true;
+  return user.access?.canUseScheduler !== false;
+}
+
 function shouldRunNow(user, now = new Date()) {
+  if (!hasSchedulerAccess(user)) return false;
+
   const schedule = user.fetchSchedule || {};
   if (!schedule.enabled) return false;
 
@@ -165,7 +172,11 @@ async function runDueSchedules() {
   const candidates = await User.find({
     isActive: true,
     role: { $in: ['admin', 'super_admin'] },
-    'fetchSchedule.enabled': true
+    'fetchSchedule.enabled': true,
+    $or: [
+      { role: 'super_admin' },
+      { 'access.canUseScheduler': { $ne: false } }
+    ]
   }).limit(parseInt(process.env.SCHEDULE_SCAN_LIMIT, 10) || 200);
 
   const now = new Date();

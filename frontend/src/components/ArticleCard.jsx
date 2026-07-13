@@ -1,8 +1,7 @@
 import { memo } from 'react';
-import { Bookmark, Check, ExternalLink, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
+import { Bookmark, Check, Clock3, Folder, Globe, MapPin, Tag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useAuth } from '../context/AuthContext';
-import { getDashboardAppearance, scoreBandForValue, sourceTrustTone } from '../utils/feedTheme';
+import { sourceTrustTone } from '../utils/feedTheme';
 
 const TYPE_STYLES = {
   news:       { label: 'News Articles' },
@@ -10,18 +9,6 @@ const TYPE_STYLES = {
   competitor: { label: 'Competitor Intel' },
   evergreen:  { label: 'Evergreen Topics' },
 };
-
-function formatDateTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-SG', {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-}
 
 function sourceHost(url) {
   const value = String(url || '').trim();
@@ -37,6 +24,18 @@ function sourceHost(url) {
       return '';
     }
   }
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-SG', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function articleDescription(item = {}) {
@@ -80,12 +79,8 @@ function ArticleCard({
   saving = false,
   adminActions = null,
 }) {
-  const { uiSettings } = useAuth();
-  const appearance = getDashboardAppearance(uiSettings);
-  const topicTheme = appearance.topicColors[item.type] || appearance.topicColors.news;
-  const typeStyle = { ...(TYPE_STYLES[item.type] || TYPE_STYLES.news), ...topicTheme };
+  const typeStyle = TYPE_STYLES[item.type] || TYPE_STYLES.news;
   const score = Math.round(Number(item.relevanceScore || 0));
-  const scoreBand = scoreBandForValue(score, appearance);
   const effectiveDate = item.fetchedAt || item.publishedAt;
   const when = effectiveDate
     ? formatDistanceToNow(new Date(effectiveDate), { addSuffix: true })
@@ -97,18 +92,54 @@ function ArticleCard({
   const region = item.region || '';
   const compactMetaPillClass = 'inline-flex min-w-0 items-center gap-1.5 rounded-xl bg-[#f8fafc] px-3 py-2 text-[11px] font-semibold text-[#6b7280] ring-1 ring-[#e8edf3]';
   const compactCardShell = compact
-    ? 'rounded-[26px] bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(255,247,250,0.96))] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4'
-    : 'rounded-[22px] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,251,0.94))] p-4 sm:p-5';
+    ? 'rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,249,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4'
+    : 'rounded-[22px] bg-white p-4 sm:p-5';
   const source = item.source || sourceHost(item.url) || 'Unknown source';
-  const opportunityType = item.opportunityType ? String(item.opportunityType).replace(/_/g, ' ') : '';
   const host = sourceHost(item.url);
   const sourceDomain = host || sourceHost(source) || source || item.url || 'Unknown source';
-  const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate', appearance);
+  const sourceTone = sourceTrustTone(item.sourceCredibility || 'moderate');
   const sourceCredibilityLabel = String(item.sourceCredibility || 'moderate').toUpperCase();
   const compactScoreOnlyHeader = compact && hideTypeLabel;
   const compactCategoryBlockClass = compactScoreOnlyHeader
-    ? '-mt-10 mb-3 flex flex-col gap-2 pr-14'
+    ? 'mb-3 flex flex-col gap-2 pr-14'
     : 'mb-3 flex flex-col gap-2';
+  const saveButtonClass = [
+    'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
+    compact ? 'h-9 w-9 rounded-xl px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
+    item.isSaved
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+      : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+    saving ? 'cursor-wait opacity-70' : ''
+  ].join(' ');
+  const saveActionButtonClass = [
+    'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-black transition-all',
+    item.isSaved
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+      : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
+    saving ? 'cursor-wait opacity-70' : ''
+  ].join(' ');
+  const showSaveInActionRow = Boolean(onSaveToggle && selectable);
+  const renderSaveButton = (className, showLabel = false) => (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSaveToggle(item);
+      }}
+      className={className}
+      aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
+      title={item.isSaved ? 'Remove from saved' : 'Save this article'}
+    >
+      {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
+      {showLabel ? (
+        <span>{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>
+      ) : (
+        !compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>
+      )}
+    </button>
+  );
 
   return (
     <article
@@ -117,23 +148,24 @@ function ArticleCard({
         'group relative isolate flex flex-col overflow-hidden font-sans fade-in',
         'transition-all duration-200 hover:-translate-y-0.5',
         compactCardShell,
-        selected ? 'ring-2 ring-brand-crimson/40' : '',
       ].join(' ')}
       style={{
-        boxShadow: '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
+        boxShadow: selected
+          ? '0 10px 30px rgba(15,23,42,0.06), inset 0 0 0 2px rgba(209,18,67,0.38)'
+          : '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
         contentVisibility: 'auto',
         containIntrinsicSize: compact ? '320px' : '380px',
         contain: 'layout paint style',
         willChange: 'transform',
       }}
     >
-      {!compact && <div className="absolute left-0 top-0 h-full w-1 opacity-90" style={{ background: typeStyle.accent }} />}
+      {!compact && <div className="absolute left-0 top-0 h-full w-1 bg-brand-crimson opacity-90" />}
       <div
         className={[
           'flex gap-3',
           compact
             ? compactScoreOnlyHeader
-              ? 'mb-1 justify-end'
+              ? 'absolute right-4 top-4 z-10 justify-end'
               : 'mb-4 items-start justify-between'
             : 'mb-3 items-start justify-between pl-3',
         ].join(' ')}
@@ -142,24 +174,22 @@ function ArticleCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span
               className={[
-                'inline-flex items-center font-black uppercase',
+                'inline-flex items-center border border-gray-200 bg-white font-black uppercase text-brand-crimson',
                 compact ? 'rounded-lg px-3 py-1.5 text-[11px] tracking-[0.08em]' : 'rounded-md px-2.5 py-1 text-[10px] tracking-wider',
               ].join(' ')}
-              style={{ color: typeStyle.text, background: typeStyle.soft, border: `1px solid ${typeStyle.border}` }}
             >
               {typeStyle.label}
             </span>
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex w-12 shrink-0 flex-col items-center gap-2">
           {score > 0 && (
             <span
               className={[
-                'font-black tracking-wide',
+                'border border-gray-200 bg-white font-black tracking-wide text-gray-950',
                 compact ? 'rounded-xl px-3 py-1.5 text-[12px]' : 'rounded-md px-2 py-1 text-[10px]',
               ].join(' ')}
-              style={{ color: scoreBand.text, background: scoreBand.bg, border: `1px solid ${scoreBand.border}` }}
               title="Relevance score"
             >
               {score}
@@ -177,14 +207,7 @@ function ArticleCard({
               className="mt-0.5 rounded border-gray-200 text-brand-crimson focus:ring-brand-crimson/30"
             />
           )}
-          {item.isSaved && !selectable && !compact && (
-            <span
-              className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100"
-              title="Saved"
-            >
-              <Check size={11} /> Saved
-            </span>
-          )}
+          {onSaveToggle && !showSaveInActionRow && renderSaveButton(saveButtonClass)}
         </div>
       </div>
 
@@ -253,46 +276,18 @@ function ArticleCard({
             </span>
           </div>
         ) : (
-          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <MetaPill icon={MapPin} title="Country or region">{[region, country].filter(Boolean).join(', ')}</MetaPill>
-            <MetaPill icon={Globe} title={`Source: ${source}`}>{source}</MetaPill>
-          </div>
-        )}
-        {(!compact && opportunityType) && (
-          <div className={['grid gap-2', compact ? 'mb-2 grid-cols-1 sm:grid-cols-2' : 'mb-2 grid-cols-1 sm:grid-cols-2'].join(' ')}>
-            {opportunityType && (
-              compact ? (
-                <span className={compactMetaPillClass} title="Opportunity type">
-                  <Tag size={12} className="shrink-0 text-[#c0c7d4]" />
-                  <span className="truncate">{opportunityType}</span>
-                </span>
-              ) : (
-                <MetaPill icon={Tag} title="Opportunity type">{opportunityType}</MetaPill>
-              )
-            )}
-          </div>
-        )}
-        {item.relevanceReason && !compact && (
-          <div
-            className="mb-3 rounded-xl px-3 py-2 text-[11px] font-semibold leading-snug"
-            style={{ background: scoreBand.bg, color: scoreBand.text, border: `1px solid ${scoreBand.border}` }}
-          >
-            {item.relevanceReason}
-          </div>
-        )}
-        <div className={compact ? 'mb-4 hidden' : 'mb-3'}>
-          {!compact && (
             <MetaPill icon={Clock3} title={updatedAt ? `Updated ${updatedAt}` : updatedLabel} relaxed>
               {updatedLabel}
             </MetaPill>
-          )}
-        </div>
+          </div>
+        )}
+        <div className={compact ? 'mb-4 hidden' : 'mb-3'} />
         <div
-            className={[
-            'rounded-2xl bg-gradient-to-br from-gray-50 to-white p-2 ring-1 ring-gray-100 transition-colors group-hover:from-white group-hover:to-white',
-            compact
-              ? 'grid grid-cols-[minmax(0,1fr)_44px] items-center gap-2'
-              : 'grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5'
+          className={[
+            'rounded-2xl bg-gray-50 p-2 ring-1 ring-gray-100 transition-colors group-hover:bg-white',
+            'block'
           ].join(' ')}
         >
           <a
@@ -301,7 +296,7 @@ function ArticleCard({
             rel="noopener noreferrer"
             className={[
               'min-w-0 items-center rounded-xl transition-all hover:bg-white/90',
-              compact ? 'grid grid-cols-[36px_minmax(0,1fr)_auto] gap-2 px-2 py-2' : 'flex gap-2 px-2 py-1.5'
+              compact ? 'grid grid-cols-[36px_minmax(0,1fr)] gap-2 px-2 py-2' : 'flex gap-2 px-2 py-1.5'
             ].join(' ')}
             title={sourceDomain}
             data-analytics-click={`Source domain open: ${item.title || host || 'Article'}`}
@@ -310,73 +305,43 @@ function ArticleCard({
           >
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: '#ffffffcc', color: sourceTone.icon }}
+              style={{ background: '#ffffff', color: sourceTone.icon }}
             >
               <Globe size={13} />
             </span>
             <span className={compact ? 'min-w-0' : 'min-w-0 flex-1'}>
-              <span className="block text-[9px] font-black uppercase tracking-wider" style={{ color: sourceTone.text }}>Source</span>
-              <span
-                className="block truncate text-[11px] font-black"
-                style={{ color: sourceTone.text }}
-              >
-                {sourceDomain}
+              <span className={compact ? 'flex items-center justify-between gap-2' : 'block'}>
+                <span
+                  className={[
+                    'min-w-0 block text-[11px] font-black',
+                    compact ? 'break-words leading-snug pr-2' : 'truncate'
+                  ].join(' ')}
+                  style={{ color: sourceTone.text }}
+                >
+                  {sourceDomain}
+                </span>
+                {compact && (
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center self-center rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider"
+                    style={{ background: '#ffffff', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
+                  >
+                    {sourceCredibilityLabel}
+                  </span>
+                )}
               </span>
             </span>
             <span
               className={[
-                'shrink-0 rounded-full font-black uppercase justify-self-end',
-                compact ? 'inline-flex items-center justify-center min-w-[58px] px-2 py-1 text-[9px] tracking-wider' : 'hidden sm:inline-flex px-2 py-1 text-[9px] tracking-wider'
+                'shrink-0 rounded-full font-black uppercase',
+                compact
+                  ? 'hidden'
+                  : 'hidden sm:inline-flex items-center justify-center px-2 py-1 text-[9px] tracking-wider'
               ].join(' ')}
-              style={{ background: '#ffffffcc', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
+              style={{ background: '#ffffff', color: sourceTone.text, border: `1px solid ${sourceTone.border}` }}
             >
               {sourceCredibilityLabel}
             </span>
           </a>
-          <div className="flex flex-wrap items-center gap-1.5 justify-end">
-            {onSaveToggle && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onSaveToggle(item);
-                }}
-                className={[
-                  'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
-                  compact ? 'h-9 w-9 rounded-xl px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
-                  item.isSaved
-                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                    : 'bg-white text-gray-500 ring-1 ring-gray-100 hover:bg-brand-pink/50 hover:text-brand-crimson',
-                  saving ? 'cursor-wait opacity-70' : ''
-                ].join(' ')}
-                aria-label={item.isSaved ? 'Remove from saved' : 'Save this article'}
-                title={item.isSaved ? 'Remove from saved' : 'Save this article'}
-              >
-                {item.isSaved ? <Check size={12} /> : <Bookmark size={12} />}
-                {!compact && <span className="hidden sm:inline">{saving ? 'Saving' : item.isSaved ? 'Saved' : 'Save'}</span>}
-              </button>
-            )}
-            {!compact && (
-              <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={[
-                'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-[11px] font-black uppercase tracking-wider ring-1 ring-gray-100 transition-all hover:bg-brand-pink/50',
-                'w-9 px-0 sm:w-auto sm:px-3'
-              ].join(' ')}
-              style={{ color: typeStyle.text }}
-              title="Open source article"
-              aria-label="Open source article"
-              data-analytics-click={`Source open: ${item.title || host || 'Article'}`}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <span className="hidden sm:inline">Source</span> <ExternalLink size={12} />
-              </a>
-            )}
-          </div>
         </div>
       </div>
 
@@ -386,9 +351,12 @@ function ArticleCard({
         </div>
       )}
 
-      {adminActions && (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pl-3 pt-3">
-          {adminActions}
+      {(showSaveInActionRow || adminActions) && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 sm:pl-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {adminActions}
+          </div>
+          {showSaveInActionRow ? renderSaveButton(saveActionButtonClass, true) : null}
         </div>
       )}
     </article>

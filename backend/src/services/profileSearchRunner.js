@@ -1,5 +1,6 @@
 const tavilyService = require('./tavilyService');
 const aiService = require('./aiService');
+const { getSystemSettings } = require('./systemSettings');
 const { hashUrl } = require('../utils/hash');
 const { CATEGORIES } = require('../config/categories');
 const { canonicalCountry, defaultSourceDomainsForCountry } = require('../config/fetchSources');
@@ -843,6 +844,8 @@ function articleMatchesSelection(profile = {}, ai = {}, article = {}) {
 
 async function runTopic(profile, topic, onProgress) {
   if (!profile.topicEnabled?.[topic]) return [];
+  const systemSettings = await getSystemSettings();
+  const aiConfig = { model: systemSettings.aiModel };
 
   const requests = buildTopicQueries(profile, topic);
   onProgress?.({
@@ -905,7 +908,7 @@ async function runTopic(profile, topic, onProgress) {
   for (const article of deduped.articles) {
     let ai = {};
     try {
-      ai = await aiService.classifyProfileRelevance({ article, profile, topic });
+      ai = await aiService.classifyProfileRelevance({ article, profile, topic, aiConfig });
     } catch (_err) {
       ai = {};
     }

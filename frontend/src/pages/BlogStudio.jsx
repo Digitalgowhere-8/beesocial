@@ -114,7 +114,6 @@ const DEFAULT_STYLE = {
   ctaUrl: '',
   cta: 'Contact us to discuss this update.',
   keyPoints: '',
-  competitorUrls: '',
   referenceUrls: '',
   includeFaq: true,
   includeStats: true
@@ -145,16 +144,29 @@ const BLOG_STEPS = [
   'Analyzing source topic & context...',
   'Synthesizing intelligence & key takeaways...',
   'Structuring outline & SEO heading layout...',
-  'Drafting blog sections & content blocks...',
+  'Writing blog sections & content blocks...',
   'Optimizing meta tags & target keywords...',
   'Polishing brand voice & readability...'
 ];
+
+const normalizeBlogStyle = (value = {}) => {
+  const mergedReferences = [value.referenceUrls, value.competitorUrls]
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .join('\n');
+  const { competitorUrls, ...rest } = value || {};
+  return {
+    ...DEFAULT_STYLE,
+    ...rest,
+    referenceUrls: mergedReferences || rest.referenceUrls || ''
+  };
+};
 
 const LINKEDIN_STEPS = [
   'Analyzing source topic intelligence...',
   'Extracting core points & statistics...',
   'Structuring post hook & template layout...',
-  'Drafting post paragraphs & tone...',
+  'Writing post paragraphs & tone...',
   'Applying spacing constraints & readability...',
   'Refining soft authority line & CTA details...'
 ];
@@ -195,7 +207,7 @@ export default function BlogStudio() {
   const [selectedArticle, setSelectedArticle] = useState(() => inboundState.article || cachedStudioState?.selectedArticle || null);
   const [selectedBlog, setSelectedBlog] = useState(cachedStudioState?.selectedBlog || null);
   const [socialPosts, setSocialPosts] = useState(cachedStudioState?.socialPosts || []);
-  const [style, setStyle] = useState(cachedStudioState?.style || DEFAULT_STYLE);
+  const [style, setStyle] = useState(() => normalizeBlogStyle(cachedStudioState?.style || DEFAULT_STYLE));
   const [keywords, setKeywords] = useState(cachedStudioState?.keywords || '');
   const [topicMeta, setTopicMeta] = useState(cachedStudioState?.topicMeta || EMPTY_META);
   const [topicFilters, setTopicFilters] = useState(cachedStudioState?.topicFilters || {
@@ -428,7 +440,7 @@ export default function BlogStudio() {
 
     if (!item) {
       if (lastError) throw lastError;
-      throw new Error('Generated draft is not ready yet. Please open Drafts & Publishing again.');
+      throw new Error('Generated content is not ready yet. Please open Review & Publishing again.');
     }
 
     setContentType('blog');
@@ -470,7 +482,7 @@ export default function BlogStudio() {
       await delay(750);
     }
 
-    throw new Error('Generation is taking too long. Please check Drafts & Publishing.');
+    throw new Error('Generation is taking too long. Please check Review & Publishing.');
   }, [setGenProgress]);
 
   // Listen to global generation progress updates to handle background success, failure or cancellation
@@ -535,7 +547,7 @@ export default function BlogStudio() {
                 api.post('/blogs/generation-clear').catch(() => {});
               })
               .catch((err) => {
-                setError(err.response?.data?.message || err.message || 'Failed to open generated draft');
+                setError(err.response?.data?.message || err.message || 'Failed to open generated content');
               })
               .finally(() => {
                 setGenerationFinalizing(false);
@@ -552,7 +564,7 @@ export default function BlogStudio() {
                 if (exists) {
                   return prev.map((b) => b._id === data.item._id ? data.item : b);
                 }
-                return [data.item, ...prev]; // PREPEND new drafts!
+                return [data.item, ...prev];
               });
               
               // Also update selected blog if it matches
@@ -721,9 +733,8 @@ export default function BlogStudio() {
     const shouldDeletePendingDraft = draftId && selectedBlog?._id === draftId && selectedBlog?.status === 'draft';
 
     if (shouldDeletePendingDraft) {
-      const confirmSave = window.confirm("You have unsaved changes. Do you want to save this blog draft before closing?");
+      const confirmSave = window.confirm("You have unsaved changes. Do you want to keep this blog in review before closing?");
       if (confirmSave) {
-        // Keeping the draft is as simple as clearing pendingDraftId so it doesn't get deleted!
         setPendingDraftId('');
         setDraftDrawerOpen(false);
         setDraftEditorOpen(false);
@@ -739,7 +750,7 @@ export default function BlogStudio() {
     try {
       await deleteBlogsInternal([draftId]);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not clear temporary draft');
+      setError(err.response?.data?.message || err.message || 'Could not clear temporary content');
     }
   }, [deleteBlogsInternal, pendingDraftId, selectedBlog?._id, selectedBlog?.status]);
 
@@ -756,9 +767,9 @@ export default function BlogStudio() {
     try {
       await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
-        style,
+        style: normalizeBlogStyle(style),
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
-        status: 'draft'
+        status: 'review'
       });
 
       const completed = await waitForGenerationCompletion('blog', ownerKey);
@@ -805,7 +816,7 @@ export default function BlogStudio() {
       setBlogs((prev) => prev.map((blog) => blog._id === data.item._id ? data.item : blog));
       emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'updated', id: data.item?._id || '' });
     } catch (err) {
-      setError(err.message || 'Draft save failed');
+      setError(err.message || 'Content save failed');
     } finally {
       setSavingDraft(false);
     }
@@ -893,7 +904,7 @@ export default function BlogStudio() {
       const payload = {
         sourceArticleId: linkedinOutput.sourceArticleId || selectedArticle?._id || '',
         platform: 'linkedin',
-        status: 'draft',
+        status: linkedinOutput.reviewRequired ? 'review' : 'published',
         selectedTopic: linkedinOutput.selectedTopic || selectedArticle?.title || '',
         postText: linkedinOutput.postText,
         hashtags: Array.isArray(linkedinOutput.hashtags) ? linkedinOutput.hashtags : [],
@@ -950,13 +961,13 @@ export default function BlogStudio() {
   const activeContentTab = CONTENT_TYPE_TABS.find((tab) => tab.key === contentType) || CONTENT_TYPE_TABS[0];
   const ActiveContentIcon = activeContentTab.icon;
   const generationOverlayTitle = generationFinalizing
-    ? (genProgress?.type === 'linkedin' ? 'Opening LinkedIn Preview' : 'Opening Blog Draft')
-    : (isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Draft');
+    ? (genProgress?.type === 'linkedin' ? 'Opening LinkedIn Preview' : 'Opening Blog Content')
+    : (isGeneratingLinkedin ? 'Generating LinkedIn Post' : 'Generating Blog Content');
   const generationOverlaySubtitle = generationFinalizing
     ? 'Finalizing your content. It will open automatically in a moment.'
     : (isGeneratingLinkedin
       ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
-      : 'Please wait here. Drafts & Publishing will refresh and open the new draft automatically.');
+      : 'Please wait here. Review & Publishing will refresh and open the new content automatically.');
   const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
@@ -1155,7 +1166,7 @@ export default function BlogStudio() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                         }}
-                        className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'} ${isSelected ? 'ring-2 ring-brand-crimson/70 ring-offset-2 ring-offset-rose-50/70' : ''}`}
+                        className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                       >
                         <ArticleCard
                           item={item}
@@ -1305,11 +1316,8 @@ export default function BlogStudio() {
                   <Field label="Key Points to Cover">
                     <textarea className="input rounded-xl min-h-[90px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.keyPoints} onChange={(e) => setStyle({ ...style, keyPoints: e.target.value })} />
                   </Field>
-                  <Field label="Competitor URLs (optional)">
-                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.competitorUrls} onChange={(e) => setStyle({ ...style, competitorUrls: e.target.value })} placeholder="Comma separated" />
-                  </Field>
-                  <Field label="Reference Material / Source URLs (optional)">
-                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.referenceUrls} onChange={(e) => setStyle({ ...style, referenceUrls: e.target.value })} placeholder="Selected article URL is included automatically" />
+                  <Field label="Reference Material / Competitor URLs (optional)">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.referenceUrls} onChange={(e) => setStyle({ ...style, referenceUrls: e.target.value })} placeholder="Paste reference, source, or competitor URLs. Selected article URL is included automatically." />
                   </Field>
                   <ToggleField label="Include FAQ Section" checked={style.includeFaq} onChange={(checked) => setStyle({ ...style, includeFaq: checked })} />
                   <ToggleField label="Include Statistics & Data" checked={style.includeStats} onChange={(checked) => setStyle({ ...style, includeStats: checked })} />
@@ -1351,7 +1359,7 @@ export default function BlogStudio() {
                   ) : (
                     <>
                       <PenLine size={18} />
-                      Generate Blog Draft
+                      Generate Blog Content
                     </>
                   )}
                 </button>
@@ -1361,7 +1369,7 @@ export default function BlogStudio() {
                   className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
                 >
                   <BookOpenText size={16} />
-                  Drafts & Publishing
+                  Review & Publishing
                 </button>
               </div>
             </div>
@@ -1496,8 +1504,8 @@ function BlogDraftDrawer({
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <div className="min-w-0">
-              <div className="text-base font-black text-gray-900">Drafts & Publishing</div>
-              <div className="text-xs font-semibold text-gray-500">Review, edit, and publish your generated drafts from here.</div>
+              <div className="text-base font-black text-gray-900">Review & Publishing</div>
+              <div className="text-xs font-semibold text-gray-500">Review, edit, and publish your generated content from here.</div>
             </div>
             <button
               type="button"
@@ -1513,7 +1521,7 @@ function BlogDraftDrawer({
               <div className="border-b border-gray-100 bg-white p-3">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson" value={blogQuery} onChange={(e) => setBlogQuery(e.target.value)} placeholder="Search drafts..." />
+                  <input className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson" value={blogQuery} onChange={(e) => setBlogQuery(e.target.value)} placeholder="Search review content..." />
                 </div>
                 {selectedBlogIds.length ? (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2">
@@ -1531,7 +1539,7 @@ function BlogDraftDrawer({
               </div>
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 custom-scrollbar">
                 {loadingBlogs && !blogs.length ? (
-                  <LoadingRows label="Loading drafts..." />
+                  <LoadingRows label="Loading content..." />
                 ) : blogs.length ? (
                   <>
                     {blogs.map((blog) => {
@@ -1563,10 +1571,10 @@ function BlogDraftDrawer({
                                 <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
                                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
                                   blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                  blog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  ['review', 'draft'].includes(blog.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
                                   'bg-gray-50 text-gray-500 border-gray-200'
                                 }`}>
-                                  {blog.status}
+                                  {contentStatusLabel(blog.status)}
                                 </span>
                               </div>
                               <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
@@ -1582,7 +1590,7 @@ function BlogDraftDrawer({
                     ) : null}
                   </>
                 ) : (
-                  <Empty icon={BookOpenText} label="No drafts generated yet" />
+                  <Empty icon={BookOpenText} label="No review content generated yet" />
                 )}
               </div>
             </aside>
@@ -1595,7 +1603,7 @@ function BlogDraftDrawer({
                     onClick={() => setDraftEditorOpen(false)}
                     className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
                   >
-                    Back to drafts
+                    Back to review list
                   </button>
                   <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1603,10 +1611,10 @@ function BlogDraftDrawer({
                         <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
                           selectedBlog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                          selectedBlog.status === 'review' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                          ['review', 'draft'].includes(selectedBlog.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
                           'bg-gray-50 text-gray-500 border-gray-200'
                         }`}>
-                          {selectedBlog.status}
+                          {contentStatusLabel(selectedBlog.status)}
                         </span>
                       </div>
                     </div>
@@ -1639,7 +1647,7 @@ function BlogDraftDrawer({
                   </div>
                   <div className="max-w-sm text-sm font-black text-gray-900">{selectedBlog.title}</div>
                   <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
-                    Click this draft in the list to open edit mode.
+                    Click this item in the list to open edit mode.
                   </p>
                   <button
                     type="button"
@@ -1650,7 +1658,7 @@ function BlogDraftDrawer({
                   </button>
                 </div>
               ) : (
-                <Empty icon={Settings2} label="Click a draft to open" />
+                <Empty icon={Settings2} label="Click review content to open" />
               )}
             </div>
           </div>
@@ -1662,6 +1670,12 @@ function BlogDraftDrawer({
 
 function cleanList(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function contentStatusLabel(status) {
+  if (status === 'published') return 'Published';
+  if (status === 'archived') return 'Archived';
+  return 'Review';
 }
 
 function ContentTypeCard({ icon: Icon, title, description, active, onClick }) {
@@ -1876,7 +1890,7 @@ function LinkedInOutputPreview({
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
               <div className="min-w-0">
                 <div className="text-sm font-black text-gray-900">Admin</div>
-                <div className="text-[11px] font-semibold text-gray-400">LinkedIn draft preview</div>
+                <div className="text-[11px] font-semibold text-gray-400">LinkedIn post preview</div>
               </div>
             </div>
             <div className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-800">
@@ -2175,7 +2189,7 @@ function LinkedInStudio({
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                     }}
-                    className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'} ${isSelected ? 'ring-2 ring-brand-crimson/70 ring-offset-2 ring-offset-rose-50/70' : ''}`}
+                    className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                   >
                     <ArticleCard
                       item={item}
@@ -2598,7 +2612,7 @@ function SelectField({ label, value, onChange, options }) {
 }
 
 function StatusButton({ status, current, saving, onClick }) {
-  const active = current === status;
+  const active = current === status || (status === 'review' && current === 'draft');
   const label = status === 'published' ? 'Publish' : status === 'review' ? 'Review' : status;
   
   if (active) {

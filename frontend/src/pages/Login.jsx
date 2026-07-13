@@ -39,8 +39,9 @@ export default function Login() {
     
     setLoading(true);
     try {
-      await login(form.email, form.password);
-      navigate(state?.from?.pathname || '/dashboard', { replace: true });
+      const auth = await login(form.email, form.password);
+      const defaultPath = auth?.user?.role === 'super_admin' ? '/admin' : '/dashboard';
+      navigate(auth?.isFirstLogin && auth?.user?.role !== 'super_admin' ? '/profile' : defaultPath, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

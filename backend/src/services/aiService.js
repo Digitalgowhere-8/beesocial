@@ -7,8 +7,7 @@
  *
  * EVERYTHING is opt-in:
  *   - If OPENAI_API_KEY is not set, every function is a no-op.
- *   - If OPENAI_USE_FOR_SUMMARY=false, summary stays as the raw scrape value.
- *   - If OPENAI_USE_FOR_CATEGORY=false, only rule-based matching is used.
+ *   - Summary/category enrichment is controlled by System Settings.
  *
  * This keeps the system free-tier friendly by default.
  */
@@ -34,6 +33,57 @@ function isEnabled() {
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function generationConfig(config = {}, fallback = {}) {
+  return {
+    model: String(config.model || fallback.model || MODEL),
+    temperature: clampNumber(config.temperature, fallback.temperature ?? 0.4, 0, 1),
+    maxWords: Math.round(clampNumber(config.maxWords, fallback.maxWords ?? 1000, fallback.minWords ?? 80, fallback.maxAllowedWords ?? 3000))
+  };
+}
+
+function runtimeAiModel(config = {}) {
+  return String(config.model || config.aiModel || MODEL);
+}
+
+function wordsToMaxTokens(words, fallbackTokens) {
+  const normalizedWords = Number(words);
+  if (!Number.isFinite(normalizedWords) || normalizedWords <= 0) return fallbackTokens;
+  return Math.max(500, Math.min(6000, Math.ceil(normalizedWords * 1.7)));
+}
+
+const ASCENTIUM_BRAND_GUIDELINES = [
+  'Ascentium brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
+  'Voice: clear, practical, commercially aware, credible, calm, and advisory. The content should feel premium and expert, not casual, hype-led, or generic.',
+  'Audience: founders, CFOs, finance leaders, boards, investors, regional expansion teams, and business owners who need actionable guidance, not academic explanation.',
+  'Point of view: translate policy, tax, regulatory, market, or operational updates into business implications, decision points, risks, and next steps.',
+  'Style: use plain English, short-to-medium paragraphs, concrete examples, structured lists, and careful advisory caveats where law, tax, employment, immigration, or compliance is involved.',
+  'Do not overpromise outcomes, guarantee ease/speed, or make unsupported claims. Prefer wording such as "may", "can", "should review", "subject to facts", and "businesses should assess".',
+  'CTA style: consultative and useful. Explain briefly how Ascentium can help with the relevant service area without turning the conclusion into a sales pitch.'
+].join('\n');
+
+const BLOG_WRITING_SOP = [
+  'Follow this SOP for every blog:',
+  '1. Base the blog on the approved/selected topic and reference material. Use reliable sources first, especially official or government sources when the topic is regulatory, tax, employment, compliance, or market-entry related.',
+  '2. Produce a long-form, structured blog with: Introduction, Table of Contents, body sections, conclusion, CTA, FAQ, SEO/meta fields, social media copy, and resources.',
+  '3. Headings must be keyword-aware and use proper Markdown hierarchy. Use one H1 only, then H2/H3 headings. H2 headings should include relevant seed or long-tail keywords naturally.',
+  '4. Include tables where they genuinely improve readability, such as comparison tables, requirement summaries, checklist tables, timeline tables, or decision frameworks.',
+  '5. Include practical examples from a B2B/business-services perspective when supported by the source material. If a specific example is not supported, use cautious scenario wording instead of inventing facts.',
+  '6. Use bullet points and numbered lists to break up dense sections. Avoid walls of text.',
+  '7. Use seed and long-tail keywords wisely. Do not stuff keywords.',
+  '8. The introduction must be specific and engaging enough to hook the reader into the business issue.',
+  '9. The conclusion must summarise the blog, include 2-3 lines on how Ascentium can help with the relevant problem or service area, and nudge the reader toward the desired CTA.',
+  '10. FAQs must be search-friendly, informative, and answer real questions a buyer might ask.',
+  '11. SEO title should be catchy, keyword-aware, and around 50-60 characters where possible. Meta description should summarise the page and be around 145-155 characters.',
+  '12. Include a Resources section listing the selected source URL and any reference/competitor URLs provided by the user. Do not fabricate resource links.',
+  '13. Humanise the copy: remove robotic transitions, filler, repeated phrasing, and generic AI language. Grammar must be publication-ready.'
+].join('\n');
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
   const title = article?.title || 'Market intelligence update';
@@ -66,9 +116,30 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
       '',
       'Treat this as a planning signal, then verify the details against official guidance and professional advice before making commitments.',
       '',
+      `## Quick checklist`,
+      '',
+      '1. Confirm whether the update applies to your entity, sector, employees, customers, or planned market activity.',
+      '2. Check whether official guidance, filings, licences, payroll, tax, or governance processes need to change.',
+      '3. Document assumptions and open questions before making a decision.',
+      '4. Speak with an advisor where the topic affects compliance, tax, employment, immigration, or market-entry planning.',
+      '',
+      `## FAQ`,
+      '',
+      `### Who should pay attention to this update?`,
+      '',
+      `Companies, founders, CFOs, and advisory teams should review it if it affects ${audience}, market-entry planning, compliance obligations, tax treatment, employment, or operational decisions.`,
+      '',
+      `### Can this article be treated as advice?`,
+      '',
+      'No. It is a general planning note based on the available source material. Businesses should verify the details against official guidance and professional advice.',
+      '',
       `## Recommended next step`,
       '',
       cta,
+      '',
+      `## Resources`,
+      '',
+      article?.url ? `- ${article.url}` : '- Source URL not provided.',
       keywordLine
     ].filter(Boolean).join('\n'),
     suggestedKeywords: keywords,
@@ -393,13 +464,13 @@ function blogFormatBlueprint(format = 'insight_article') {
  * Generate a 1-2 sentence summary of an article.
  * Returns null on any failure (caller should keep the existing summary).
  */
-async function summarizeArticle({ title, snippet }) {
-  if (!isEnabled() || process.env.OPENAI_USE_FOR_SUMMARY !== 'true') return null;
+async function summarizeArticle({ title, snippet, aiConfig = {} }) {
+  if (!isEnabled()) return null;
   const cli = getClient();
   if (!cli) return null;
   try {
     const resp = await cli.chat.completions.create({
-      model: MODEL,
+      model: runtimeAiModel(aiConfig),
       temperature: 0.2,
       max_tokens: 120,
       messages: [
@@ -422,8 +493,8 @@ async function summarizeArticle({ title, snippet }) {
  * Pick a category/subcategory using the LLM when rule-based matching
  * is weak (score 0).  Returns null on failure.
  */
-async function classifyCategory({ title, snippet }) {
-  if (!isEnabled() || process.env.OPENAI_USE_FOR_CATEGORY !== 'true') return null;
+async function classifyCategory({ title, snippet, aiConfig = {} }) {
+  if (!isEnabled()) return null;
   const cli = getClient();
   if (!cli) return null;
   try {
@@ -432,7 +503,7 @@ async function classifyCategory({ title, snippet }) {
       .join('\n');
 
     const resp = await cli.chat.completions.create({
-      model: MODEL,
+      model: runtimeAiModel(aiConfig),
       temperature: 0.0,
       max_tokens: 80,
       response_format: { type: 'json_object' },
@@ -626,7 +697,7 @@ function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
   };
 }
 
-async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'news' }) {
+async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'news', aiConfig = {} }) {
   const cli = getClient();
   if (!cli) return fallbackProfileRelevance({ article, topic });
   const currentYear = Math.min(2100, Number(profile.year || profile.currentYear || new Date().getFullYear()) || new Date().getFullYear());
@@ -911,7 +982,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
 
   try {
     const resp = await cli.chat.completions.create({
-      model: MODEL,
+      model: runtimeAiModel(aiConfig),
       temperature: 0,
       max_tokens: 420,
       response_format: { type: 'json_object' },
@@ -949,8 +1020,16 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   }
 }
 
-async function generateBlogPost({ article, style = {}, company = {}, keywords = [] }) {
+async function generateBlogPost({ article, style = {}, company = {}, keywords = [], aiConfig = {} }) {
   const cli = getClient();
+  const runtimeConfig = generationConfig(aiConfig, {
+    model: MODEL,
+    temperature: 0.35,
+    maxWords: style.length === 'long' || style.length === 'custom' ? 1800 : style.length === 'short' ? 700 : 1200,
+    minWords: 300,
+    maxAllowedWords: 3000
+  });
+  const filtering = aiConfig.filtering || {};
   if (!cli) {
     return {
       ...fallbackBlog({ article, style, keywords }),
@@ -979,15 +1058,19 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
   const keyPoints = style.keyPoints || '';
   const competitorUrls = style.competitorUrls || '';
   const referenceUrls = style.referenceUrls || '';
+  const referenceMaterialUrls = [referenceUrls, competitorUrls]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n');
   const includeFaq = style.includeFaq !== false;
   const includeStats = style.includeStats !== false;
   const sourceContext = blogSourceContext(article);
 
   try {
     const resp = await cli.chat.completions.create({
-      model: MODEL,
-      temperature: 0.35,
-      max_tokens: length === 'long' || length === 'custom' ? 4200 : length === 'short' ? 1400 : 2800,
+      model: runtimeConfig.model,
+      temperature: runtimeConfig.temperature,
+      max_tokens: wordsToMaxTokens(runtimeConfig.maxWords, length === 'long' || length === 'custom' ? 4200 : length === 'short' ? 1400 : 2800),
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -998,6 +1081,12 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             'Your job is to create a high-quality, human-sounding, commercially useful blog for a professional-services company website using the selected intelligence topic and provided source/reference content.',
             '',
             'The finished blog should read like it was written by an experienced advisor for business owners, CFOs, investors, founders, boards, and regional expansion teams. It must not read like generic AI content.',
+            '',
+            'ASCENTIUM BRAND GUIDELINES',
+            ASCENTIUM_BRAND_GUIDELINES,
+            '',
+            'BLOG DRAFTING SOP',
+            BLOG_WRITING_SOP,
             '',
             'IMPORTANT RULES',
             '- Return ONLY valid JSON. No markdown outside JSON.',
@@ -1022,6 +1111,11 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Do not output placeholder text, editorial notes, drafting comments, or AI-style scene-setting language.',
             '- Do not use anchor-link Table of Contents formats such as [Heading](#heading).',
             '- If a Table of Contents is included, format it as a clean plain list in Markdown only.',
+            '- Include a Table of Contents unless the requested length is short and the topic is too narrow.',
+            '- Include at least one useful table or decision framework when the topic has steps, comparisons, requirements, risks, timelines, documents, tax/compliance implications, or business decisions.',
+            '- Include at least one bullet list and one numbered list in the body when useful. Do not make the blog a single uninterrupted essay.',
+            '- Include practical examples or scenarios where they clarify the topic. Keep them cautious and source-grounded.',
+            '- Include a Resources section at the end with the source URL and any provided reference material / competitor URLs.',
             '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
             '',
             'ANTI-GENERIC WRITING RULES',
@@ -1054,6 +1148,9 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Topic: ${requestedTopic}`,
             `Format: ${format}`,
             `Length: ${length}${length === 'custom' && customLength ? ` (${customLength})` : ''}`,
+            `Superadmin max word target: ${runtimeConfig.maxWords} words`,
+            `Content filtering strictness: ${filtering.strictness || 'balanced'}`,
+            `Blocked topics: ${Array.isArray(filtering.blockedTopics) && filtering.blockedTopics.length ? filtering.blockedTopics.join(', ') : 'None'}`,
             `Target search intent: ${searchIntent}`,
             '',
             'FORMAT BLUEPRINT',
@@ -1080,8 +1177,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '',
             'ADDITIONAL CONTEXT',
             `Key points to cover:\n${keyPoints}`,
-            `Competitor URLs:\n${competitorUrls}`,
-            `Additional reference/source URLs:\n${referenceUrls}`,
+            `Reference Material / Competitor URLs:\n${referenceMaterialUrls || 'None provided.'}`,
             `Include FAQ section: ${includeFaq ? 'Yes' : 'No'}`,
             `Include statistics and data: ${includeStats ? 'Yes' : 'No'}`,
             '',
@@ -1105,12 +1201,14 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '4. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
             '5. Explain why the topic matters to the target audience in practical business terms.',
             '6. Use examples where helpful, but do not invent unsupported examples.',
-            '7. Include a practical checklist, table, or decision framework when useful.',
+            '7. Include a practical checklist plus a table or decision framework when useful.',
             '8. Include internal linking suggestions naturally if focus page or internal pages are provided.',
             '9. Include practical takeaways that a reader can act on or discuss internally.',
             '10. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
-            '11. End with a concise conclusion and CTA.',
-            '12. Keep the blog coherent, flowing, and professionally written.',
+            '11. Add a Resources section containing only real source/reference URLs provided in this request.',
+            '12. End with a concise conclusion and CTA that includes 2-3 lines explaining how Ascentium can help with the relevant service/problem.',
+            '13. Keep the blog coherent, flowing, and professionally written.',
+            `14. Keep the final article at or below approximately ${runtimeConfig.maxWords} words unless essential source context requires a short overage.`,
             '',
             'QUALITY BAR BEFORE RETURNING',
             '- Rewrite any generic paragraph before final output.',
@@ -1118,6 +1216,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure each major section answers "so what?" for the target audience.',
             '- Ensure the blog is useful even to a reader who already knows the headline.',
             '- Ensure the CTA is connected to the topic, not a generic sales line.',
+            '- Ensure the output includes practical formatting: tables where relevant, examples where useful, bullets, and numbered lists.',
             '- Ensure the final article looks ready to publish in a CMS without cleanup.',
             '- Ensure the opening paragraph does not merely define the topic or repeat the title.',
             '- Ensure the Markdown has one H1, clean H2/H3 structure, no duplicate headings, and no broken link syntax.',
@@ -1129,10 +1228,10 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '{',
             '  "title": "<SEO-friendly blog title>",',
             '  "excerpt": "<short blog summary, 2-3 sentences>",',
-            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown with one H1, plain-list TOC, headings, body, FAQ if requested, conclusion and CTA>",',
+            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown with one H1, plain-list TOC, H2/H3 headings, tables where relevant, examples, bullets, numbered lists, FAQ if requested, conclusion, CTA and Resources>",',
             '  "suggestedKeywords": ["<keyword 1>", "<keyword 2>", "<keyword 3>"],',
             '  "metaTitle": "<SEO title, 50-60 characters, ideally question-style if suitable>",',
-            '  "metaDescription": "<SEO meta description, 150-160 characters>",',
+            '  "metaDescription": "<SEO meta description, ideally 145-155 characters>",',
             '  "faq": [',
             '    { "question": "<FAQ question>", "answer": "<FAQ answer>" }',
             '  ],',
@@ -1158,7 +1257,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
     if (!parsed.title || !parsed.bodyMarkdown) {
       return {
         ...fallbackBlog({ article, style, keywords }),
-        model: MODEL
+        model: runtimeConfig.model
       };
     }
     const finalTitle = String(parsed.title).trim();
@@ -1174,19 +1273,27 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
       ).slice(0, 8),
       metaTitle: String(parsed.metaTitle || finalTitle || '').trim(),
       metaDescription: formatExcerpt(parsed.metaDescription, parsed.excerpt || article?.summary || '').slice(0, 160),
-      model: MODEL
+      model: runtimeConfig.model
     };
   } catch (err) {
     console.warn('[ai] blog generation failed:', err.message);
     return {
       ...fallbackBlog({ article, style, keywords }),
-      model: MODEL
+      model: runtimeConfig.model
     };
   }
 }
 
-async function generateLinkedInPost({ article, options = {}, company = {} }) {
+async function generateLinkedInPost({ article, options = {}, company = {}, aiConfig = {} }) {
   const cli = getClient();
+  const runtimeConfig = generationConfig(aiConfig, {
+    model: MODEL,
+    temperature: 0.55,
+    maxWords: options.length === 'long' ? 450 : options.length === 'short' ? 150 : 250,
+    minWords: 80,
+    maxAllowedWords: 800
+  });
+  const filtering = aiConfig.filtering || {};
   if (!cli) {
     return fallbackLinkedInPost({ article, options });
   }
@@ -1213,9 +1320,9 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
 
   try {
     const resp = await cli.chat.completions.create({
-      model: MODEL,
-      temperature: 0.55,
-      max_tokens: length === 'long' ? 1200 : length === 'short' ? 700 : 950,
+      model: runtimeConfig.model,
+      temperature: runtimeConfig.temperature,
+      max_tokens: wordsToMaxTokens(runtimeConfig.maxWords, length === 'long' ? 1200 : length === 'short' ? 700 : 950),
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -1266,6 +1373,9 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             `Person profile: ${personaProfile || 'Founder/operator/advisor/consultant'}`,
             `Tone: ${tone}`,
             `Post goal: ${postGoal}`,
+            `Superadmin max word target: ${runtimeConfig.maxWords} words`,
+            `Content filtering strictness: ${filtering.strictness || 'balanced'}`,
+            `Blocked topics: ${Array.isArray(filtering.blockedTopics) && filtering.blockedTopics.length ? filtering.blockedTopics.join(', ') : 'None'}`,
             '',
             'SOURCE INTELLIGENCE',
             `Title: ${article.title || ''}`,
@@ -1369,6 +1479,7 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
             '- CTA is contextual, not promotional filler.',
             '- Hashtags are outside postText and count is 5 to 7 when enabled.',
             `Length: ${length}`,
+            `Maximum word target: ${runtimeConfig.maxWords} words`,
             '',
             'OUTPUT JSON SHAPE',
             '{',
@@ -1404,7 +1515,7 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
     if (!parsed.postText || !parsed.hook) {
       return {
         ...fallbackLinkedInPost({ article, options }),
-        model: MODEL
+        model: runtimeConfig.model
       };
     }
 
@@ -1430,13 +1541,13 @@ async function generateLinkedInPost({ article, options = {}, company = {} }) {
         ]
       ),
       qualityChecks: parsed.qualityChecks || {},
-      model: MODEL
+      model: runtimeConfig.model
     };
   } catch (err) {
     console.warn('[ai] linkedin generation failed:', err.message);
     return {
       ...fallbackLinkedInPost({ article, options }),
-      model: MODEL
+      model: runtimeConfig.model
     };
   }
 }

@@ -6,6 +6,27 @@ const DEFAULT_SETTINGS = {
   aiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   aiSummary: false,
   aiCategory: false,
+  contentStudioAi: {
+    enabled: true,
+    blog: {
+      model: process.env.OPENAI_BLOG_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.35,
+      maxWords: 1200,
+      requireReview: true
+    },
+    linkedin: {
+      model: process.env.OPENAI_LINKEDIN_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.55,
+      maxWords: 250,
+      requireReview: false
+    },
+    filtering: {
+      strictness: 'balanced',
+      blockUnsafeContent: true,
+      humanReviewSensitiveTopics: true,
+      blockedTopics: []
+    }
+  },
   maintenanceMode: false,
   dashboardAppearance: {
     topicColors: {
@@ -116,6 +137,48 @@ function normalizeDashboardAppearance(value = {}) {
   };
 }
 
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function normalizeBlockedTopics(value) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(',');
+  return [...new Set(items.map((item) => cleanText(item)).filter(Boolean))].slice(0, 50);
+}
+
+function normalizeContentStudioAi(value = {}) {
+  const defaults = DEFAULT_SETTINGS.contentStudioAi;
+  const strictness = ['light', 'balanced', 'strict'].includes(value?.filtering?.strictness)
+    ? value.filtering.strictness
+    : defaults.filtering.strictness;
+
+  return {
+    enabled: value.enabled !== false,
+    blog: {
+      model: cleanText(value?.blog?.model) || defaults.blog.model,
+      temperature: clampNumber(value?.blog?.temperature, defaults.blog.temperature, 0, 1),
+      maxWords: Math.round(clampNumber(value?.blog?.maxWords, defaults.blog.maxWords, 300, 3000)),
+      requireReview: Boolean(value?.blog?.requireReview ?? defaults.blog.requireReview)
+    },
+    linkedin: {
+      model: cleanText(value?.linkedin?.model) || defaults.linkedin.model,
+      temperature: clampNumber(value?.linkedin?.temperature, defaults.linkedin.temperature, 0, 1),
+      maxWords: Math.round(clampNumber(value?.linkedin?.maxWords, defaults.linkedin.maxWords, 80, 800)),
+      requireReview: Boolean(value?.linkedin?.requireReview ?? defaults.linkedin.requireReview)
+    },
+    filtering: {
+      strictness,
+      blockUnsafeContent: value?.filtering?.blockUnsafeContent !== false,
+      humanReviewSensitiveTopics: value?.filtering?.humanReviewSensitiveTopics !== false,
+      blockedTopics: normalizeBlockedTopics(value?.filtering?.blockedTopics)
+    }
+  };
+}
+
 function normalizeSettings(value = {}) {
   return {
     ...DEFAULT_SETTINGS,
@@ -124,16 +187,15 @@ function normalizeSettings(value = {}) {
     aiSummary: Boolean(value.aiSummary),
     aiCategory: Boolean(value.aiCategory),
     aiModel: String(value.aiModel || DEFAULT_SETTINGS.aiModel),
+    contentStudioAi: normalizeContentStudioAi(value.contentStudioAi),
     dashboardAppearance: normalizeDashboardAppearance(value.dashboardAppearance),
     sourceTrustMapping: normalizeSourceTrustMapping(value.sourceTrustMapping)
   };
 }
 
 function publicUiSettings(settings = {}) {
-  const normalized = normalizeSettings(settings);
-  return {
-    dashboardAppearance: normalized.dashboardAppearance
-  };
+  normalizeSettings(settings);
+  return {};
 }
 
 async function getSystemSettings({ useCache = true } = {}) {

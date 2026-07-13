@@ -14,7 +14,7 @@ const blogPostSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['draft', 'review', 'published', 'archived'],
-      default: 'draft',
+      default: 'review',
       index: true
     },
 

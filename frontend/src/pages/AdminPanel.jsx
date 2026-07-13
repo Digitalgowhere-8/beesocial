@@ -6,7 +6,6 @@ import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
-import { getDashboardAppearance } from '../utils/feedTheme';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
@@ -80,10 +79,13 @@ const SUPER_ADMIN_SUBTABS = {
     { key: 'library', label: 'Article Library' }
   ],
   fetch: [
-    { key: 'dashboard', label: 'Fetch Dashboard' }
+    { key: 'setup', label: 'Fetch Settings' },
+    { key: 'sources', label: 'Country Sources' },
+    { key: 'trust', label: 'Source Trust' }
   ],
   users: [
-    { key: 'directory', label: 'User Directory' }
+    { key: 'add', label: 'Add User' },
+    { key: 'access', label: 'Access Manager' }
   ],
   plans: [
     { key: 'builder', label: 'Plan Builder' }
@@ -217,8 +219,8 @@ export default function AdminPanel() {
 
   const headerActions = (
     <>
-      <div className={`min-w-0 flex-col gap-3 sm:flex-row sm:items-center ${isSuperAdmin ? 'hidden xl:flex' : 'flex'}`}>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 xl:hidden">
           {isSuperAdmin ? (
             <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
               {(() => {
@@ -268,7 +270,7 @@ export default function AdminPanel() {
             </button>
           </div>
         </div>
-        <div className="hidden min-w-0 flex-1 gap-2 sm:flex sm:flex-row sm:items-center">
+        <div className="hidden min-w-0 flex-1 gap-2 xl:flex xl:flex-row xl:items-center">
           <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
             {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
               const active = isSuperAdmin ? item.key === subTab : item.key === tab;
@@ -312,9 +314,9 @@ export default function AdminPanel() {
             type="button"
             aria-label="Close admin menu"
             onClick={() => setMobileAdminMenuOpen(false)}
-            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] sm:hidden"
+            className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-[1px] xl:hidden"
           />
-          <div className="fixed right-3 top-[76px] z-50 w-[min(290px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] sm:hidden">
+          <div className="fixed right-3 top-[76px] z-50 w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.18)] xl:hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">{isSuperAdmin ? 'Super Admin' : 'Profile'}</div>
@@ -404,7 +406,7 @@ export default function AdminPanel() {
             >
               {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
               {tab === 'articles' && <ArticlesTab key={`articles-${superAdminRefreshKey}`} />}
-              {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} />}
+              {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} activeSubTab={subTab} />}
               {tab === 'users' && <UsersTab key={`users-${superAdminRefreshKey}`} dbPlans={dbPlans} activeSubTab={subTab} />}
               {tab === 'plans' && <PlanBuilderTab key={`plans-${superAdminRefreshKey}`} dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
               {tab === 'settings' && (subTab === 'mail'
@@ -445,115 +447,9 @@ export default function AdminPanel() {
 
 function SuperAdminWorkspace({
   children,
-  tabs = [],
-  activeTab = 'platform',
-  onTabChange,
-  subTabs = [],
-  activeSubTab = 'overview',
-  onSubTabChange,
-  onRefresh,
-  onOpenMenu
 }) {
-  const activeTabMeta = tabs.find((item) => item.key === activeTab);
-  const activeSubTabMeta = subTabs.find((item) => item.key === activeSubTab);
-  const showSubTabBadge = activeSubTabMeta && activeSubTabMeta.label !== activeTabMeta?.label;
-  const subTabGridClass = subTabs.length >= 3 ? 'grid-cols-3' : subTabs.length === 2 ? 'grid-cols-2' : 'grid-cols-1';
-
   return (
     <section className="min-w-0">
-      <div className="xl:hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(252,248,249,0.95)_48%,rgba(247,250,255,0.95))] shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl mb-5 overflow-hidden">
-        <div className="h-1 bg-gradient-to-r from-brand-crimson/90 via-rose-400 to-sky-300" />
-        <div className="px-4 py-5 sm:px-5">
-          <div className="min-w-0">
-            <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson ring-1 ring-brand-crimson/10 shadow-sm">
-              <Crown size={12} />
-              Super Admin
-            </div>
-            <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-gray-950 sm:text-[32px]">Control Center</h1>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-gray-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm">
-                {activeTabMeta?.label || 'Platform'}
-              </span>
-              {showSubTabBadge ? (
-                <span className="inline-flex items-center rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gray-500 ring-1 ring-gray-200 shadow-sm">
-                  {activeSubTabMeta?.label}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-white/80 px-3 py-4 sm:px-4">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-            {tabs.map((item) => {
-              const active = item.key === activeTab;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => onTabChange?.(item.key)}
-                  className={[
-                    'inline-flex min-h-[54px] min-w-0 items-center justify-start gap-2.5 rounded-2xl px-3.5 text-left text-[11px] font-black transition-all',
-                    active
-                      ? 'bg-gradient-to-br from-brand-crimson via-rose-600 to-rose-900 text-white shadow-[0_16px_28px_rgba(209,18,67,0.24)]'
-                      : 'border border-white/90 bg-white/80 text-gray-600 shadow-sm hover:border-brand-crimson/15 hover:bg-white hover:text-brand-crimson'
-                  ].join(' ')}
-                >
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/16 text-white' : 'bg-brand-pink/25 text-brand-crimson'}`}>
-                    {item.icon ? <item.icon size={14} /> : null}
-                  </span>
-                  <span className="min-w-0 truncate">{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {subTabs.length ? (
-            <div className="mt-3 rounded-[24px] border border-white/90 bg-white/75 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-              <div className={`grid gap-2 ${subTabGridClass}`}>
-                {subTabs.map((item) => {
-                  const active = item.key === activeSubTab;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => onSubTabChange?.(item.key)}
-                      className={[
-                        'inline-flex min-h-[40px] min-w-0 items-center justify-center rounded-2xl px-3 text-[10px] font-black uppercase tracking-[0.14em] transition-all md:text-[11px]',
-                        active
-                          ? 'bg-gray-950 text-white shadow-[0_12px_24px_rgba(15,23,42,0.16)]'
-                          : 'bg-transparent text-gray-500 hover:bg-white hover:text-gray-800'
-                      ].join(' ')}
-                    >
-                      <span className="truncate">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_44px] gap-2">
-            <button
-              type="button"
-              onClick={onRefresh}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white/90 px-4 text-[12px] font-black uppercase tracking-[0.14em] text-gray-700 ring-1 ring-gray-200 shadow-sm transition hover:bg-white"
-            >
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={onOpenMenu}
-              className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl bg-white/90 text-gray-600 ring-1 ring-gray-200 shadow-sm transition hover:bg-white hover:text-brand-crimson"
-              aria-label="Open admin menu"
-            >
-              <MoreHorizontal size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="min-w-0">
         {children}
       </div>
@@ -1029,29 +925,6 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
   );
 }
 
-function ConfigStatusRow({ icon: Icon, label, value, tone = 'gray' }) {
-  const toneMap = {
-    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-    amber: 'bg-amber-50 text-amber-700 ring-amber-100',
-    gray: 'bg-gray-50 text-gray-600 ring-gray-100',
-    neutral: 'bg-brand-pink/20 text-brand-crimson ring-brand-crimson/10'
-  };
-
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-gray-700 ring-1 ring-gray-100">
-          <Icon size={15} />
-        </div>
-        <div className="text-sm font-black text-gray-800">{label}</div>
-      </div>
-      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider ring-1 ${toneMap[tone] || toneMap.gray}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function formatDuration(ms) {
   const seconds = Math.round(Number(ms || 0) / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -1470,7 +1343,7 @@ function ArticlesTab({ ownerOnly = false }) {
 
 // =============== SUPER ADMIN FETCH ===============
 
-function SuperAdminFetchTab() {
+function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   const { runProgress, setRunProgress } = useAuth();
   const [profileMeta, setProfileMeta] = useState(null);
   const [config, setConfig] = useState(null);
@@ -1481,7 +1354,7 @@ function SuperAdminFetchTab() {
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
   const [autosaveStatus, setAutosaveStatus] = useState('saved');
-  const [managerTab, setManagerTab] = useState('setup');
+  const managerTab = activeSubTab === 'sources' ? 'sources' : activeSubTab === 'trust' ? 'trust' : 'setup';
   const [sourceCountry, setSourceCountry] = useState('');
   const [sourceType, setSourceType] = useState('news');
   const [customCountryInput, setCustomCountryInput] = useState('');
@@ -1788,7 +1661,7 @@ function SuperAdminFetchTab() {
   return (
     <div className={showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}>
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
               <Globe2 size={18} />
@@ -1799,34 +1672,20 @@ function SuperAdminFetchTab() {
               <p className="mt-1 text-sm text-gray-500">Super admin runs once; fetched results become visible across all admins and users.</p>
             </div>
           </div>
-          <span className={[
-            'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
-            isBusy ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
-          ].join(' ')}>
-            <span className={`h-2 w-2 rounded-full ${isBusy ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
-            {isBusy ? 'Running...' : 'Idle'}
-          </span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
+            <span className={[
+              'inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wider',
+              isBusy ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+            ].join(' ')}>
+              <span className={`h-2 w-2 rounded-full ${isBusy ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+              {isBusy ? 'Running...' : 'Idle'}
+            </span>
+          </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">
-            {[
-              { key: 'setup', label: 'Fetch Setup' },
-              { key: 'sources', label: 'Source Manager' }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setManagerTab(tab.key)}
-                className={`rounded-xl px-4 py-2 text-sm font-black transition ${managerTab === tab.key ? 'bg-brand-crimson text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
           {managerTab === 'setup' ? (
-            <div className="mt-4">
+            <div>
               <FetchField label="Countries">
                 <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-3">
                   {fetchSetupCountries.map((country) => {
@@ -1843,12 +1702,12 @@ function SuperAdminFetchTab() {
                 </div>
               </FetchField>
             </div>
-          ) : (
-            <div className="mt-4 space-y-5">
+          ) : managerTab === 'sources' ? (
+            <div className="space-y-5">
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff,_#f8fafc_60%,_#fff1f2)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="max-w-2xl">
-                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">Source Manager</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">Country Sources</div>
                     <h4 className="mt-2 text-[28px] font-black leading-tight tracking-[-0.03em] text-slate-950">Manage country sources</h4>
                     <p className="mt-2 text-[15px] leading-7 text-slate-500">Choose a country, select the source type, add domains in bulk, and remove any incorrect source with one click.</p>
                   </div>
@@ -1880,7 +1739,7 @@ function SuperAdminFetchTab() {
                       </select>
                     </FetchField>
                     <div className="mt-3 text-xs font-medium leading-6 text-slate-500">
-                      Countries added here will also be available in the Fetch Setup tab.
+                      Countries added here will also be available in the Fetch Settings tab.
                     </div>
                   </div>
 
@@ -2043,6 +1902,8 @@ function SuperAdminFetchTab() {
                 </button>
               </div>
             </div>
+          ) : (
+            <SourceTrustRulesPanel />
           )}
         </div>
 
@@ -2622,7 +2483,7 @@ export function FetchTab({ embedded = false }) {
                 <RefreshCw size={18} />
               </span>
               <div className="min-w-0">
-              <div className="eyebrow mb-1 text-brand-crimson/80">{embedded ? 'Fetch setup' : 'Profile fetch'}</div>
+              <div className="eyebrow mb-1 text-brand-crimson/80">{embedded ? 'Fetch settings' : 'Profile fetch'}</div>
               <h3 className={`${embedded ? 'text-2xl' : 'text-xl'} font-black tracking-tight text-gray-900`}>{embedded ? 'Intelligence Command Center' : 'Run Intelligence Fetch'}</h3>
               <p className={`mt-1 ${embedded ? 'max-w-2xl text-[15px] leading-7 text-slate-600' : 'text-sm text-gray-500'}`}>
                 {embedded ? 'Choose the market, signal types, and schedule once. The layout is optimized for faster setup with less scrolling and clearer topic selection.' : 'Select the market details, save them, or run a fresh fetch.'}
@@ -3376,7 +3237,7 @@ function LogDetailPill({ label, value }) {
 
 // =============== USERS TAB ===============
 
-function UsersTab({ dbPlans }) {
+function UsersTab({ dbPlans, activeSubTab = 'add' }) {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const [items, setItems] = useState([]);
@@ -3676,12 +3537,14 @@ function UsersTab({ dbPlans }) {
         label: formatPlanLabel(plan.planId, dbPlans)
       }))
   ), [dbPlans]);
+  const userPanelMode = isSuperAdmin ? (activeSubTab === 'access' ? 'access' : 'add') : 'all';
+  const showCreatePanel = userPanelMode === 'add' || userPanelMode === 'all';
+  const showAccessPanel = userPanelMode === 'access' || userPanelMode === 'all';
 
   if (loading) return <Loader />;
 
   return (
     <div className="space-y-5">
-      <>
       <div className="overflow-hidden rounded-2xl border border-brand-crimson/10 bg-white shadow-sm">
         <div className="border-b border-brand-crimson/10 bg-brand-pink/10 px-4 py-3 sm:px-5">
           <div className="eyebrow mb-1">Current session</div>
@@ -3721,6 +3584,7 @@ function UsersTab({ dbPlans }) {
         </div>
       </div>
 
+      {showCreatePanel && (
       <form onSubmit={createUser} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -3835,11 +3699,13 @@ function UsersTab({ dbPlans }) {
           </button>
         </div>
       </form>
+      )}
 
+      {showAccessPanel && (
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="text-sm font-black text-gray-900">Members and admins</div>
+          <div className="text-sm font-black text-gray-900">{isSuperAdmin ? 'Access Manager' : 'Members and admins'}</div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
             {visibleUsers.length}{visibleUsers.length !== managedUsers.length ? ` of ${managedUsers.length}` : ''} managed accounts
           </div>
@@ -4041,7 +3907,7 @@ function UsersTab({ dbPlans }) {
       </table>
         </div>
       </div>
-      </>
+      )}
     </div>
   );
 }
@@ -5319,17 +5185,47 @@ const SOURCE_TRUST_LEVELS = [
   { key: 'low', label: 'Low Credibility', tone: 'rose' }
 ];
 const SETTINGS_SECTIONS = [
-  { key: 'ai', label: 'AI & Automation', icon: Sparkles, help: 'Model and feature flags' },
-  { key: 'visual', label: 'Visual Theme', icon: Gauge, help: 'Feed colors and scoring' },
-  { key: 'sources', label: 'Source Trust', icon: Database, help: 'Credibility mapping' },
-  { key: 'maintenance', label: 'Maintenance', icon: AlertTriangle, help: 'Access controls' }
+  { key: 'ai', label: 'AI', icon: Sparkles, help: 'Models & rules' },
+  { key: 'maintenance', label: 'Access', icon: AlertTriangle, help: 'Mode & controls' }
 ];
-const TOPIC_THEME_OPTIONS = [
-  { key: 'govt', label: 'Government Updates' },
-  { key: 'news', label: 'News Articles' },
-  { key: 'evergreen', label: 'Evergreen Topics' },
-  { key: 'competitor', label: 'Competitor Intel' }
+const AI_SETTINGS_TABS = [
+  { key: 'feed', label: 'Feed Processing', icon: Sparkles, help: 'Model and article flags' },
+  { key: 'studio', label: 'Content Studio', icon: FileText, help: 'Blog and LinkedIn AI' },
+  { key: 'safety', label: 'Safety Filters', icon: ShieldCheck, help: 'Strictness and blocked topics' }
 ];
+const AI_MODEL_OPTIONS = [
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini - Fast & cost efficient' },
+  { value: 'gpt-4o', label: 'GPT-4o - Higher quality' },
+  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo - Extended context' }
+];
+const DEFAULT_CONTENT_STUDIO_AI = {
+  enabled: true,
+  blog: {
+    model: 'gpt-4o-mini',
+    temperature: 0.35,
+    maxWords: 1200,
+    requireReview: true
+  },
+  linkedin: {
+    model: 'gpt-4o-mini',
+    temperature: 0.55,
+    maxWords: 250,
+    requireReview: false
+  },
+  filtering: {
+    strictness: 'balanced',
+    blockUnsafeContent: true,
+    humanReviewSensitiveTopics: true,
+    blockedTopics: []
+  }
+};
+const RECOMMENDED_SYSTEM_SETTINGS = {
+  aiModel: 'gpt-4o-mini',
+  aiSummary: false,
+  aiCategory: true,
+  contentStudioAi: DEFAULT_CONTENT_STUDIO_AI,
+  maintenanceMode: false
+};
 
 function trustToneClasses(tone) {
   if (tone === 'emerald') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -5354,24 +5250,15 @@ function moveRegistryItem(items = [], trustKey, nextCredibility) {
   ));
 }
 
-function ThemeColorField({ label, value, onChange, hint = '' }) {
-  return (
-    <label className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-      <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
-      <div className="mt-3 flex items-center gap-3">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-11 w-14 cursor-pointer rounded-xl border border-gray-200 bg-white p-1"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-black text-gray-900">{value}</div>
-          {hint ? <div className="mt-0.5 text-xs font-medium text-gray-500">{hint}</div> : null}
-        </div>
-      </div>
-    </label>
-  );
+function getContentStudioAiSettings(settings = {}) {
+  const current = settings.contentStudioAi || {};
+  return {
+    ...DEFAULT_CONTENT_STUDIO_AI,
+    ...current,
+    blog: { ...DEFAULT_CONTENT_STUDIO_AI.blog, ...(current.blog || {}) },
+    linkedin: { ...DEFAULT_CONTENT_STUDIO_AI.linkedin, ...(current.linkedin || {}) },
+    filtering: { ...DEFAULT_CONTENT_STUDIO_AI.filtering, ...(current.filtering || {}) }
+  };
 }
 
 function SourceTrustCard({ item, onDragStart, onMove }) {
@@ -5423,18 +5310,183 @@ function SourceTrustCard({ item, onDragStart, onMove }) {
   );
 }
 
+function SourceTrustRulesPanel() {
+  const [sourceTrustRegistry, setSourceTrustRegistry] = useState([]);
+  const [sourceTrustSearch, setSourceTrustSearch] = useState('');
+  const [draggedTrustKey, setDraggedTrustKey] = useState('');
+  const [loadingTrust, setLoadingTrust] = useState(true);
+  const [savingTrust, setSavingTrust] = useState(false);
+  const [trustSaved, setTrustSaved] = useState(false);
+  const [trustError, setTrustError] = useState('');
+
+  const loadTrustRules = useCallback(async () => {
+    setLoadingTrust(true);
+    setTrustError('');
+    try {
+      const { data } = await api.get('/admin/settings');
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : []);
+    } catch (e) {
+      setTrustError(e.response?.data?.message || e.message || 'Failed to load trust rules');
+    } finally {
+      setLoadingTrust(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTrustRules();
+  }, [loadTrustRules]);
+
+  const normalizedTrustSearch = sourceTrustSearch.trim().toLowerCase();
+  const sourceTrustGroups = useMemo(() => (
+    SOURCE_TRUST_LEVELS.reduce((acc, level) => {
+      acc[level.key] = sourceTrustRegistry
+        .filter((item) => (
+          !normalizedTrustSearch
+          || item.name?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceId?.toLowerCase().includes(normalizedTrustSearch)
+          || item.sourceType?.toLowerCase().includes(normalizedTrustSearch)
+        ))
+        .filter((item) => item.credibility === level.key)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return acc;
+    }, {})
+  ), [sourceTrustRegistry, normalizedTrustSearch]);
+
+  const moveSourceTrustItem = useCallback((trustKey, nextCredibility) => {
+    setSourceTrustRegistry((current) => moveRegistryItem(current, trustKey, nextCredibility));
+  }, []);
+
+  const saveTrustRules = async () => {
+    setSavingTrust(true);
+    setTrustError('');
+    try {
+      const { data } = await api.put('/admin/settings/source-trust', {
+        sourceTrustMapping: buildSourceTrustMappingFromRegistry(sourceTrustRegistry)
+      });
+      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : sourceTrustRegistry);
+      setTrustSaved(true);
+      setTimeout(() => setTrustSaved(false), 2000);
+    } catch (e) {
+      setTrustError(e.response?.data?.message || e.message || 'Failed to save trust rules');
+    } finally {
+      setSavingTrust(false);
+    }
+  };
+
+  const visibleSourceTrustCount = sourceTrustGroups.high.length + sourceTrustGroups.moderate.length + sourceTrustGroups.low.length;
+
+  if (loadingTrust) return <Loader />;
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="eyebrow mb-1">Source Trust</div>
+          <h3 className="text-xl font-black tracking-tight text-gray-900">Source Credibility Mapping</h3>
+          <p className="mt-1 text-sm font-medium text-gray-500">Set source trust levels used during fetch, scoring, and article display.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Visible</div>
+            <div className="mt-1 text-lg font-black text-gray-900">{visibleSourceTrustCount}</div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Search</div>
+            <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustSearch.trim() ? 'Filtered' : 'All sources'}</div>
+          </div>
+          <button
+            type="button"
+            onClick={saveTrustRules}
+            disabled={savingTrust}
+            className={`inline-flex min-h-[56px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-white shadow-sm transition-all ${trustSaved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'} disabled:cursor-not-allowed disabled:opacity-70`}
+          >
+            {savingTrust ? <Loader2 size={14} className="animate-spin" /> : trustSaved ? <Check size={14} /> : <Save size={14} />}
+            {savingTrust ? 'Saving' : trustSaved ? 'Saved' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      {trustError ? (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          {trustError}
+        </div>
+      ) : null}
+
+      <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full max-w-md">
+          <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input min-h-[46px] rounded-2xl pl-11"
+            value={sourceTrustSearch}
+            onChange={(e) => setSourceTrustSearch(e.target.value)}
+            placeholder="Search source name, domain, or source id"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SOURCE_TRUST_LEVELS.map((level) => (
+            <span key={level.key} className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-black ${trustToneClasses(level.tone)}`}>
+              {level.label}: {sourceTrustGroups[level.key]?.length || 0}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {SOURCE_TRUST_LEVELS.map((level) => (
+          <div
+            key={level.key}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (draggedTrustKey) moveSourceTrustItem(draggedTrustKey, level.key);
+              setDraggedTrustKey('');
+            }}
+            className={`rounded-2xl border p-4 transition-all ${trustToneClasses(level.tone)}`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-black">{level.label}</div>
+                <div className="mt-1 text-xs font-semibold opacity-80">
+                  {sourceTrustGroups[level.key]?.length || 0} source{sourceTrustGroups[level.key]?.length === 1 ? '' : 's'}
+                </div>
+              </div>
+              <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-black">
+                {level.key === 'high' ? 'High' : level.key === 'moderate' ? 'Moderate' : 'Low'}
+              </span>
+            </div>
+
+            <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
+              {(sourceTrustGroups[level.key] || []).map((item) => (
+                <SourceTrustCard
+                  key={item.trustKey}
+                  item={item}
+                  onDragStart={setDraggedTrustKey}
+                  onMove={moveSourceTrustItem}
+                />
+              ))}
+              {!(sourceTrustGroups[level.key] || []).length ? (
+                <div className="rounded-2xl border border-dashed border-current/30 bg-white/60 px-4 py-10 text-center text-sm font-semibold text-current/70">
+                  {normalizedTrustSearch ? 'No matching sources in this trust level' : 'Drop sources here'}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SystemSettingsTab() {
   const [aiModel, setAiModel] = useState('gpt-4o-mini');
   const [aiSummary, setAiSummary] = useState(false);
   const [aiCategory, setAiCategory] = useState(false);
+  const [contentStudioAi, setContentStudioAi] = useState(DEFAULT_CONTENT_STUDIO_AI);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [dashboardAppearance, setDashboardAppearance] = useState(() => getDashboardAppearance());
-  const [sourceTrustRegistry, setSourceTrustRegistry] = useState([]);
-  const [draggedTrustKey, setDraggedTrustKey] = useState('');
   const [activeSection, setActiveSection] = useState('ai');
-  const [sourceTrustSearch, setSourceTrustSearch] = useState('');
+  const [activeAiTab, setActiveAiTab] = useState('feed');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [resettingSettings, setResettingSettings] = useState(false);
   const [saved, setSaved] = useState(false);
   const [settingsError, setSettingsError] = useState('');
 
@@ -5447,9 +5499,8 @@ function SystemSettingsTab() {
       setAiModel(settings.aiModel || 'gpt-4o-mini');
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
+      setContentStudioAi(getContentStudioAiSettings(settings));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
-      setDashboardAppearance(getDashboardAppearance(settings));
-      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : []);
     } catch (e) {
       setSettingsError(e.response?.data?.message || e.message || 'Failed to load system settings');
     } finally {
@@ -5469,17 +5520,15 @@ function SystemSettingsTab() {
         aiModel,
         aiSummary,
         aiCategory,
-        maintenanceMode,
-        dashboardAppearance,
-        sourceTrustMapping: buildSourceTrustMappingFromRegistry(sourceTrustRegistry)
+        contentStudioAi,
+        maintenanceMode
       });
       const settings = data.settings || {};
       setAiModel(settings.aiModel || aiModel);
       setAiSummary(Boolean(settings.aiSummary));
       setAiCategory(Boolean(settings.aiCategory));
+      setContentStudioAi(getContentStudioAiSettings(settings));
       setMaintenanceMode(Boolean(settings.maintenanceMode));
-      setDashboardAppearance(getDashboardAppearance(settings));
-      setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : sourceTrustRegistry);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -5489,115 +5538,90 @@ function SystemSettingsTab() {
     }
   };
 
-  const aiToggles = [
-    { label: 'AI Article Summarization',   help: 'Auto-generate AI summaries for fetched articles',       val: aiSummary,  set: setAiSummary },
-    { label: 'AI Category Classification', help: 'Use AI to auto-classify article categories on fetch',    val: aiCategory, set: setAiCategory },
-  ];
-  const normalizedTrustSearch = sourceTrustSearch.trim().toLowerCase();
-  const sourceTrustGroups = useMemo(() => (
-    SOURCE_TRUST_LEVELS.reduce((acc, level) => {
-      acc[level.key] = sourceTrustRegistry
-        .filter((item) => (
-          !normalizedTrustSearch
-          || item.name?.toLowerCase().includes(normalizedTrustSearch)
-          || item.sourceId?.toLowerCase().includes(normalizedTrustSearch)
-          || item.sourceType?.toLowerCase().includes(normalizedTrustSearch)
-        ))
-        .filter((item) => item.credibility === level.key)
-        .sort((a, b) => a.name.localeCompare(b.name));
-      return acc;
-    }, {})
-  ), [sourceTrustRegistry, normalizedTrustSearch]);
-  const moveSourceTrustItem = useCallback((trustKey, nextCredibility) => {
-    setSourceTrustRegistry((current) => moveRegistryItem(current, trustKey, nextCredibility));
-  }, []);
-  const visibleSourceTrustCount = sourceTrustGroups.high.length + sourceTrustGroups.moderate.length + sourceTrustGroups.low.length;
-  const updateTopicColor = useCallback((topic, field, value) => {
-    setDashboardAppearance((current) => ({
-      ...current,
-      topicColors: {
-        ...current.topicColors,
-        [topic]: {
-          ...current.topicColors[topic],
-          [field]: value
-        }
-      }
-    }));
-  }, []);
-  const updateTrustColor = useCallback((level, field, value) => {
-    setDashboardAppearance((current) => ({
-      ...current,
-      sourceTrustColors: {
-        ...current.sourceTrustColors,
-        [level]: {
-          ...current.sourceTrustColors[level],
-          [field]: value
-        }
-      }
-    }));
-  }, []);
-  const updateScoreBand = useCallback((key, field, value) => {
-    setDashboardAppearance((current) => ({
-      ...current,
-      relevanceScoreBands: current.relevanceScoreBands.map((band) => (
-        band.key === key
-          ? { ...band, [field]: field === 'min' ? Number(value) : value }
-          : band
-      )).sort((a, b) => Number(b.min || 0) - Number(a.min || 0))
-    }));
-  }, []);
+  const handleResetSettings = async () => {
+    setResettingSettings(true);
+    setSettingsError('');
+    try {
+      const { data } = await api.put('/admin/settings', RECOMMENDED_SYSTEM_SETTINGS);
+      const settings = data.settings || {};
+      setAiModel(settings.aiModel || RECOMMENDED_SYSTEM_SETTINGS.aiModel);
+      setAiSummary(Boolean(settings.aiSummary));
+      setAiCategory(Boolean(settings.aiCategory));
+      setContentStudioAi(getContentStudioAiSettings(settings));
+      setMaintenanceMode(Boolean(settings.maintenanceMode));
+      setActiveSection('ai');
+      setActiveAiTab('feed');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setSettingsError(e.response?.data?.message || e.message || 'Failed to reset system settings');
+    } finally {
+      setResettingSettings(false);
+    }
+  };
 
+  const aiToggles = [
+    { label: 'Article Summaries', help: 'Fetched articles', val: aiSummary,  set: setAiSummary },
+    { label: 'Category Classification', help: 'Fetched articles', val: aiCategory, set: setAiCategory },
+  ];
+  const updateStudioAi = useCallback((section, field, value) => {
+    setContentStudioAi((current) => ({
+      ...current,
+      [section]: {
+        ...current[section],
+        [field]: value
+      }
+    }));
+  }, []);
+  const updateStudioFilter = useCallback((field, value) => {
+    setContentStudioAi((current) => ({
+      ...current,
+      filtering: {
+        ...current.filtering,
+        [field]: value
+      }
+    }));
+  }, []);
   return (
-    <div className="space-y-6">
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
+    <div className="space-y-5 font-sans">
+      <div className="overflow-hidden rounded-2xl border border-ink-100/70 bg-white shadow-card">
+        <div className="border-b border-ink-100/70 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="eyebrow mb-1">System Settings</div>
-              <h3 className="text-2xl font-black tracking-tight text-gray-900">Platform Control Center</h3>
-              <p className="mt-1 text-sm font-medium text-gray-500">Open a focused settings tab instead of scrolling through one long page.</p>
+              <div className="eyebrow mb-1">Settings</div>
+              <h3 className="text-xl font-black leading-tight text-ink-800 sm:text-2xl">Admin Controls</h3>
             </div>
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Model</div>
-                <div className="mt-1 text-sm font-black text-gray-900">{aiModel || 'Not set'}</div>
+            <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+              <div className="rounded-xl border border-ink-100 bg-[#fbfbfa] px-3 py-3 shadow-card sm:px-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Model</div>
+                <div className="mt-1 text-[13px] font-black text-ink-800">{aiModel || 'Not set'}</div>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">AI Flags</div>
-                <div className="mt-1 text-sm font-black text-gray-900">{[aiSummary, aiCategory].filter(Boolean).length}/2 active</div>
+              <div className="rounded-xl border border-ink-100 bg-[#fbfbfa] px-3 py-3 shadow-card sm:px-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">AI Flags</div>
+                <div className="mt-1 text-[13px] font-black text-ink-800">{[aiSummary, aiCategory].filter(Boolean).length}/2 active</div>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Mapped Sources</div>
-                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustRegistry.length}</div>
-              </div>
-              <div className="rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Access Mode</div>
-                <div className={`mt-1 text-sm font-black ${maintenanceMode ? 'text-red-600' : 'text-emerald-600'}`}>{maintenanceMode ? 'Maintenance' : 'Live'}</div>
+              <div className="rounded-xl border border-ink-100 bg-[#fbfbfa] px-3 py-3 shadow-card sm:px-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Mode</div>
+                <div className={`mt-1 text-[13px] font-black ${maintenanceMode ? 'text-red-600' : 'text-emerald-600'}`}>{maintenanceMode ? 'Maintenance' : 'Live'}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="px-3 py-3 sm:px-4">
-          <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(180px,1fr)] gap-3 overflow-x-auto">
+        <div className="px-4 py-3 sm:px-5">
+          <div className="grid w-full grid-cols-2 gap-2 rounded-[24px] border border-ink-100 bg-[#fbfbfa] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:inline-grid sm:max-w-full sm:grid-flow-col sm:auto-cols-[170px] sm:overflow-x-auto">
             {SETTINGS_SECTIONS.map((section) => {
               const active = activeSection === section.key;
+              const Icon = section.icon;
               return (
                 <button
                   key={section.key}
                   type="button"
                   onClick={() => setActiveSection(section.key)}
-                  className={`rounded-[24px] border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson/20 bg-brand-pink/20 shadow-sm' : 'border-gray-200 bg-white/80 hover:bg-white hover:shadow-sm'}`}
+                  className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-2 rounded-2xl px-3 text-[11px] font-black transition-all sm:min-h-[44px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${active ? 'bg-brand-crimson text-white' : 'bg-gray-100 text-gray-600'}`}>
-                      <section.icon size={17} />
-                    </span>
-                    <div>
-                      <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-900'}`}>{section.label}</div>
-                      <div className="mt-0.5 text-xs font-medium text-gray-500">{section.help}</div>
-                    </div>
-                  </div>
+                  <Icon size={15} />
+                  <span className="truncate">{section.label}</span>
                 </button>
               );
             })}
@@ -5612,16 +5636,50 @@ function SystemSettingsTab() {
       )}
 
       {activeSection === 'ai' && (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-            <div className="eyebrow mb-1">AI Engine</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">AI Model Settings</h3>
-            <p className="mt-1 text-sm font-medium text-gray-500">Control the shared model and AI automation features used during fetch and classification.</p>
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
-                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400">Active AI Model</label>
+        <div className="overflow-hidden rounded-2xl border border-ink-100/80 bg-white shadow-card">
+          <div className="flex flex-col gap-3 border-b border-ink-100/80 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-crimson">AI Controls</div>
+              <h3 className="mt-1 text-[18px] font-black leading-tight text-ink-800 sm:text-[19px]">Model and Generation Settings</h3>
+            </div>
+            <span className="w-fit rounded-lg border border-ink-100 bg-[#fbfbfa] px-3 py-2 text-[11px] font-black text-ink-700">
+              {[aiSummary, aiCategory].filter(Boolean).length}/2 feed flags
+            </span>
+          </div>
+
+          <div className="border-b border-ink-100/80 px-4 py-3 sm:px-5">
+            <div className="grid w-full grid-cols-1 gap-2 rounded-[24px] border border-ink-100 bg-[#fbfbfa] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:grid-cols-3 xl:inline-grid xl:max-w-full xl:grid-flow-col xl:auto-cols-[minmax(170px,1fr)] xl:overflow-x-auto">
+              {AI_SETTINGS_TABS.map((tab) => {
+                const active = activeAiTab === tab.key;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveAiTab(tab.key)}
+                    className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-2 rounded-2xl px-3 text-[11px] font-black transition-all sm:min-h-[44px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                  >
+                    <Icon size={15} />
+                    <span className="truncate">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-[linear-gradient(180deg,#fbfbfa_0%,#ffffff_100%)] px-4 py-5 sm:px-5">
+          {activeAiTab === 'feed' && (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
+              <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)] sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Model</div>
+                    <div className="mt-1 text-[15px] font-black text-ink-800 sm:text-[16px]">Feed Processing</div>
+                  </div>
+                  <span className="rounded-lg border border-brand-crimson/10 bg-brand-pink/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-crimson">{aiModel || 'Not set'}</span>
+                </div>
                 <select
-                  className="input min-h-[44px] rounded-xl"
+                  className="input min-h-[46px] rounded-xl text-[13px] font-semibold"
                   value={aiModel}
                   onChange={e => setAiModel(e.target.value)}
                 >
@@ -5629,256 +5687,143 @@ function SystemSettingsTab() {
                   <option value="gpt-4o">GPT-4o &mdash; High Accuracy (Enterprise)</option>
                   <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
                 </select>
-                <p className="mt-1.5 text-xs font-medium text-gray-400">Used for article summarization and category classification across all users</p>
               </div>
-              <div>
-                <div className="mb-3 text-[10px] font-black uppercase tracking-wider text-gray-400">Feature Flags</div>
-                <div className="space-y-2.5">
-                  {aiToggles.map(({ label, help, val, set }, i) => (
-                    <div key={i} className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3.5 transition-all ${val ? 'border-emerald-200 bg-emerald-50/80' : 'border-gray-100 bg-gray-50/70'}`}>
-                      <div>
-                        <div className={`text-sm font-black ${val ? 'text-emerald-700' : 'text-gray-700'}`}>{label}</div>
-                        <div className="text-xs font-medium text-gray-400 mt-0.5">{help}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => set(!val)}
-                        className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'bg-emerald-500' : 'bg-gray-200'}`}
-                      >
-                        <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
-                      </button>
+              <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+                {aiToggles.map(({ label, help, val, set }, i) => (
+                  <div key={label} className={`flex min-h-[76px] items-center justify-between gap-4 px-5 py-4 transition-colors ${val ? 'bg-emerald-50/45' : 'bg-white'} ${i ? 'border-t border-ink-100' : ''}`}>
+                    <div className="min-w-0">
+                      <div className={`text-[14px] font-black ${val ? 'text-emerald-700' : 'text-ink-700'}`}>{label}</div>
+                      <div className="mt-1 text-[12px] font-medium text-ink-300">{help}</div>
                     </div>
-                  ))}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => set(!val)}
+                      className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                    >
+                      <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-            <div className="eyebrow mb-1">Platform Snapshot</div>
-            <h3 className="text-xl font-black tracking-tight text-gray-900">Current Configuration</h3>
-            <p className="mt-1 text-sm font-medium text-gray-500">Quick read-only summary of the settings that are currently active platform-wide.</p>
-            <div className="space-y-3">
-              <ConfigStatusRow icon={Gauge} label="AI model" value={aiModel || 'Not set'} tone="neutral" />
-              <ConfigStatusRow icon={Sparkles} label="Summarization" value={aiSummary ? 'Enabled' : 'Disabled'} tone={aiSummary ? 'emerald' : 'gray'} />
-              <ConfigStatusRow icon={FileText} label="Category classification" value={aiCategory ? 'Enabled' : 'Disabled'} tone={aiCategory ? 'emerald' : 'gray'} />
-              <ConfigStatusRow icon={Database} label="Source trust rules" value={`${sourceTrustRegistry.length} mapped sources`} tone="neutral" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeSection === 'visual' && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Visual Theme</div>
-                <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Feed Palette Controls</h3>
-                <p className="mt-1 text-sm font-medium text-gray-500">Set premium colors for topic columns, source trust badges, and relevance score pills from one place.</p>
-              </div>
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
-                Keep topic colors soft. Let score and source trust colors carry the stronger emphasis.
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-4">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Topic Colors</div>
-              <h4 className="mt-1 text-xl font-black text-gray-900">Four Intel Topic Palettes</h4>
-            </div>
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              {TOPIC_THEME_OPTIONS.map((column) => {
-                const theme = dashboardAppearance.topicColors[column.key];
+          {activeAiTab === 'studio' && (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {[
+                { key: 'blog', title: 'Blog Generation', maxMin: 300, maxMax: 3000 },
+                { key: 'linkedin', title: 'LinkedIn Post', maxMin: 80, maxMax: 800 }
+              ].map((section) => {
+                const config = contentStudioAi[section.key] || {};
                 return (
-                  <div key={column.key} className="rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
+                  <div key={section.key} className="rounded-2xl border border-ink-100 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+                    <div className="mb-4 flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-black text-gray-900">{column.label}</div>
-                        <div className="mt-1 text-xs font-medium text-gray-500">Column header, article accent, and CTA tone</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">{section.key}</div>
+                        <div className="mt-1 text-[16px] font-black text-ink-800">{section.title}</div>
                       </div>
-                      <div className="rounded-2xl px-4 py-2" style={{ background: theme.soft, border: `1px solid ${theme.border}`, color: theme.text }}>
-                        <div className="text-[11px] font-black uppercase tracking-wider">{column.label}</div>
-                      </div>
+                      <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider ${config.requireReview ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-ink-100 bg-ink-50 text-ink-300'}`}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.requireReview)}
+                          onChange={(e) => updateStudioAi(section.key, 'requireReview', e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson"
+                        />
+                        Require Review
+                      </label>
                     </div>
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <ThemeColorField label="Accent" value={theme.accent} onChange={(value) => updateTopicColor(column.key, 'accent', value)} hint="Thin rail and key icon tint" />
-                      <ThemeColorField label="Text" value={theme.text} onChange={(value) => updateTopicColor(column.key, 'text', value)} hint="Readable heading/pill text" />
-                      <ThemeColorField label="Soft" value={theme.soft} onChange={(value) => updateTopicColor(column.key, 'soft', value)} hint="Soft fill for header backgrounds" />
-                      <ThemeColorField label="Border" value={theme.border} onChange={(value) => updateTopicColor(column.key, 'border', value)} hint="Subtle premium outline" />
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <label className="lg:col-span-2">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Model</span>
+                        <select
+                          className="input min-h-[46px] rounded-xl text-[13px] font-semibold"
+                          value={config.model || 'gpt-4o-mini'}
+                          onChange={(e) => updateStudioAi(section.key, 'model', e.target.value)}
+                        >
+                          {AI_MODEL_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Temperature: {Number(config.temperature ?? 0).toFixed(2)}</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={config.temperature ?? 0}
+                          onChange={(e) => updateStudioAi(section.key, 'temperature', Number(e.target.value))}
+                          className="w-full accent-brand-crimson"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Max Words</span>
+                        <input
+                          type="number"
+                          min={section.maxMin}
+                          max={section.maxMax}
+                          className="input min-h-[46px] rounded-xl text-[13px] font-semibold"
+                          value={config.maxWords ?? ''}
+                          onChange={(e) => updateStudioAi(section.key, 'maxWords', Number(e.target.value))}
+                        />
+                      </label>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
+          {activeAiTab === 'safety' && (
+            <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
               <div className="mb-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Source Trust</div>
-                <h4 className="mt-1 text-xl font-black text-gray-900">Source Box Colors</h4>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Safety Filters</div>
+                <div className="mt-1 text-[16px] font-black text-ink-800">Filtering Rules</div>
               </div>
-              <div className="space-y-4">
-                {SOURCE_TRUST_LEVELS.map((level) => {
-                  const tone = dashboardAppearance.sourceTrustColors[level.key];
-                  return (
-                    <div key={level.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-black text-gray-900">{level.label}</div>
-                          <div className="mt-1 text-xs font-medium text-gray-500">Used on the source panel inside article cards</div>
-                        </div>
-                        <div className="rounded-2xl px-4 py-2" style={{ background: tone.bg, border: `1px solid ${tone.border}`, color: tone.text }}>
-                          <div className="text-[11px] font-black uppercase tracking-wider">{level.label}</div>
-                        </div>
-                      </div>
-                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <ThemeColorField label="Background" value={tone.bg} onChange={(value) => updateTrustColor(level.key, 'bg', value)} />
-                        <ThemeColorField label="Border" value={tone.border} onChange={(value) => updateTrustColor(level.key, 'border', value)} />
-                        <ThemeColorField label="Text" value={tone.text} onChange={(value) => updateTrustColor(level.key, 'text', value)} />
-                        <ThemeColorField label="Icon" value={tone.icon} onChange={(value) => updateTrustColor(level.key, 'icon', value)} />
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Strictness</span>
+                  <select
+                    className="input min-h-[46px] rounded-xl text-[13px] font-semibold"
+                    value={contentStudioAi.filtering?.strictness || 'balanced'}
+                    onChange={(e) => updateStudioFilter('strictness', e.target.value)}
+                  >
+                    <option value="light">Light</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="strict">Strict</option>
+                  </select>
+                </label>
+                <label className="flex min-h-[46px] items-center gap-3 rounded-xl border border-ink-100 bg-[#fbfbfa] px-3 py-3 text-[13px] font-bold text-ink-600">
+                  <input
+                    type="checkbox"
+                    checked={contentStudioAi.filtering?.blockUnsafeContent !== false}
+                    onChange={(e) => updateStudioFilter('blockUnsafeContent', e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson"
+                  />
+                  Block unsafe content
+                </label>
+                <label className="flex min-h-[46px] items-center gap-3 rounded-xl border border-ink-100 bg-[#fbfbfa] px-3 py-3 text-[13px] font-bold text-ink-600">
+                  <input
+                    type="checkbox"
+                    checked={contentStudioAi.filtering?.humanReviewSensitiveTopics !== false}
+                    onChange={(e) => updateStudioFilter('humanReviewSensitiveTopics', e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson"
+                  />
+                  Review sensitive topics
+                </label>
               </div>
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Blocked Topics</span>
+                <textarea
+                  className="input min-h-[104px] resize-y rounded-xl text-[13px] font-medium"
+                  value={(contentStudioAi.filtering?.blockedTopics || []).join(', ')}
+                  onChange={(e) => updateStudioFilter('blockedTopics', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+                  placeholder="adult content, political persuasion, financial advice..."
+                />
+              </label>
             </div>
-
-            <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">Relevance Score</div>
-                <h4 className="mt-1 text-xl font-black text-gray-900">Score Color Coding</h4>
-              </div>
-              <div className="space-y-4">
-                {dashboardAppearance.relevanceScoreBands.map((band) => (
-                  <div key={band.key} className="rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-black text-gray-900">{band.label}</div>
-                        <div className="mt-1 text-xs font-medium text-gray-500">Articles with score {band.min}+ use this style</div>
-                      </div>
-                      <div className="rounded-2xl px-4 py-2" style={{ background: band.bg, border: `1px solid ${band.border}`, color: band.text }}>
-                        <div className="text-[11px] font-black uppercase tracking-wider">{band.min}+</div>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
-                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Minimum Score</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          className="input mt-2 min-h-[44px] rounded-xl"
-                          value={band.min}
-                          onChange={(e) => updateScoreBand(band.key, 'min', e.target.value)}
-                        />
-                      </label>
-                      <label className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm">
-                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400">Label</span>
-                        <input
-                          className="input mt-2 min-h-[44px] rounded-xl"
-                          value={band.label}
-                          onChange={(e) => updateScoreBand(band.key, 'label', e.target.value)}
-                        />
-                      </label>
-                      <ThemeColorField label="Background" value={band.bg} onChange={(value) => updateScoreBand(band.key, 'bg', value)} />
-                      <ThemeColorField label="Border" value={band.border} onChange={(value) => updateScoreBand(band.key, 'border', value)} />
-                      <ThemeColorField label="Text" value={band.text} onChange={(value) => updateScoreBand(band.key, 'text', value)} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeSection === 'sources' && (
-        <div className="rounded-[30px] border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-crimson">Source Trust</div>
-              <h3 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Dynamic Source Credibility Mapping</h3>
-              <p className="mt-1 text-sm font-medium text-gray-500">
-                Default configured sources stay in High Credibility. Dynamic sources disappear automatically when their article data is deleted.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Visible sources</div>
-                <div className="mt-1 text-lg font-black text-gray-900">{visibleSourceTrustCount}</div>
-              </div>
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Search</div>
-                <div className="mt-1 text-sm font-black text-gray-900">{sourceTrustSearch.trim() ? 'Filtered' : 'All sources'}</div>
-              </div>
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500">
-                Drag source cards between columns or use the quick trust buttons inside each card.
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative w-full max-w-md">
-              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                className="input min-h-[46px] rounded-2xl pl-11"
-                value={sourceTrustSearch}
-                onChange={(e) => setSourceTrustSearch(e.target.value)}
-                placeholder="Search source name, domain, or source id"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {SOURCE_TRUST_LEVELS.map((level) => (
-                <span key={level.key} className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-black ${trustToneClasses(level.tone)}`}>
-                  {level.label}: {sourceTrustGroups[level.key]?.length || 0}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-            {SOURCE_TRUST_LEVELS.map((level) => (
-              <div
-                key={level.key}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggedTrustKey) moveSourceTrustItem(draggedTrustKey, level.key);
-                  setDraggedTrustKey('');
-                }}
-                className={`rounded-[28px] border p-4 transition-all ${trustToneClasses(level.tone)}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-black">{level.label}</div>
-                    <div className="mt-1 text-xs font-semibold opacity-80">
-                      {sourceTrustGroups[level.key]?.length || 0} source{sourceTrustGroups[level.key]?.length === 1 ? '' : 's'}
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-black">
-                    {level.key === 'high' ? 'All high' : level.key === 'moderate' ? 'All moderate' : 'All low'}
-                  </span>
-                </div>
-
-                <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
-                  {(sourceTrustGroups[level.key] || []).map((item) => (
-                    <SourceTrustCard
-                      key={item.trustKey}
-                      item={item}
-                      onDragStart={setDraggedTrustKey}
-                      onMove={moveSourceTrustItem}
-                    />
-                  ))}
-                  {!(sourceTrustGroups[level.key] || []).length ? (
-                    <div className="rounded-2xl border border-dashed border-current/30 bg-white/60 px-4 py-10 text-center text-sm font-semibold text-current/70">
-                      {normalizedTrustSearch ? 'No matching sources in this trust level' : 'Drop sources here'}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+          )}
           </div>
         </div>
       )}
@@ -5909,11 +5854,22 @@ function SystemSettingsTab() {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="grid grid-cols-1 gap-3 pb-20 sm:flex sm:flex-row sm:items-center sm:justify-end sm:pb-0">
         <button
+          type="button"
+          onClick={handleResetSettings}
+          disabled={savingSettings || resettingSettings || loadingSettings}
+          className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-ink-100 bg-white px-4 text-sm font-black text-ink-700 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/20 hover:text-brand-crimson disabled:cursor-not-allowed disabled:opacity-60"
+          title="Reset AI, theme, and access controls to recommended defaults"
+        >
+          {resettingSettings ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {resettingSettings ? 'Resetting...' : 'Reset Defaults'}
+        </button>
+        <button
+          type="button"
           onClick={handleSaveSettings}
-          disabled={savingSettings || loadingSettings}
-          className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
+          disabled={savingSettings || resettingSettings || loadingSettings}
+          className={`inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-black text-white shadow-sm transition-all ${saved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'}`}
         >
           {savingSettings ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> Save Settings</>}
         </button>
