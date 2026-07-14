@@ -13,6 +13,21 @@ const router = express.Router();
 const JWT_SESSION_DAYS = Math.max(1, Number(process.env.JWT_SESSION_DAYS || 7));
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(5, Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 15));
 
+const upgradeRequestSchema = Joi.object({
+  planId: Joi.string().max(80).allow('', null),
+  planLabel: Joi.string().max(120).allow('', null),
+  limitType: Joi.string().max(120).allow('', null)
+});
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function sessionExpiryDate() {
   return new Date(Date.now() + JWT_SESSION_DAYS * 24 * 60 * 60 * 1000);
 }
@@ -455,6 +470,71 @@ router.post('/logout-all', protect, asyncHandler(async (req, res) => {
   });
   await syncUserPresenceFromSessions(req.user._id);
   res.json({ message: 'All sessions revoked' });
+}));
+
+// POST /api/auth/upgrade-request
+router.post('/upgrade-request', protect, asyncHandler(async (req, res) => {
+  const { error, value } = upgradeRequestSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const to = String(process.env.EMAIL_REPLY_TO || '').trim();
+  if (!to) {
+    return res.status(503).json({ message: 'Upgrade request inbox is not configured. Set EMAIL_REPLY_TO on the backend.' });
+  }
+  if (!isEmailConfigured()) {
+    return res.status(503).json({ message: 'Email delivery is not configured on the server.' });
+  }
+
+  const requestedPlan = value.planLabel || value.planId || 'Requested plan';
+  const currentPlan = req.user.effectiveSubscriptionPlan || req.user.subscriptionPlan || 'unknown';
+  const subject = `Plan upgrade request: ${requestedPlan}`;
+  const lines = [
+    ['Name', req.user.name || '-'],
+    ['Email', req.user.email || '-'],
+    ['Company', req.user.company || '-'],
+    ['Role', req.user.role || '-'],
+    ['Current plan', currentPlan],
+    ['Requested plan', requestedPlan],
+    ['Limit hit', value.limitType || '-']
+  ];
+
+  const text = [
+    'A user requested a plan upgrade.',
+    '',
+    ...lines.map(([label, detail]) => `${label}: ${detail}`)
+  ].join('\n');
+
+  const html = `
+    <div style="margin:0;padding:24px;background:#f7f8fb;font-family:Roboto,Arial,sans-serif;color:#1f2937;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #ead8de;border-radius:20px;overflow:hidden;">
+        <div style="padding:22px 24px;background:linear-gradient(135deg,#d11243 0%,#8f0b2f 100%);color:#ffffff;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;opacity:0.8;">Upgrade request</div>
+          <h1 style="margin:10px 0 0;font-size:24px;line-height:1.2;">${escapeHtml(requestedPlan)}</h1>
+        </div>
+        <div style="padding:24px;">
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.7;">A user requested a plan upgrade.</p>
+          <table style="width:100%;border-collapse:collapse;">
+            ${lines.map(([label, detail]) => `
+              <tr>
+                <td style="padding:10px 0;border-bottom:1px solid #eef0f4;color:#667085;font-size:13px;font-weight:700;">${escapeHtml(label)}</td>
+                <td style="padding:10px 0;border-bottom:1px solid #eef0f4;text-align:right;color:#1f2937;font-size:13px;font-weight:800;">${escapeHtml(detail)}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  await sendEmail({
+    to,
+    subject,
+    html,
+    text,
+    replyTo: req.user.email || process.env.EMAIL_REPLY_TO || undefined
+  });
+
+  res.json({ message: `Upgrade request sent to ${to}` });
 }));
 
 // PATCH /api/auth/me

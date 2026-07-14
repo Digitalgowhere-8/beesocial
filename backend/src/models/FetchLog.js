@@ -38,7 +38,7 @@ const fetchLogSchema = new mongoose.Schema(
 
     triggeredBy: {
       type: String,
-      enum: ['cron', 'manual', 'system', 'n8n'],
+      enum: ['cron', 'manual', 'system'],
       required: true,
       index: true
     },
@@ -53,7 +53,7 @@ const fetchLogSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['running', 'success', 'partial', 'failed'],
+      enum: ['running', 'success', 'partial', 'failed', 'cancelled'],
       default: 'running',
       index: true
     },
@@ -62,8 +62,8 @@ const fetchLogSchema = new mongoose.Schema(
     finishedAt: { type: Date },
     durationMs: { type: Number },
 
-    // Per-source breakdown. Kept flexible because n8n can send this as
-    // objects, JSON strings, or legacy string rows depending on node setup.
+    // Per-source breakdown. Kept flexible because different runners can send
+    // this as objects, JSON strings, or legacy string rows.
     perSource: [{ type: mongoose.Schema.Types.Mixed }],
 
     // Aggregate totals

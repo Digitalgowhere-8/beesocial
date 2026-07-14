@@ -39,6 +39,8 @@ export default function Premium() {
   const [plans, setPlans] = useState([]);
   const [notice, setNotice] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [requestingPlanId, setRequestingPlanId] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
 
   useEffect(() => {
     try {
@@ -69,39 +71,62 @@ export default function Premium() {
   const limitType = notice?.limitType || new URLSearchParams(location.search).get('limit') || 'usage';
   const currentPlan = String(user?.subscriptionPlan || 'free');
 
+  const requestUpgrade = async (plan) => {
+    if (!plan || plan.planId === currentPlan || requestingPlanId) return;
+    setRequestingPlanId(plan.planId);
+    setRequestMessage('');
+    try {
+      const { data } = await api.post('/auth/upgrade-request', {
+        planId: plan.planId,
+        planLabel: plan.label || plan.planId,
+        limitType
+      });
+      setRequestMessage(data.message || 'Upgrade request sent.');
+    } catch (err) {
+      setRequestMessage(err.response?.data?.message || err.message || 'Could not send upgrade request.');
+    } finally {
+      setRequestingPlanId('');
+    }
+  };
+
   return (
     <Layout>
-      <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
+      <div className="premium-upgrade-page -m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="mx-auto max-w-7xl space-y-5">
-          <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+          <section className="premium-upgrade-hero overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
             <div className="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_340px]">
               <div className="p-6 sm:p-8">
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-brand-pink/50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
+                <div className="premium-upgrade-badge mb-3 inline-flex items-center gap-2 rounded-full bg-brand-pink/50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
                   <Crown size={13} />
                   Premium required
                 </div>
-                <h1 className="text-3xl font-black tracking-tight text-gray-900">Upgrade to keep working without limits</h1>
-                <p className="mt-3 max-w-3xl text-sm font-medium leading-relaxed text-gray-500">
+                <h1 className="premium-upgrade-title text-3xl font-black tracking-tight text-gray-900">Upgrade to keep working without limits</h1>
+                <p className="premium-upgrade-copy mt-3 max-w-3xl text-sm font-medium leading-relaxed text-gray-500">
                   Your plan is controlled by the super admin plan builder. When limits are changed there, the same limits appear here and apply to fetches, stored signals, blogs, posts, tokens, and team seats.
                 </p>
+                {requestMessage ? (
+                  <div className="premium-upgrade-notice mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+                    {requestMessage}
+                  </div>
+                ) : null}
                 {notice ? (
-                  <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                  <div className="premium-upgrade-notice mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
                     {notice.message || `${LIMIT_LABELS[limitType] || 'Usage'} limit reached.`}
                   </div>
                 ) : null}
               </div>
-              <div className="border-t border-gray-100 bg-gray-50/70 p-6 lg:border-l lg:border-t-0">
-                <div className="rounded-2xl bg-white p-5 ring-1 ring-gray-100">
+              <div className="premium-upgrade-side border-t border-gray-100 bg-gray-50/70 p-6 lg:border-l lg:border-t-0">
+                <div className="premium-upgrade-limit rounded-2xl bg-white p-5 ring-1 ring-gray-100">
                   <div className="flex items-center gap-3">
                     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-crimson text-white">
                       <Gauge size={18} />
                     </span>
                     <div>
-                      <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Limit hit</div>
-                      <div className="text-base font-black text-gray-900">{LIMIT_LABELS[limitType] || LIMIT_LABELS.usage}</div>
+                      <div className="premium-upgrade-eyebrow text-[10px] font-black uppercase tracking-wider text-gray-400">Limit hit</div>
+                      <div className="premium-upgrade-limit-title text-base font-black text-gray-900">{LIMIT_LABELS[limitType] || LIMIT_LABELS.usage}</div>
                     </div>
                   </div>
-                  <button type="button" onClick={() => navigate(-1)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 transition hover:border-brand-crimson/30 hover:text-brand-crimson">
+                  <button type="button" onClick={() => navigate(-1)} className="premium-upgrade-back mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-600 transition hover:border-brand-crimson/30 hover:text-brand-crimson">
                     <ArrowLeft size={16} />
                     Go back
                   </button>
@@ -111,7 +136,7 @@ export default function Premium() {
           </section>
 
           {loading ? (
-            <div className="flex min-h-[260px] items-center justify-center rounded-2xl bg-white shadow-sm">
+            <div className="premium-upgrade-loading flex min-h-[260px] items-center justify-center rounded-2xl bg-white shadow-sm">
               <Loader2 className="animate-spin text-brand-crimson" size={24} />
             </div>
           ) : (
@@ -120,15 +145,15 @@ export default function Premium() {
                 const active = plan.planId === currentPlan;
                 const highlighted = plan.planId !== 'free' && !active;
                 return (
-                  <section key={plan.planId} className={`flex flex-col rounded-2xl border bg-white p-5 shadow-sm ${highlighted ? 'border-brand-crimson/20 ring-1 ring-brand-crimson/10' : 'border-gray-100'}`}>
+                  <section key={plan.planId} className={`premium-upgrade-plan flex flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${highlighted ? 'premium-upgrade-plan-highlighted' : ''}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">{active ? 'Current plan' : 'Available plan'}</div>
-                        <h2 className="mt-1 text-xl font-black text-gray-900">{plan.label || plan.planId}</h2>
+                        <div className="premium-upgrade-eyebrow text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">{active ? 'Current plan' : 'Available plan'}</div>
+                        <h2 className="premium-upgrade-plan-title mt-1 text-xl font-black text-gray-900">{plan.label || plan.planId}</h2>
                       </div>
                       {active ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">Active</span> : null}
                     </div>
-                    <div className="mt-4 flex items-end gap-2">
+                    <div className="premium-upgrade-price mt-4 flex items-end gap-2">
                       <span className="text-3xl font-black text-gray-900">{plan.price || '-'}</span>
                       <span className="pb-1 text-xs font-bold text-gray-400">{plan.priceNote || ''}</span>
                     </div>
@@ -139,7 +164,7 @@ export default function Premium() {
                       <LimitLine label="Posts" value={fmt(plan.limits?.socialPostsMonthly)} />
                       <LimitLine label="Tokens" value={fmt(plan.limits?.tokenBudgetMonthly)} />
                     </div>
-                    <div className="mt-5 space-y-2 border-t border-gray-100 pt-4">
+                    <div className="premium-upgrade-features mt-5 space-y-2 border-t border-gray-100 pt-4">
                       {Object.entries(FEATURE_LABELS).map(([key, label]) => (
                         <div key={key} className="flex items-center gap-2 text-xs font-bold text-gray-600">
                           <Check size={14} className={plan.access?.[key] ? 'text-emerald-600' : 'text-gray-300'} />
@@ -147,10 +172,15 @@ export default function Premium() {
                         </div>
                       ))}
                     </div>
-                    <a href={`mailto:${user?.email || ''}?subject=Plan upgrade request`} className={`mt-5 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black ${active ? 'border border-gray-200 bg-white text-gray-500' : 'bg-brand-crimson text-white hover:bg-brand-hoverred'}`}>
-                      {active ? <Sparkles size={16} /> : <Mail size={16} />}
-                      {active ? 'Current plan' : 'Request upgrade'}
-                    </a>
+                    <button
+                      type="button"
+                      onClick={() => requestUpgrade(plan)}
+                      disabled={active || requestingPlanId === plan.planId}
+                      className={`premium-upgrade-action mt-5 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black disabled:cursor-not-allowed disabled:opacity-70 ${active ? 'premium-upgrade-action-current border border-gray-200 bg-white text-gray-500' : 'bg-brand-crimson text-white hover:bg-brand-hoverred'}`}
+                    >
+                      {active ? <Sparkles size={16} /> : requestingPlanId === plan.planId ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                      {active ? 'Current plan' : requestingPlanId === plan.planId ? 'Sending...' : 'Request upgrade'}
+                    </button>
                   </section>
                 );
               })}
@@ -164,7 +194,7 @@ export default function Premium() {
 
 function LimitLine({ label, value }) {
   return (
-    <div className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+    <div className="premium-upgrade-limit-row flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
       <span className="text-xs font-bold text-gray-500">{label}</span>
       <span className="text-xs font-black text-gray-900">{value}</span>
     </div>

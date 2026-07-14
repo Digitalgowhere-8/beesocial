@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { ArrowLeft, Loader2, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
+import { useTheme } from '../context/ThemeContext';
 import { getEmailValidationError } from '../utils/emailValidator';
 
 const robotoFont = '"Roboto", system-ui, sans-serif';
 
 export default function ForgotPassword() {
+  const { isDark } = useTheme();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -14,11 +16,13 @@ export default function ForgotPassword() {
 
   const inputFocus = (e) => {
     e.target.style.borderColor = '#D11243';
-    e.target.style.boxShadow = '0 0 0 4px rgba(209,18,67,0.1)';
+    e.target.style.boxShadow = isDark
+      ? '0 0 0 4px rgba(209,18,67,0.18)'
+      : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const inputBlur = (e) => {
-    e.target.style.borderColor = '#e5e7eb';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
     e.target.style.boxShadow = 'none';
   };
 
@@ -45,13 +49,17 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-14 sm:p-10" style={{ background: '#FAF0F2', fontFamily: robotoFont }}>
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-14 sm:p-10 transition-colors duration-300"
+      style={{ background: isDark ? '#070d17' : '#FAF0F2', fontFamily: robotoFont }}
+    >
       <div className="w-full max-w-[460px]">
         <div
-          className="rounded-2xl bg-white p-5 sm:p-8 lg:p-9"
+          className="rounded-2xl p-5 transition-colors duration-300 sm:p-8 lg:p-9"
           style={{
-            boxShadow: '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
-            border: '1px solid rgba(209,18,67,0.05)'
+            background: isDark ? '#111827' : '#ffffff',
+            boxShadow: isDark ? '0 24px 54px rgba(2,6,23,0.44)' : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+            border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
           }}
         >
           <div className="mb-6 flex items-center gap-3">
@@ -60,24 +68,29 @@ export default function ForgotPassword() {
             </span>
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#D11243' }}>Security</div>
-              <h1 className="text-[1.45rem] font-black leading-tight text-gray-900">Forgot Password</h1>
+              <h1 className={`text-[1.45rem] font-black leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Forgot Password</h1>
             </div>
           </div>
 
-          <p className="mb-5 text-sm leading-6 text-gray-500">
+          <p className={`mb-5 text-sm leading-6 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
             Enter your account email and we will send you a secure reset link.
           </p>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">Email</label>
+              <label className={`mb-2 block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Email</label>
               <input
                 type="email"
                 required
                 autoFocus
                 placeholder="name@company.com"
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-800 shadow-sm outline-none transition-all duration-200 placeholder:text-gray-300"
-                style={{ background: '#FAFAFA', fontFamily: robotoFont }}
+                className="w-full rounded-xl border px-4 py-3 text-sm shadow-sm outline-none transition-all duration-200 placeholder:text-gray-400"
+                style={{
+                  background: isDark ? '#0b1220' : '#FAFAFA',
+                  borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb',
+                  color: isDark ? '#f8fafc' : '#1f2937',
+                  fontFamily: robotoFont
+                }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={inputFocus}

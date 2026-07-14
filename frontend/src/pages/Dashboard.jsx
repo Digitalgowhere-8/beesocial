@@ -11,7 +11,7 @@ import useInfiniteScroll from '../hooks/useInfiniteScroll';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import { getDashboardAppearance } from '../utils/feedTheme';
 import {
-  Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check
+  Newspaper, Landmark, Building2, BookOpen, RefreshCw, BookOpenText, MessageSquareText, Sparkles, Bookmark, Trash2, X, MoreHorizontal, Check, ArrowUp
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -169,17 +169,21 @@ function dateScoreRanked(items = []) {
 const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount = 0, isAdmin, renderArticle, hasMore = false, loadingMore = false, onLoadMore }) {
   const Icon = column.icon;
   const scrollRef = useRef(null);
+  const [showColumnTop, setShowColumnTop] = useState(false);
   const sentinelRef = useInfiniteScroll({
     hasMore,
     loading: loadingMore || loading,
     onLoadMore,
     root: scrollRef.current
   });
+  const scrollColumnTop = useCallback(() => {
+    scrollRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
+  }, []);
 
   return (
     <section
       data-analytics-section={`Intel feed: ${column.label}`}
-      className="min-h-0 overflow-hidden rounded-[26px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,248,250,0.95)_0%,rgba(255,255,255,0.98)_42%,rgba(255,247,249,0.92)_100%)] shadow-card flex flex-col"
+      className="intel-feed-column relative min-h-0 overflow-hidden rounded-[26px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,248,250,0.95)_0%,rgba(255,255,255,0.98)_42%,rgba(255,247,249,0.92)_100%)] shadow-card flex flex-col"
     >
       <div
         className="border-b border-brand-crimson/10 bg-brand-pink/70 px-5 py-4"
@@ -207,7 +211,11 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
         </div>
       </div>
 
-      <div ref={scrollRef} className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-brand-lightpink/50 p-4">
+      <div
+        ref={scrollRef}
+        onScroll={(event) => setShowColumnTop(event.currentTarget.scrollTop > 220)}
+        className="intel-feed-body hide-scrollbar relative min-h-0 flex-1 space-y-4 overflow-y-auto bg-brand-lightpink/50 p-4"
+      >
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           : items.length
@@ -218,6 +226,15 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
             {loadingMore ? 'Loading more...' : 'Scroll for more'}
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={scrollColumnTop}
+          className={`intel-column-top-button sticky bottom-3 mx-auto hidden h-9 w-9 items-center justify-center rounded-full border border-gray-200/90 bg-white/95 text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.14)] backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-crimson/30 hover:text-brand-crimson xl:flex ${showColumnTop ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}
+          aria-label={`Back to top of ${column.label}`}
+          title={`Back to top of ${column.label}`}
+        >
+          <ArrowUp size={16} strokeWidth={2.7} />
+        </button>
       </div>
     </section>
   );
@@ -694,6 +711,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   }, [activeType, mobileFeedItems, rankedData]);
   const activeFeedScrollRef = useRef(null);
   const mobileFeedScrollRef = useRef(null);
+  const [showIntelScrollTop, setShowIntelScrollTop] = useState(false);
   const activeFeedLoadMoreRef = useInfiniteScroll({
     enabled: isIntelDesk && Boolean(activeType),
     hasMore: Boolean(activeType && currentFeedState[activeType]?.hasMore),
@@ -727,6 +745,38 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   useEffect(() => {
     setSelectedArticleIds(new Set());
   }, [canDeleteTailoredArticles, intelFilters.type, intelDeskTab]);
+
+  useEffect(() => {
+    if (!isIntelDesk || dashTab === 'analytics') {
+      setShowIntelScrollTop(false);
+      return undefined;
+    }
+
+    const handleScroll = () => {
+      const feedNode = activeType ? activeFeedScrollRef.current : mobileFeedScrollRef.current;
+      const mainNode = feedNode?.closest('main');
+      const pageTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      const feedTop = feedNode?.scrollTop || 0;
+      const mainTop = mainNode?.scrollTop || 0;
+      const isMobile = window.innerWidth < 1280;
+      setShowIntelScrollTop(isMobile && Math.max(pageTop, feedTop, mainTop) > 320);
+    };
+
+    handleScroll();
+    document.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+    return () => {
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [activeType, dashTab, intelDeskTab, isIntelDesk]);
+
+  const scrollIntelDeskToTop = useCallback(() => {
+    const feedNode = activeType ? activeFeedScrollRef.current : mobileFeedScrollRef.current;
+    feedNode?.scrollTo({ top: 0, behavior: 'smooth' });
+    feedNode?.closest('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeType]);
 
   const startArticleDrag = (event, item) => {
     if (!canDragCompose) {
@@ -904,13 +954,13 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         selected={selectedArticleIds.has(item._id)}
         onSelect={toggleSelectArticle}
         adminActions={canDeleteTailoredArticles ? (
-          <button onClick={() => deleteArticle(item)} className="btn-ghost text-[12px] text-red-600 hover:bg-red-50">
+          <button onClick={() => deleteArticle(item)} className="article-delete-button inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-transparent px-3 py-2 text-[12px] font-black text-red-600 transition-all hover:border-red-300 hover:bg-red-50">
             <Trash2 size={12} /> Delete
           </button>
         ) : null}
       />
       {canUseBlogStudio ? (
-        <div className="mt-2 grid grid-cols-2 gap-2 xl:hidden">
+        <div className="article-mobile-actions mt-2 grid grid-cols-2 gap-2 xl:hidden">
           <button
             type="button"
             onPointerDown={(event) => event.stopPropagation()}
@@ -919,7 +969,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               event.stopPropagation();
               openStudioForArticle(item, 'blog', { focusComposer: true });
             }}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-brand-crimson/10 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/50"
+            className="article-mobile-action article-mobile-action-blog inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-brand-crimson/10 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/50"
           >
             <BookOpenText size={14} /> Blog
           </button>
@@ -931,7 +981,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               event.stopPropagation();
               openStudioForArticle(item, 'social', { focusComposer: true });
             }}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-blue-600 shadow-sm transition-all hover:bg-blue-50"
+            className="article-mobile-action article-mobile-action-linkedin inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-3 text-[11px] font-black uppercase tracking-wider text-blue-600 shadow-sm transition-all hover:bg-blue-50"
           >
             <MessageSquareText size={14} /> LinkedIn
           </button>
@@ -941,11 +991,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
   );
 
   const headerActions = (
-    <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+    <div className="dashboard-header-actions flex w-full flex-col gap-2 sm:flex-row sm:items-center">
       {isIntelDesk && (
         <>
-        <div className="flex items-center justify-between gap-3 sm:hidden">
-          <div className="inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
+          <div className="flex items-center justify-between gap-3 sm:hidden">
+          <div className="mobile-dashboard-mode-pill inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm">
             {intelDeskTab === 'intel' ? <Sparkles size={14} /> : intelDeskTab === 'tailored' ? <Newspaper size={14} /> : <Bookmark size={14} />}
             {intelDeskTab === 'intel' ? 'Intelligence Library' : intelDeskTab === 'tailored' ? 'Personalised Feed' : 'Saved Briefs'}
           </div>
@@ -954,7 +1004,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               type="button"
               onClick={() => setRefreshKey((k) => k + 1)}
               data-tour="dashboard-refresh"
-              className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+              className="app-refresh-button mobile-header-small-button inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border px-3 shadow-sm transition-all"
               aria-label="Refresh intel desk"
             >
                 <RefreshCw size={16} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
@@ -962,14 +1012,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             <button
               type="button"
               onClick={() => setMobileIntelMenuOpen((value) => !value)}
-              className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+              className="mobile-header-small-button inline-flex h-[42px] w-[42px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
               aria-label="Open intel desk menu"
             >
               <MoreHorizontal size={16} />
             </button>
           </div>
         </div>
-        <div className="hidden w-full grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:grid sm:w-auto">
+        <div className="dashboard-pill-switch hidden w-full grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:grid sm:w-auto">
           {[
             { key: 'intel', label: 'Intelligence Library', mobileLabel: 'Intelligence Library', icon: Sparkles },
             { key: 'tailored', label: 'Personalised Feed', mobileLabel: 'Personalised Feed', icon: Newspaper },
@@ -1001,12 +1051,12 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:hidden">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-2">
               <div
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm"
+                className="mobile-dashboard-mode-pill inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-[13px] font-black text-gray-900 shadow-sm"
               >
                 <Sparkles size={14} />
                 <span className="truncate">{analyticsViewMode === 'today' ? 'Today' : 'Full Hive'}</span>
               </div>
-              <div className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[linear-gradient(180deg,#fff8fa_0%,#fff3f6_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+              <div className="mobile-live-buzz-pill inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[linear-gradient(180deg,#fff8fa_0%,#fff3f6_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72] shadow-[0_0_0_4px_rgba(109,223,114,0.14)]" />
                 <span className="truncate">{Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}</span>
               </div>
@@ -1016,7 +1066,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 type="button"
                 onClick={() => setRefreshKey((k) => k + 1)}
                 data-tour="dashboard-refresh"
-                className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-[linear-gradient(180deg,#fff8fa_0%,#fff1f5_100%)] text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+                className="app-refresh-button mobile-header-small-button inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border shadow-sm transition-all"
                 aria-label="Refresh dashboard"
               >
                 <RefreshCw size={16} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
@@ -1024,14 +1074,14 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               <button
                 type="button"
                 onClick={() => setMobileAnalyticsMenuOpen((value) => !value)}
-                className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
+                className="mobile-header-small-button inline-flex h-[44px] w-[44px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-all hover:border-brand-crimson/20 hover:text-brand-crimson"
                 aria-label="Open analytics menu"
               >
                 <MoreHorizontal size={16} />
               </button>
             </div>
           </div>
-          <div className="hidden sm:inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
+          <div className="dashboard-pill-switch hidden sm:inline-flex rounded-2xl border border-gray-200 bg-[#f7f8fb] p-1 shadow-sm">
             {[
               { key: 'today', label: 'Today' },
               ...(isAdmin ? [{ key: 'all', label: 'Full Hive' }] : []),
@@ -1040,17 +1090,17 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 key={mode.key}
                 type="button"
                 onClick={() => setAnalyticsViewMode(mode.key)}
-                className={`min-h-[40px] rounded-xl px-5 text-[13px] font-black uppercase tracking-wider transition-all ${
+                className={`dashboard-pill-option min-h-[40px] rounded-xl px-5 text-[13px] font-black uppercase tracking-wider transition-all ${
                   analyticsViewMode === mode.key
-                    ? 'bg-brand-crimson text-white shadow-[0_6px_14px_rgba(209,18,67,0.18)]'
-                    : 'text-[#98a0b3] hover:bg-white'
+                    ? 'dashboard-pill-option-active bg-brand-crimson text-white shadow-[0_6px_14px_rgba(209,18,67,0.18)]'
+                    : 'dashboard-pill-option-idle text-[#98a0b3] hover:bg-white'
                 }`}
               >
                 {mode.label}
               </button>
             ))}
           </div>
-          <div className="hidden sm:inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+          <div className="live-buzz-chip hidden sm:inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
             <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72]" />
             {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}
           </div>
@@ -1060,7 +1110,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
         type="button"
         onClick={() => setRefreshKey((k) => k + 1)}
         data-tour="dashboard-refresh"
-        className={`hidden min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-5 text-[13px] font-black text-brand-crimson shadow-sm transition-all hover:border-brand-crimson/25 hover:bg-white sm:w-auto ${(dashTab === 'analytics' || isIntelDesk) ? 'sm:inline-flex' : ''}`}
+        className={`app-refresh-button dashboard-refresh-btn hidden min-h-[40px] w-full items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all sm:w-auto ${(dashTab === 'analytics' || isIntelDesk) ? 'sm:inline-flex' : ''}`}
       >
         <RefreshCw size={14} className={refreshIndicatorLoading ? 'animate-spin' : ''} />
         Refresh
@@ -1180,8 +1230,8 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             </div>
 
             {canDeleteTailoredArticles && selectedArticleIds.size > 0 && (
-              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-100 bg-red-50/80 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm font-black text-gray-800">
+              <div className="intel-bulk-selection-bar mb-4 flex flex-col gap-3 rounded-xl border border-red-100 bg-red-50/80 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="intel-bulk-selection-count text-sm font-black text-gray-800">
                   {selectedArticleIds.size} selected
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1189,7 +1239,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                     type="button"
                     onClick={selectAllVisibleArticles}
                     disabled={!visibleFeedItems.length}
-                    className="rounded-xl bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100 hover:text-gray-900 disabled:opacity-40"
+                    className="intel-bulk-select-button rounded-xl bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100 hover:text-gray-900 disabled:opacity-40"
                   >
                     Select all visible
                   </button>
@@ -1197,11 +1247,11 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                     type="button"
                     onClick={deleteSelectedArticles}
                     disabled={!selectedArticleIds.size}
-                    className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100 disabled:opacity-40"
+                    className="intel-bulk-delete-button inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100 disabled:opacity-40"
                   >
                     <Trash2 size={14} /> Delete selected
                   </button>
-                  <button onClick={clearSelectedArticles} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 ring-1 ring-gray-200 hover:bg-gray-50">
+                  <button onClick={clearSelectedArticles} className="intel-bulk-clear-button inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 ring-1 ring-gray-200 hover:bg-gray-50">
                     <X size={14} />
                   </button>
                 </div>
@@ -1251,7 +1301,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </div>
             ) : (
               <>
-              <div ref={mobileFeedScrollRef} className="min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
+              <div ref={mobileFeedScrollRef} className="intel-mobile-feed min-h-0 flex-1 overflow-y-auto pb-8 xl:hidden" data-tour="intel-feed">
                 {isFeedLoading ? (
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -1269,7 +1319,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                   <EmptyState icon={intelDeskTab === 'saved' ? Bookmark : intelDeskTab === 'intel' ? Sparkles : Newspaper} isAdmin={isAdmin} />
                 )}
               </div>
-              <div className="hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5" data-tour="intel-feed">
+              <div className="intel-desktop-feed hidden min-h-0 flex-1 grid-cols-4 gap-4 pb-2 xl:grid 2xl:gap-5" data-tour="intel-feed">
                   {visibleColumns.map(col => (
                     <FeedColumn
                       key={col.key}
@@ -1313,6 +1363,17 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </div>
               </>
             )}
+            {showIntelScrollTop ? (
+              <button
+                type="button"
+                onClick={scrollIntelDeskToTop}
+                className="mobile-scroll-top-button xl:hidden fixed bottom-24 left-1/2 z-50 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-lg transition-all hover:-translate-y-0.5 hover:text-brand-crimson"
+                aria-label="Scroll Intel Desk to top"
+                title="Scroll to top"
+              >
+                <ArrowUp size={18} />
+              </button>
+            ) : null}
           </div>
         )}
       </div>

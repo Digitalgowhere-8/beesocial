@@ -8,7 +8,7 @@ import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileTe
 
 const LIBRARY_MODES = [
   { key: 'blogs', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
-  { key: 'linkedin', label: 'Social', desktopLabel: 'Social Media Post', icon: MessageSquareText },
+  { key: 'linkedin', label: 'Social Media', desktopLabel: 'Social Media Post', icon: MessageSquareText },
 ];
 const LIBRARY_CACHE_VERSION = 'v1';
 const LIBRARY_PAGE_SIZE = 12;
@@ -704,7 +704,7 @@ export default function BlogLibrary() {
         <button
           type="button"
           onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })}
-          className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+          className="app-refresh-button inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border px-3 shadow-sm transition-all"
           aria-label="Refresh content repository"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -745,7 +745,7 @@ export default function BlogLibrary() {
               );
             })}
           </div>
-          <button type="button" onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })} className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50">
+          <button type="button" onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })} className="app-refresh-button inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
@@ -804,7 +804,7 @@ export default function BlogLibrary() {
             >
               <span className="flex items-center gap-3 text-sm font-black">
                 <MessageSquareText size={15} />
-                Social
+                Social Media
               </span>
               {mode === 'linkedin' ? <Check size={15} /> : null}
             </button>
@@ -817,7 +817,7 @@ export default function BlogLibrary() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="flex h-full min-h-[calc(100vh-64px)] -m-3 flex-col gap-4 p-3 mesh-bg sm:-m-5 sm:gap-5 sm:p-5 lg:-m-6 lg:p-6">
+      <div className="content-repo-page flex h-full min-h-[calc(100vh-64px)] -m-3 flex-col gap-4 p-3 mesh-bg sm:-m-5 sm:gap-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="sm:hidden">
           <div className="relative min-w-0 max-w-xl flex-1">
             <Search size={15} className="absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-gray-400" />
@@ -836,10 +836,10 @@ export default function BlogLibrary() {
         {mode === 'linkedin' && isAdmin && selectedSocialIds.length ? (
           <div className="glass-panel rounded-[22px] flex flex-wrap items-center gap-2 px-4 py-3 shadow-[0_16px_30px_rgba(15,23,42,0.06)]">
             <span className="text-sm font-black text-gray-800">{selectedSocialIds.length} selected</span>
-            <button type="button" onClick={toggleSelectAllSocial} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+            <button type="button" onClick={toggleSelectAllSocial} className="content-repo-action-button rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
             </button>
-            <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+            <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
               Delete
             </button>
@@ -852,10 +852,10 @@ export default function BlogLibrary() {
         {mode === 'blogs' && isAdmin && selectedIds.length ? (
           <div className="glass-panel rounded-[22px] flex flex-wrap items-center gap-2 px-4 py-3 shadow-[0_16px_30px_rgba(15,23,42,0.06)]">
             <span className="text-sm font-black text-gray-800">{selectedIds.length} selected</span>
-            <button type="button" onClick={toggleSelectAllBlogs} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+            <button type="button" onClick={toggleSelectAllBlogs} className="content-repo-action-button rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
             </button>
-            <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+            <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
               Delete
             </button>
@@ -872,11 +872,23 @@ export default function BlogLibrary() {
         )}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
-          <section className={`${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
+          <section className={`content-repo-list-panel ${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
             {loading && ((mode === 'blogs' && !items.length) || (mode === 'linkedin' && !socialItems.length)) ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3 text-brand-crimson">
-                <Loader2 size={24} className="animate-spin" />
-                <span className="text-sm font-bold text-gray-500">Loading library...</span>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="skeleton h-8 w-48 rounded-md" />
+                  <div className="skeleton h-7 w-20 rounded-md" />
+                </div>
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="rounded-[22px] border border-gray-100 bg-white p-5">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="skeleton h-7 w-7 rounded" />
+                      <div className="skeleton h-4 w-16 rounded" />
+                    </div>
+                    <div className="skeleton mb-2 h-6 w-28 rounded" />
+                    <div className="skeleton h-3 w-full rounded" />
+                  </div>
+                ))}
               </div>
             ) : mode === 'linkedin' ? (
               socialItems.length ? (
@@ -887,10 +899,13 @@ export default function BlogLibrary() {
                   return (
                     <div
                       key={post._id}
-                      className={`w-full rounded-[22px] border p-4 text-left transition-all duration-300 ${
-                        isSelected ? 'border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
+                      className={`content-repo-list-card w-full rounded-[22px] border p-4 text-left transition-all duration-300 relative overflow-hidden ${
+                        isSelected ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
+                      {isSelected && (
+                        <div className="content-repo-selected-line absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-crimson to-brand-pink rounded-l-xl"></div>
+                      )}
                       <div className="flex items-start gap-3">
                         {isAdmin ? (
                           <button
@@ -935,14 +950,14 @@ export default function BlogLibrary() {
                   return (
                     <div
                       key={blog._id}
-                      className={`w-full text-left transition-all duration-300 rounded-[22px] p-4 border relative overflow-hidden group ${
+                      className={`content-repo-list-card w-full text-left transition-all duration-300 rounded-[22px] p-4 border relative overflow-hidden group ${
                         isSelected 
-                          ? 'border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' 
+                          ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' 
                           : 'border-white/50 bg-white/72 hover:bg-white hover:border-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
                       {isSelected && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-crimson to-brand-pink rounded-l-xl"></div>
+                        <div className="content-repo-selected-line absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-crimson to-brand-pink rounded-l-xl"></div>
                       )}
                       <div className="flex items-start gap-3">
                         {isAdmin ? (
@@ -988,12 +1003,12 @@ export default function BlogLibrary() {
             )}
           </section>
 
-          <article className={`${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:p-10`}>
+          <article className={`content-repo-reader ${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:p-10`}>
             <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-gray-100 bg-white/96 px-4 py-3 backdrop-blur xl:hidden">
               <button
                 type="button"
                 onClick={() => setMobileReaderOpen(false)}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl border border-brand-crimson/15 bg-[linear-gradient(180deg,#fff7f9_0%,#ffeef3_100%)] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-brand-crimson shadow-[0_12px_26px_rgba(209,18,67,0.12)] transition-all hover:border-brand-crimson/30 hover:bg-[linear-gradient(180deg,#fff3f6_0%,#ffe7ef_100%)] hover:shadow-[0_14px_30px_rgba(209,18,67,0.16)]"
+                className="content-repo-back-button inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-gray-800 shadow-sm transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-brand-crimson shadow-sm">
                   <ArrowLeft size={14} />
@@ -1004,7 +1019,7 @@ export default function BlogLibrary() {
             {mode === 'linkedin' ? (
               selectedSocial ? (
                 <div className="max-w-3xl mx-auto animate-fade-in-up">
-                  <div className="mb-5 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                  <div className="content-repo-toolbar mb-5 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       <Pill icon={MessageSquareText} highlight>LinkedIn</Pill>
@@ -1014,7 +1029,7 @@ export default function BlogLibrary() {
                     <button
                       type="button"
                       onClick={copySocialPost}
-                      className={`inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                      className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
                         copied
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
@@ -1026,7 +1041,7 @@ export default function BlogLibrary() {
                     </div>
                   </div>
                   <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                  <div className="content-repo-social-preview rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                     <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
                       <div>
@@ -1043,7 +1058,7 @@ export default function BlogLibrary() {
               ) : <Empty large />
             ) : selected ? (
               <div className="max-w-3xl mx-auto animate-fade-in-up">
-                <div className="mb-6 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                <div className="content-repo-toolbar mb-6 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2.5">
                     {selected.category && <Pill icon={Tag}>{selected.category}</Pill>}
@@ -1053,7 +1068,7 @@ export default function BlogLibrary() {
                   <button
                     type="button"
                     onClick={copyBlogPost}
-                    className={`inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                    className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
                       copied
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
@@ -1093,7 +1108,7 @@ export default function BlogLibrary() {
 
 function Pill({ icon: Icon, children, highlight = false }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border shadow-sm transition-all ${
+    <span className={`content-repo-pill ${highlight ? 'content-repo-pill-highlight' : ''} inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border shadow-sm transition-all ${
       highlight 
         ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(209,18,67,0.18)]' 
         : 'border-gray-200 bg-white text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]'

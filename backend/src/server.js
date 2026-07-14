@@ -22,7 +22,7 @@ const cronRunner = require('./jobs/cron');
 const authRoutes = require('./routes/auth');
 const articleRoutes = require('./routes/articles');
 const adminRoutes = require('./routes/admin');
-const n8nRoutes = require('./routes/n8n');
+const profileSearchRoutes = require('./routes/profileSearch');
 const blogRoutes = require('./routes/blogs');
 const analyticsRoutes = require('./routes/analytics');
 const realtimeRoutes = require('./routes/realtime');
@@ -104,11 +104,10 @@ const expensiveLimit = rateLimit({
   legacyHeaders: false,
   message: { message: 'Too many requests on this endpoint. Please wait a moment and try again.' }
 });
-app.use('/api/n8n/trigger', expensiveLimit);
+app.use('/api/profile-search/trigger', expensiveLimit);
 app.use('/api/blogs/generate', expensiveLimit);
 app.use('/api/blogs/linkedin/generate', expensiveLimit);
 app.use('/api/admin/fetch', expensiveLimit);
-app.use('/api/admin/n8n/run', expensiveLimit);
 app.use('/api/admin/super/fetch/run', expensiveLimit);
 app.use(
   '/api/analytics/events',
@@ -138,7 +137,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/n8n', n8nRoutes);
+app.use('/api/profile-search', profileSearchRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
@@ -157,7 +156,7 @@ async function start() {
   await connectDB();
   app.listen(PORT, () => {
     console.log('----------------------------------------------');
-    console.log('  Ascentium Intelligence API');
+    console.log('  BeeSocial API');
     console.log(`  Listening on http://localhost:${PORT}`);
     console.log(`  ENV: ${process.env.NODE_ENV || 'development'}`);
     console.log('----------------------------------------------');
@@ -166,6 +165,10 @@ async function start() {
 }
 
 start().catch((err) => {
-  console.error('[boot] failed:', err);
+  console.error('[boot] failed:', err.message || err);
+  if (process.env.DEBUG_BOOT === 'true' && err.stack) {
+    console.error(err.stack);
+    if (err.cause) console.error('[boot] cause:', err.cause);
+  }
   process.exit(1);
 });

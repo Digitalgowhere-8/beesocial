@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
-const VISITOR_KEY = 'ascentium_visitor_id';
-const SESSION_KEY = 'ascentium_session_id';
-const SESSION_STARTED_KEY = 'ascentium_session_started_at';
+const VISITOR_KEY = 'beesocial_visitor_id';
+const SESSION_KEY = 'beesocial_session_id';
+const SESSION_STARTED_KEY = 'beesocial_session_started_at';
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 function randomId(prefix) {

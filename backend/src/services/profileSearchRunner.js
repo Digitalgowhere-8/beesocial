@@ -436,8 +436,6 @@ function normalizeProfileInput(incoming = {}) {
     minStoreScore: incoming.minStoreScore,
     language: text(incoming.language || defaultLanguage()),
     timezone: text(incoming.timezone || defaultTimezone()),
-    callbackUrl: text(incoming.callbackUrl),
-    callbackSecret: text(incoming.callbackSecret || incoming.secret),
     startedAt: incoming.startedAt || now
   };
 
@@ -749,8 +747,6 @@ function workflowProfile(profile = {}) {
     userId: profile.userId || '',
     savedSearchId: profile.savedSearchId || '',
     logId: profile.logId || '',
-    callbackUrl: profile.callbackUrl || '',
-    callbackSecret: profile.callbackSecret || '',
     country: profile.country || '',
     region: profile.region || '',
     category: profile.category || '',
@@ -1038,8 +1034,6 @@ function buildBackendCallback(profile, topicItems) {
     userId: profile.userId || '',
     savedSearchId: profile.savedSearchId || '',
     logId: profile.logId || '',
-    callbackUrl: profile.callbackUrl || '',
-    callbackSecret: profile.callbackSecret || '',
     country: profile.country || '',
     region: profile.region || '',
     startedAt: profile.startedAt || new Date().toISOString(),
@@ -1057,25 +1051,36 @@ function buildBackendCallback(profile, topicItems) {
 
 async function runProfileSearch(incoming = {}, options = {}) {
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const isCancelled = typeof options.isCancelled === 'function' ? options.isCancelled : () => false;
+  const throwIfCancelled = () => {
+    if (!isCancelled()) return;
+    const error = new Error('Fetch cancelled by user');
+    error.code = 'FETCH_CANCELLED';
+    throw error;
+  };
   if (!tavilyService.isEnabled()) throw new Error('TAVILY_API_KEY is required for code-based profile search');
+  throwIfCancelled();
   onProgress?.({ step: 'normalize', message: 'Normalizing profile input and selected topics' });
   const profile = normalizeProfileInput(incoming.body || incoming);
   const selectedTopics = ALLOWED_TOPICS.filter((topic) => profile.topicEnabled?.[topic]);
   onProgress?.({ step: 'search', message: `Starting ${selectedTopics.length} selected topic${selectedTopics.length === 1 ? '' : 's'} one by one` });
   const topicResults = [];
   for (let i = 0; i < selectedTopics.length; i += 1) {
+    throwIfCancelled();
     const topic = selectedTopics[i];
     onProgress?.({
       step: `topic:${topic}:start`,
       message: `Starting ${topic} topic (${i + 1}/${selectedTopics.length})`
     });
     const results = await runTopic(profile, topic, onProgress);
+    throwIfCancelled();
     topicResults.push(results);
     onProgress?.({
       step: `topic:${topic}:complete`,
       message: `Completed ${topic} topic (${i + 1}/${selectedTopics.length})`
     });
   }
+  throwIfCancelled();
   onProgress?.({ step: 'merge', message: 'Merging, deduplicating and applying per-topic limits' });
   const payload = buildBackendCallback(profile, topicResults.flat());
   onProgress?.({

@@ -10,8 +10,8 @@ function Logo() {
         <span className="font-display text-brass-400 text-lg sm:text-xl font-semibold leading-none">O</span>
       </div>
       <div>
-        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">OpportunityOS AI</div>
-        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Opportunity Radar</div>
+        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">BeeSocial</div>
+        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Business Intelligence</div>
       </div>
     </div>
   );

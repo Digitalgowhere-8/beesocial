@@ -1,7 +1,7 @@
 {
-  "name": "opportunityos-ai-backend",
+  "name": "beesocial-backend",
   "version": "1.0.0",
-  "description": "OpportunityOS AI backend API with dynamic opportunity intelligence, n8n automation, auth, and scheduling",
+  "description": "BeeSocial backend API with dynamic market intelligence, auth, scheduling, and profile search automation",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

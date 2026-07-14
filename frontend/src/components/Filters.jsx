@@ -6,6 +6,18 @@ const CRIMSON = '#D11243';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
 
+function visibleCategoryTree(configuredTree = {}, dataTree = {}) {
+  const allowed = Object.keys(configuredTree || {}).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category));
+  return Object.fromEntries(
+    allowed.map((category) => [
+      category,
+      Array.isArray(dataTree?.[category]) && dataTree[category].length
+        ? dataTree[category]
+        : configuredTree[category]
+    ])
+  );
+}
+
 export default function Filters({ initial = {}, onChange, showAdmin = false, showSavedFilter = true, showStatusFilter = showAdmin, metaParams = null }) {
   const initialWithoutRegion = useMemo(() => {
     const { region: _region, ...rest } = initial || {};
@@ -76,17 +88,14 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
   }, [meta, filters.type, filters.country, filters.sourceCredibility]);
 
   const categoryTree = useMemo(() => {
-    const dynamicTree = meta?.dataCategories && Object.keys(meta.dataCategories).length
-      ? meta.dataCategories
-      : null;
     const configuredTree = meta?.categories && Object.keys(meta.categories).length
       ? meta.categories
-      : null;
-    return dynamicTree || configuredTree || {};
+      : {};
+    return visibleCategoryTree(configuredTree, meta?.dataCategories || {});
   }, [meta]);
 
   const categoryOptions = useMemo(
-    () => Object.keys(categoryTree).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category)),
+    () => Object.keys(categoryTree),
     [categoryTree]
   );
 
@@ -159,7 +168,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
 
   return (
     <section
-      className="overflow-hidden transition-all duration-300"
+      className="intel-filters overflow-hidden transition-all duration-300"
       style={{
         background: 'white',
         borderRadius: '12px',
@@ -212,6 +221,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
               <div className="relative">
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9ca3af' }} />
                 <input
+                  className="intel-filter-control"
                   style={{ ...inputBase, paddingLeft: '32px' }}
                   placeholder="Keyword in title…"
                   value={filters.q}
@@ -223,7 +233,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Type</label>
-              <select style={inputBase} value={filters.type} onChange={(e) => update('type', e.target.value)}
+              <select className="intel-filter-control" style={inputBase} value={filters.type} onChange={(e) => update('type', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All</option>
                 {(meta?.types || [
@@ -236,7 +246,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Source trust</label>
-              <select style={inputBase} value={filters.sourceCredibility} onChange={(e) => update('sourceCredibility', e.target.value)}
+              <select className="intel-filter-control" style={inputBase} value={filters.sourceCredibility} onChange={(e) => update('sourceCredibility', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All trust levels</option>
                 <option value="high">High Credibility</option>
@@ -246,7 +256,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Source</label>
-              <select style={inputBase} value={filters.source} onChange={(e) => update('source', e.target.value)}
+              <select className="intel-filter-control" style={inputBase} value={filters.source} onChange={(e) => update('source', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">
                   {filters.sourceCredibility
@@ -264,7 +274,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Category</label>
-              <select style={inputBase} value={filters.category} onChange={(e) => update('category', e.target.value)}
+              <select className="intel-filter-control" style={inputBase} value={filters.category} onChange={(e) => update('category', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All categories</option>
                 {categoryOptions.map((c) => (
@@ -275,6 +285,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Sub-category</label>
               <select
+                className="intel-filter-control"
                 style={{ ...inputBase, opacity: !filters.category ? 0.5 : 1 }}
                 value={filters.subcategory}
                 onChange={(e) => update('subcategory', e.target.value)}
@@ -287,7 +298,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Country</label>
-              <select style={inputBase} value={filters.country} onChange={(e) => update('country', e.target.value)}
+              <select className="intel-filter-control" style={inputBase} value={filters.country} onChange={(e) => update('country', e.target.value)}
                 onFocus={handleFocus} onBlur={handleBlur}>
                 <option value="">All countries</option>
                 {countryOptions.map((country) => (
@@ -297,18 +308,18 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">From</label>
-              <input type="date" style={inputBase} value={filters.from}
+              <input className="intel-filter-control" type="date" style={inputBase} value={filters.from}
                 onChange={(e) => update('from', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">To</label>
-              <input type="date" style={inputBase} value={filters.to}
+              <input className="intel-filter-control" type="date" style={inputBase} value={filters.to}
                 onChange={(e) => update('to', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
             </div>
             {showSavedFilter && (
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Saved</label>
-                <select style={inputBase} value={filters.saved}
+                <select className="intel-filter-control" style={inputBase} value={filters.saved}
                   onChange={(e) => update('saved', e.target.value)}
                   onFocus={handleFocus} onBlur={handleBlur}>
                   <option value="">All</option>
@@ -319,7 +330,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             {showStatusFilter && (
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">Status</label>
-                <select style={inputBase} value={filters.publishedOnly}
+                <select className="intel-filter-control" style={inputBase} value={filters.publishedOnly}
                   onChange={(e) => update('publishedOnly', e.target.value)}
                   onFocus={handleFocus} onBlur={handleBlur}>
                   <option value="">All</option>

@@ -3,9 +3,9 @@ import api from '../api/axios';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 
 const AuthContext = createContext(null);
-const TOKEN_KEY = 'opportunityos_token';
-const USER_KEY = 'opportunityos_user';
-const SESSION_KEY = 'opportunityos_session';
+const TOKEN_KEY = 'beesocial_token';
+const USER_KEY = 'beesocial_user';
+const SESSION_KEY = 'beesocial_session';
 const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
 const GENERATION_PROGRESS_POLL_MS = 1500;
 
@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
 
   const [runProgress, setRunProgress] = useState(() => {
     try {
-      const saved = localStorage.getItem('ascentium_run_progress');
+      const saved = localStorage.getItem('beesocial_run_progress');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && ['running', 'queued'].includes(parsed.status)) return parsed;
@@ -83,7 +83,7 @@ export function AuthProvider({ children }) {
 
   const [genProgress, setGenProgress] = useState(() => {
     try {
-      const saved = localStorage.getItem('ascentium_gen_progress');
+      const saved = localStorage.getItem('beesocial_gen_progress');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.status === 'running') return parsed;
@@ -96,9 +96,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     try {
       if (runProgress && ['running', 'queued'].includes(runProgress.status)) {
-        localStorage.setItem('ascentium_run_progress', JSON.stringify(runProgress));
+        localStorage.setItem('beesocial_run_progress', JSON.stringify(runProgress));
       } else {
-        localStorage.removeItem('ascentium_run_progress');
+        localStorage.removeItem('beesocial_run_progress');
       }
     } catch (_e) { /* ignore */ }
   }, [runProgress]);
@@ -107,9 +107,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     try {
       if (genProgress && genProgress.status === 'running') {
-        localStorage.setItem('ascentium_gen_progress', JSON.stringify(genProgress));
+        localStorage.setItem('beesocial_gen_progress', JSON.stringify(genProgress));
       } else {
-        localStorage.removeItem('ascentium_gen_progress');
+        localStorage.removeItem('beesocial_gen_progress');
       }
     } catch (_e) { /* ignore */ }
   }, [genProgress]);
@@ -121,16 +121,16 @@ export function AuthProvider({ children }) {
 
     const poll = async () => {
       try {
-        const { data } = await api.get(`/n8n/runs/${logId}/progress`);
+        const { data } = await api.get(`/profile-search/runs/${logId}/progress`);
         if (data.status !== 'running' && data.status !== 'queued') {
           setRunProgress(null);
-          localStorage.removeItem('ascentium_run_progress');
+          localStorage.removeItem('beesocial_run_progress');
           return;
         }
         setRunProgress(data);
       } catch (e) {
         setRunProgress(null);
-        localStorage.removeItem('ascentium_run_progress');
+        localStorage.removeItem('beesocial_run_progress');
       }
     };
 
@@ -157,7 +157,7 @@ export function AuthProvider({ children }) {
         const { data } = await api.get('/blogs/generation-status');
         if (!data || data.status === 'idle') {
           setGenProgress(null);
-          localStorage.removeItem('ascentium_gen_progress');
+          localStorage.removeItem('beesocial_gen_progress');
         } else {
           setGenProgress(data);
         }

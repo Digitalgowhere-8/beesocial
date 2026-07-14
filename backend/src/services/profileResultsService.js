@@ -456,7 +456,7 @@ async function persistProfileResults(body = {}, options = {}) {
   }
 
   const update = {
-    triggeredBy: 'n8n',
+    triggeredBy: body.trigger === 'manual' || body.trigger === 'admin_manual' ? 'manual' : 'system',
     status: 'success',
     startedAt: body.startedAt ? new Date(body.startedAt) : new Date(),
     finishedAt: body.finishedAt ? new Date(body.finishedAt) : new Date(),

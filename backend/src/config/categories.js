@@ -1,7 +1,7 @@
 /**
- * ASCENTIUM SERVICES TAXONOMY
+ * BEESOCIAL SERVICES TAXONOMY
  * ---------------------------
- * 10 main categories aligned with actual imported data structure.
+ * Main categories aligned with actual imported data structure.
  * Each sub-category has search keywords used by the scraper / category matcher.
  *
  * This is the single source of truth. Backend uses it for category-matching,
@@ -114,6 +114,9 @@ const CATEGORIES = {
   }
 };
 
+const UI_CATEGORY_EXCLUDES = new Set(['Competitor Intelligence']);
+const VISIBLE_CATEGORIES = Object.keys(CATEGORIES).filter((category) => !UI_CATEGORY_EXCLUDES.has(category));
+
 /**
  * Returns a flat array: [{ category, subcategory, keywords }]
  * Useful for iterating during scraping.
@@ -135,6 +138,14 @@ function asTree() {
   const out = {};
   for (const [cat, val] of Object.entries(CATEGORIES)) {
     out[cat] = Object.keys(val.subcategories);
+  }
+  return out;
+}
+
+function asVisibleTree() {
+  const out = {};
+  for (const category of VISIBLE_CATEGORIES) {
+    out[category] = Object.keys(CATEGORIES[category].subcategories);
   }
   return out;
 }
@@ -169,4 +180,4 @@ function matchCategory(text) {
   return best;
 }
 
-module.exports = { CATEGORIES, flatten, asTree, matchCategory };
+module.exports = { CATEGORIES, VISIBLE_CATEGORIES, flatten, asTree, asVisibleTree, matchCategory };

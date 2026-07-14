@@ -6,6 +6,7 @@ import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
   Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
@@ -254,7 +255,7 @@ export default function AdminPanel() {
               <button
                 type="button"
                 onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
-                className="inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border border-brand-crimson/20 bg-brand-pink/10 px-3 text-brand-crimson shadow-sm transition-all hover:bg-brand-pink/20 hover:border-brand-crimson/30"
+                className="app-refresh-button admin-mobile-refresh-button inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border px-3 shadow-sm transition-all"
                 aria-label="Refresh admin panel"
               >
                 <RefreshCw size={16} />
@@ -300,7 +301,7 @@ export default function AdminPanel() {
             <button
               type="button"
               onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
-              className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+              className="app-refresh-button inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all"
             >
               <RefreshCw size={14} />
               Refresh
@@ -391,7 +392,7 @@ export default function AdminPanel() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div data-tour="admin-shell" className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
+      <div data-tour="admin-shell" className="admin-theme-page -m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full space-y-5 pb-5">
           {isSuperAdmin ? (
             <SuperAdminWorkspace
@@ -422,7 +423,7 @@ export default function AdminPanel() {
                 {isSuperAdmin ? 'Super Admin' : 'Operations'}
               </div>
               <h1 className="truncate text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">{isSuperAdmin ? 'Super Admin Console' : 'Admin Panel'}</h1>
-              <p className="mt-1 text-sm text-gray-500">{isSuperAdmin ? 'Full platform control — users, plans, system config, and access management for all companies.' : 'Manage content, users, n8n runs, and operational logs.'}</p>
+              <p className="mt-1 text-sm text-gray-500">{isSuperAdmin ? 'Full platform control — users, plans, system config, and access management for all companies.' : 'Manage content, users, profile searches, and operational logs.'}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
               <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-emerald-700">
@@ -589,7 +590,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   </div>
                   <h3 className="text-xl font-black tracking-tight text-gray-900">Top users</h3>
                 </div>
-                <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
+                <div className="admin-content-icon-tile h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
                   <Gauge size={18} className="text-brand-crimson" />
                 </div>
               </div>
@@ -779,7 +780,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
             </div>
             <h3 className="text-xl font-black tracking-tight text-gray-900">Recent platform activity</h3>
           </div>
-          <div className="h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
+          <div className="admin-content-icon-tile h-10 w-10 rounded-2xl bg-brand-pink/30 flex items-center justify-center ring-1 ring-brand-crimson/10">
              <Activity size={18} className="text-brand-crimson" />
           </div>
         </div>
@@ -845,7 +846,7 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   return (
     <div className="premium-glass p-5 relative overflow-hidden">
       <div className="relative z-10 flex items-start gap-4">
-        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
+        <span className={`admin-content-icon-tile flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
           <Icon size={20} />
         </span>
         <div className="min-w-0 flex-1">
@@ -890,7 +891,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson">System Health</div>
           <h4 className="mt-1 text-lg font-black tracking-tight text-gray-950">Core services</h4>
         </div>
-        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-pink/35 text-brand-crimson">
+        <span className="admin-content-icon-tile flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-pink/35 text-brand-crimson">
           <Server size={18} />
         </span>
       </div>
@@ -913,7 +914,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
             <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Signal Storage</div>
             <div className="mt-1 text-sm font-black text-gray-900">{storageUsed.toLocaleString()} records</div>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-gray-700 ring-1 ring-gray-100">
+          <span className="admin-content-icon-tile flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-gray-700 ring-1 ring-gray-100">
             <HardDrive size={18} />
           </span>
         </div>
@@ -959,7 +960,7 @@ function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${bg} ${color}`}>
+        <span className={`admin-content-icon-tile flex h-9 w-9 items-center justify-center rounded-lg ${bg} ${color}`}>
           <Icon size={16} />
         </span>
         <span className="truncate text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</span>
@@ -1085,7 +1086,7 @@ function BusinessInsightPanel({ analytics }) {
   ];
 
   return (
-    <div className="rounded-xl border border-brand-crimson/10 bg-brand-pink/30 p-5 shadow-sm">
+    <div className="admin-decision-notes-card rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Decision notes</div>
@@ -1095,7 +1096,7 @@ function BusinessInsightPanel({ analytics }) {
       </div>
       <div className="space-y-3">
         {insights.map((item, index) => (
-          <div key={index} className="flex gap-3 rounded-lg bg-white/70 p-3 ring-1 ring-white">
+          <div key={index} className="admin-decision-note-item flex gap-3 rounded-lg bg-white/70 p-3 ring-1 ring-white">
             <ChevronRight size={15} className="mt-0.5 shrink-0 text-brand-crimson" />
             <p className="text-sm font-semibold leading-relaxed text-gray-600">{item}</p>
           </div>
@@ -1245,7 +1246,7 @@ function ArticlesTab({ ownerOnly = false }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="admin-logs-page space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
         <Filters
           initial={filters}
@@ -1692,7 +1693,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                     const checked = selectedCountries.includes(country);
                     const isCustom = !countries.includes(country);
                     return (
-                      <label key={country} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
+                      <label key={country} className={`admin-fetch-choice flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition-all ${checked ? 'admin-fetch-choice-selected border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-white/70 text-gray-600 hover:bg-white'}`}>
                         <input type="checkbox" checked={checked} onChange={() => toggleCountry(country)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
                         <span className="min-w-0 truncate">{country}</span>
                         {isCustom && <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Custom</span>}
@@ -1703,7 +1704,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               </FetchField>
             </div>
           ) : managerTab === 'sources' ? (
-            <div className="space-y-5">
+            <div className="admin-country-sources space-y-5">
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff,_#f8fafc_60%,_#fff1f2)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="max-w-2xl">
@@ -1788,7 +1789,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                   </FetchField>
 
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-                    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="admin-country-source-editor rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Bulk add sources</div>
@@ -1830,7 +1831,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                     </div>
 
                     <div className="space-y-4">
-                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="admin-source-list-panel rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Default sources</div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {selectedSourceDefaults.length ? selectedSourceDefaults.map((domain) => (
@@ -1840,7 +1841,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                           )}
                         </div>
                       </div>
-                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="admin-source-list-panel rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Custom sources</div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {selectedSourceCustom.length ? selectedSourceCustom.map((domain) => (
@@ -1858,7 +1859,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                           )}
                         </div>
                       </div>
-                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="admin-source-list-panel rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Final fetch sources</div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {selectedSourceEffective.length ? selectedSourceEffective.map((domain) => (
@@ -1913,7 +1914,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2">
               {TOPIC_OPTIONS.map((topic) => (
-                <label key={topic.key} className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-brand-pink/20 text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
+                <label key={topic.key} className={`admin-fetch-choice flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-choice-selected border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'}`}>
                   <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
                   <span className="min-w-0 truncate font-black">{topic.label}</span>
                 </label>
@@ -1996,7 +1997,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="admin-fetch-summary mt-5 flex flex-col gap-3 rounded-2xl border border-brand-crimson/10 bg-brand-pink/15 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="font-black text-gray-900">{selectedCountries.length} countries, {selectedTopics.length} topics selected</div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">All categories and subcategories are classified during fetch</div>
@@ -2090,9 +2091,9 @@ export function FetchTab({ embedded = false }) {
   const canUseFetch = user?.role === 'super_admin' || user?.access?.canFetch === true || (user?.role === 'admin' && user?.access?.canFetch !== false);
   const canUseScheduler = user?.role === 'super_admin' || user?.access?.canUseScheduler === true || (user?.role === 'admin' && user?.access?.canUseScheduler !== false);
   const canUseFetchSection = canUseFetch || canUseScheduler;
-  const [n8nStatus, setN8nStatus] = useState({ isFetching: false, configured: {}, running: {} });
+  const [profileSearchStatus, setProfileSearchStatus] = useState({ isFetching: false });
   const [lastLog, setLastLog] = useState(null);
-  const [startingN8n, setStartingN8n] = useState(false);
+  const [startingProfileSearch, setStartingProfileSearch] = useState(false);
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [profileMeta, setProfileMeta] = useState(null);
@@ -2120,14 +2121,13 @@ export function FetchTab({ embedded = false }) {
   }));
 
   const refresh = useCallback(async () => {
-    const [n, l, s] = await Promise.all([
-      api.get('/admin/n8n/status'),
-      api.get('/admin/logs', { params: { limit: 1 } }),
-      api.get('/n8n/saved-searches').catch(() => ({ data: { items: [] } }))
-    ]);
-    setN8nStatus(n.data);
-    setLastLog(l.data.items[0] || null);
-    setSavedSearches(Array.isArray(s.data.items) ? s.data.items : []);
+      const [l, s] = await Promise.all([
+        api.get('/admin/logs', { params: { limit: 1 } }),
+        api.get('/profile-search/saved-searches').catch(() => ({ data: { items: [] } }))
+      ]);
+      setProfileSearchStatus({ isFetching: false });
+      setLastLog(l.data.items[0] || null);
+      setSavedSearches(Array.isArray(s.data.items) ? s.data.items : []);
   }, []);
 
   useEffect(() => {
@@ -2153,7 +2153,7 @@ export function FetchTab({ embedded = false }) {
 
   useEffect(() => {
     if (runProgress && !['running', 'queued'].includes(runProgress.status)) {
-       setStartingN8n(false);
+       setStartingProfileSearch(false);
        refresh();
        refreshMe().catch(() => {});
     }
@@ -2294,7 +2294,7 @@ export function FetchTab({ embedded = false }) {
       await updateProfile(profileDetails);
 
       if (name) {
-        await api.post('/n8n/saved-searches', {
+        await api.post('/profile-search/saved-searches', {
           name,
           ...profileDetails,
           subcategoryOptions
@@ -2314,7 +2314,7 @@ export function FetchTab({ embedded = false }) {
   };
 
   const runFetch = async () => {
-    setStartingN8n(true);
+    setStartingProfileSearch(true);
     setMsg('');
     try {
       if (hasUnsavedFetchChanges) {
@@ -2326,7 +2326,7 @@ export function FetchTab({ embedded = false }) {
         await updateProfile(buildProfileDetails());
         setMsg('Changes saved. Starting fetch...');
       }
-      const { data } = await api.post('/n8n/trigger', {
+      const { data } = await api.post('/profile-search/trigger', {
         async: true,
         country: form.country,
         category: selectedCategories[0] || form.category,
@@ -2355,7 +2355,7 @@ export function FetchTab({ embedded = false }) {
     } catch (e) {
       setMsg(`Error: ${e.message}`);
     } finally {
-      setStartingN8n(false);
+      setStartingProfileSearch(false);
     }
   };
 
@@ -2370,7 +2370,7 @@ export function FetchTab({ embedded = false }) {
   const progressRunning = runProgress && ['running', 'queued'].includes(runProgress.status);
   const isScheduledLog = String(lastLog?.notes || '').toLowerCase().includes('scheduled');
   const scheduledLogRunning = lastLog?.status === 'running' && isScheduledLog;
-  const pipelineRunning = Boolean(n8nStatus.running?.profile) || startingN8n || progressRunning || scheduledLogRunning;
+  const pipelineRunning = Boolean(profileSearchStatus.isFetching) || startingProfileSearch || progressRunning || scheduledLogRunning;
   const scheduleEnabled = Boolean(form.scheduleEnabled);
   const scheduleTime = form.scheduleTime || '07:00';
   const scheduleTimezone = form.scheduleTimezone || form.timezone || 'Asia/Kolkata';
@@ -2548,8 +2548,8 @@ export function FetchTab({ embedded = false }) {
                     return (
                       <label
                         key={category}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-bold transition-all ${
-                          checked ? 'bg-brand-pink/40 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
+                        className={`admin-fetch-choice flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-bold transition-all ${
+                          checked ? 'admin-fetch-choice-selected bg-white text-gray-900 ring-1 ring-brand-crimson/30' : 'text-gray-600 hover:bg-gray-50'
                         }`}
                       >
                         <input
@@ -2600,7 +2600,7 @@ export function FetchTab({ embedded = false }) {
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {TOPIC_OPTIONS.map((topic) => (
-                <label key={topic.key} className={`group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/20 to-white text-gray-900 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm'}`}>
+                <label key={topic.key} className={`admin-fetch-choice group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-choice-selected border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm'}`}>
                   <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
                   <span className="min-w-0">
                     <span className="block truncate font-black text-gray-900">{topic.label}</span>
@@ -2618,7 +2618,7 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
+        <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
               <Play size={17} />
@@ -2966,7 +2966,7 @@ function LogsTab() {
   const loadLogProgress = useCallback(async (logId) => {
     if (!logId) return;
     try {
-      const { data } = await api.get(`/n8n/runs/${logId}/progress`);
+      const { data } = await api.get(`/profile-search/runs/${logId}/progress`);
       setLogProgress((prev) => ({ ...prev, [logId]: data }));
     } catch {
       setLogProgress((prev) => ({
@@ -3026,7 +3026,7 @@ function LogsTab() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
@@ -3050,7 +3050,7 @@ function LogsTab() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-red-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="admin-theme-card admin-cleanup-card rounded-2xl border border-red-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-4 flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
               <Trash2 size={17} />
@@ -3077,12 +3077,12 @@ function LogsTab() {
         </div>
       </div>
       {items.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-semibold text-gray-400 shadow-sm">
+        <div className="admin-theme-card rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-semibold text-gray-400 shadow-sm">
           No fetch logs yet.
         </div>
       )}
       {items.map((log) => (
-        <div key={log._id} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div key={log._id} className="admin-log-row overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div
             className="flex cursor-pointer flex-col gap-3 px-4 py-4 transition hover:bg-gray-50/70 lg:flex-row lg:items-center lg:justify-between"
             onClick={() => toggleLog(log)}
@@ -3112,8 +3112,9 @@ function LogsTab() {
           </div>
 
           {expanded === log._id && (
-            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+            <div className="admin-log-expanded border-t border-gray-100 bg-gray-50/50 px-4 py-3">
               <LogRunDetails log={log} progress={logProgress[log._id]} />
+              {(log.perSource || []).length ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[680px] text-sm">
                   <thead className="text-[10px] uppercase tracking-wider text-gray-400">
@@ -3141,16 +3142,10 @@ function LogsTab() {
                         </td>
                       </tr>
                     ))}
-                    {!(log.perSource || []).length && (
-                      <tr className="border-t border-gray-100">
-                        <td colSpan={5} className="py-5 text-center text-sm font-semibold text-gray-400">
-                          Source-level details will appear after the fetch returns results.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -3160,62 +3155,73 @@ function LogsTab() {
 }
 
 function LogRunDetails({ log, progress }) {
-  const messages = progress?.messages || [];
-  const percent = Math.max(5, Math.min(100, Number(progress?.percent || (log.status === 'running' ? 45 : 100))));
+  const note = String(log.notes || '').trim();
+  const progressMessages = (progress?.messages || []).filter((item) => {
+    const message = String(item?.message || '').trim();
+    return message && message !== note;
+  });
+  const messages = progressMessages.length
+    ? progressMessages
+    : note
+      ? [{ step: log.status || 'success', message: note, at: log.finishedAt || log.startedAt }]
+      : [];
+  const isRunning = log.status === 'running';
+  const percent = Math.max(isRunning ? 5 : 100, Math.min(100, Number(progress?.percent || (isRunning ? 45 : 100))));
   const statusTone = log.status === 'failed'
     ? 'bg-red-500'
-    : log.status === 'running'
+    : isRunning
       ? 'bg-blue-500'
       : 'bg-emerald-500';
   const started = log.startedAt ? new Date(log.startedAt) : null;
   const finished = log.finishedAt ? new Date(log.finishedAt) : null;
+  const statusLabel = progress?.step || log.status || 'unknown';
 
   return (
-    <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+    <div className="admin-log-details mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
         <div>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Run details</div>
-              <div className="mt-1 text-sm font-black text-gray-900">{log.notes || 'Fetch run is being processed.'}</div>
+              <div className="mt-1 text-sm font-black leading-snug text-gray-900">{note || readableRunTitle(log)}</div>
             </div>
             <span className={`tag ${
               log.status === 'failed' ? 'bg-red-50 text-red-600 ring-1 ring-red-100'
-              : log.status === 'running' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+              : isRunning ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
               : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
             }`}>
-              {progress?.step || log.status}
+              {statusLabel}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+          <div className={`admin-log-progress-track admin-log-progress-${log.status || 'unknown'} h-2 overflow-hidden rounded-full bg-gray-100`}>
             <div className={`h-full rounded-full transition-all ${statusTone}`} style={{ width: `${percent}%` }} />
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <LogDetailPill label="Started" value={started ? formatDistanceToNow(started, { addSuffix: true }) : '-'} />
-            <LogDetailPill label="Finished" value={finished ? formatDistanceToNow(finished, { addSuffix: true }) : '-'} />
-            <LogDetailPill label="Duration" value={log.durationMs ? `${Math.round(log.durationMs / 1000)}s` : '-'} />
+            <LogDetailPill label="Started" value={formatLogDateTime(started)} subValue={formatRelativeTime(started)} />
+            <LogDetailPill label="Finished" value={formatLogDateTime(finished)} subValue={formatRelativeTime(finished)} />
+            <LogDetailPill label="Duration" value={formatLogDuration(log.durationMs)} />
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <LogDetailPill label="Country" value={log.country || '-'} />
-            <LogDetailPill label="Query" value={log.query || '-'} />
+            <LogDetailPill label="Query" value={log.query || 'No custom query'} />
           </div>
         </div>
 
-        <div className="rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
+        <div className="admin-log-messages rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {messages.length ? messages.slice(-8).map((item, index) => (
-              <div key={`${item.at || index}-${index}`} className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
+              <div key={`${item.at || index}-${index}`} className="admin-log-message rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>
                   <span className="text-[10px] font-semibold text-gray-400">
-                    {item.at ? formatDistanceToNow(new Date(item.at), { addSuffix: true }) : ''}
+                    {formatRelativeTime(item.at ? new Date(item.at) : null)}
                   </span>
                 </div>
                 <div className="mt-1 text-xs font-semibold leading-relaxed text-gray-600">{item.message}</div>
               </div>
             )) : (
-              <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs font-semibold text-gray-400">
+              <div className="admin-log-empty-message rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs font-semibold text-gray-400">
                 Progress will appear while the fetch is running.
               </div>
             )}
@@ -3226,11 +3232,43 @@ function LogRunDetails({ log, progress }) {
   );
 }
 
-function LogDetailPill({ label, value }) {
+function readableRunTitle(log = {}) {
+  const trigger = logTriggerLabel(log);
+  return trigger ? `${trigger} fetch run` : 'Fetch run';
+}
+
+function formatLogDateTime(date) {
+  if (!date || Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatRelativeTime(date) {
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
+function formatLogDuration(durationMs) {
+  const ms = Number(durationMs || 0);
+  if (!ms) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${Math.round(ms / 100) / 10}s`;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.round((ms % 60000) / 1000);
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function LogDetailPill({ label, value, subValue = '' }) {
   return (
-    <div className="min-w-0 rounded-xl bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+    <div className="admin-log-detail-pill min-w-0 rounded-xl bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
       <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</div>
       <div className="mt-0.5 truncate text-xs font-bold text-gray-700">{value}</div>
+      {subValue ? <div className="mt-0.5 truncate text-[10px] font-semibold text-gray-400">{subValue}</div> : null}
     </div>
   );
 }
@@ -3544,9 +3582,9 @@ function UsersTab({ dbPlans, activeSubTab = 'add' }) {
   if (loading) return <Loader />;
 
   return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-2xl border border-brand-crimson/10 bg-white shadow-sm">
-        <div className="border-b border-brand-crimson/10 bg-brand-pink/10 px-4 py-3 sm:px-5">
+    <div className="admin-users-page space-y-5">
+      <div className="admin-theme-card admin-current-session-card overflow-hidden rounded-2xl border border-brand-crimson/10 bg-white shadow-sm">
+        <div className="admin-current-session-header border-b border-brand-crimson/10 bg-brand-pink/10 px-4 py-3 sm:px-5">
           <div className="eyebrow mb-1">Current session</div>
           <h3 className="text-lg font-black tracking-tight text-gray-900">Signed-in account</h3>
         </div>
@@ -3585,14 +3623,14 @@ function UsersTab({ dbPlans, activeSubTab = 'add' }) {
       </div>
 
       {showCreatePanel && (
-      <form onSubmit={createUser} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+      <form onSubmit={createUser} className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="eyebrow mb-1">Create account</div>
             <h3 className="text-xl font-black tracking-tight text-gray-900">Add admin or member</h3>
             <p className="mt-1 text-sm text-gray-500">Create a user and control their role and access state.</p>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-pink/60 text-brand-crimson ring-1 ring-brand-crimson/10">
+          <span className="admin-content-icon-tile flex h-10 w-10 items-center justify-center rounded-lg bg-brand-pink/60 text-brand-crimson ring-1 ring-brand-crimson/10">
             <UserPlus size={18} />
           </span>
         </div>
@@ -3702,7 +3740,7 @@ function UsersTab({ dbPlans, activeSubTab = 'add' }) {
       )}
 
       {showAccessPanel && (
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="admin-theme-card overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-black text-gray-900">{isSuperAdmin ? 'Access Manager' : 'Members and admins'}</div>
@@ -4047,8 +4085,8 @@ function StatsTab() {
   const topUser = sortedUsers.find((user) => Number(user.usage?.estimatedTokens || 0) > 0) || sortedUsers[0];
 
   return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+    <div className="admin-usage-page space-y-5">
+      <div className="admin-theme-card overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="grid grid-cols-1 gap-0 2xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="p-5 sm:p-6">
             <div className="eyebrow mb-2 text-brand-crimson/80">Usage & limits</div>
@@ -4107,13 +4145,13 @@ function StatsTab() {
           const usedPct = pct(card.used, card.limit);
           const Icon = card.icon;
           return (
-            <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div key={card.label} className="admin-theme-card admin-usage-metric rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{card.label}</div>
                   <div className="mt-2 text-3xl font-black tracking-tight text-gray-900">{fmt(card.used)}</div>
                 </div>
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${card.tint}`}>
+                <span className={`admin-metric-icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${card.tint}`}>
                   <Icon size={17} />
                 </span>
               </div>
@@ -4135,7 +4173,7 @@ function StatsTab() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2">
+        <div className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <div className="eyebrow mb-1">Team breakdown</div>
@@ -4183,7 +4221,7 @@ function StatsTab() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-3">
             <div className="eyebrow mb-1">Recent usage</div>
             <h3 className="text-lg font-black tracking-tight text-gray-900">Latest fetch runs</h3>
@@ -4244,7 +4282,7 @@ function StatCard({ label, value, icon: Icon, accent, note, tint }) {
             <div className="mt-3 text-[38px] font-black leading-none tracking-[-0.04em] text-gray-950">{value}</div>
           </div>
           {Icon ? (
-            <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${tint || 'bg-gray-50 text-gray-700'} ring-1 ring-black/5`}>
+            <span className={`admin-metric-icon-tile flex h-11 w-11 items-center justify-center rounded-2xl ${tint || 'bg-gray-50 text-gray-700'} ring-1 ring-black/5`}>
               <Icon size={18} />
             </span>
           ) : null}
@@ -4508,6 +4546,7 @@ const LIMIT_FIELDS = [
 ];
 
 function PlanBuilderTab({ dbPlans, loadDbPlans }) {
+  const { isDark } = useTheme();
   const getInitialConfigs = useCallback(() => {
     const configObj = {};
     PLAN_KEYS.forEach(k => {
@@ -4622,7 +4661,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="admin-plan-builder space-y-6">
       {/* Plan Cards */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         {PLAN_KEYS.map((pk) => {
@@ -4630,7 +4669,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           if (!cfg) return null;
           const ac = PLAN_ACCENT[pk];
           return (
-            <div key={pk} className={`bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
+            <div key={pk} className={`admin-plan-card bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
               <div className={`bg-gradient-to-br ${ac.grad} p-5`}>
                 <div className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{pk} plan</div>
                 <div className="flex items-end gap-2">
@@ -4660,7 +4699,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                         const isTopLevel = ['memberLimit'].includes(key);
                         const value = isTopLevel ? cfg[key] : cfg.limits?.[key];
                         return (
-                          <div key={key} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                          <div key={key} className="admin-plan-limit-row flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
                             <span className="text-xs font-bold text-gray-500">{label}</span>
                             {isUnlimited ? (
                               <span className={`text-xs font-black ${ac.text}`}>Unlimited</span>
@@ -4693,14 +4732,22 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                             key={key}
                             type="button"
                             onClick={() => toggleFeature(pk, key)}
-                            className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border ${on ? `${ac.bg} ${ac.ring} ${ac.text}` : 'bg-gray-50 border-gray-100'}`}
+                            className={`admin-plan-feature-row w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border ${on ? `${ac.bg} ${ac.ring} ${ac.text}` : 'bg-gray-50 border-gray-100'}`}
                           >
                             <div className="min-w-0">
                               <div className={`text-xs font-black truncate ${on ? ac.text : 'text-gray-500'}`}>{label}</div>
                               <div className="text-[9px] text-gray-400 truncate">{help}</div>
                             </div>
-                            <div className={`h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all ${on ? `bg-gradient-to-r ${ac.grad}` : 'bg-gray-200'}`}>
-                              <div className={`h-3 w-3 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${on ? 'translate-x-3' : 'translate-x-0'}`} />
+                            <div
+                              className={`admin-plan-toggle ${on ? `admin-plan-toggle-on bg-gradient-to-r ${ac.grad}` : 'admin-plan-toggle-off bg-gray-200'} h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all`}
+                              style={isDark ? {
+                                background: on ? '#10b981' : '#111827',
+                                backgroundImage: 'none',
+                                border: on ? '1px solid rgba(94, 234, 212, 0.72)' : '1px solid rgba(148, 163, 184, 0.34)',
+                                boxShadow: on ? '0 0 0 1px rgba(16, 185, 129, 0.24), 0 8px 18px rgba(16, 185, 129, 0.2)' : 'inset 0 0 0 1px rgba(2, 6, 23, 0.25)'
+                              } : undefined}
+                            >
+                              <div className={`admin-plan-toggle-knob h-3 w-3 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${on ? 'translate-x-3' : 'translate-x-0'}`} />
                             </div>
                           </button>
                         );
@@ -4715,7 +4762,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
       </div>
 
       {/* Live Comparison Preview */}
-      <div className="bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
+      <div className="admin-plan-preview bg-white rounded-2xl ring-1 ring-gray-200 shadow-sm p-6">
         <div className="mb-5">
           <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
             <BarChart3 size={12} /> Live Preview
@@ -4858,6 +4905,7 @@ const createMailCenterForm = () => ({
 });
 
 function SuperAdminMailCenter() {
+  const { isDark } = useTheme();
   const [audienceItems, setAudienceItems] = useState([]);
   const [loadingAudience, setLoadingAudience] = useState(true);
   const [sendError, setSendError] = useState('');
@@ -5027,7 +5075,7 @@ function SuperAdminMailCenter() {
             </div>
             <div className="md:col-span-2">
               <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">CTA URL</label>
-              <input className="input min-h-[46px] rounded-xl" value={form.ctaUrl} onChange={(e) => updateForm('ctaUrl', e.target.value)} placeholder="https://beesocial.digitalgowhere.com/dashboard" />
+              <input className="input min-h-[46px] rounded-xl" value={form.ctaUrl} onChange={(e) => updateForm('ctaUrl', e.target.value)} placeholder="https://app.example.com/dashboard" />
             </div>
             <div className="md:col-span-3">
               <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-400">Footer note</label>
@@ -5145,7 +5193,7 @@ function SuperAdminMailCenter() {
               <div className="h-1.5 bg-gradient-to-r from-brand-pink/80 via-brand-crimson/80 to-brand-hoverred/90" />
               <div className="border-b border-[#efe4e8] bg-gradient-to-b from-white to-[#faf5f7] px-6 py-6">
                 <div className="min-w-0">
-                  <img src="/logo.png" alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
+                  <img src={isDark ? '/logo-white.png' : '/logo.png'} alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <div className="inline-flex items-center rounded-full border border-[#f0d3dd] bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">Admin update</div>
                   </div>
@@ -5266,7 +5314,7 @@ function SourceTrustCard({ item, onDragStart, onMove }) {
     <div
       draggable
       onDragStart={() => onDragStart(item.trustKey)}
-      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+      className="admin-source-trust-card rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -5318,6 +5366,7 @@ function SourceTrustRulesPanel() {
   const [savingTrust, setSavingTrust] = useState(false);
   const [trustSaved, setTrustSaved] = useState(false);
   const [trustError, setTrustError] = useState('');
+  const [trustDirty, setTrustDirty] = useState(false);
 
   const loadTrustRules = useCallback(async () => {
     setLoadingTrust(true);
@@ -5325,6 +5374,7 @@ function SourceTrustRulesPanel() {
     try {
       const { data } = await api.get('/admin/settings');
       setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : []);
+      setTrustDirty(false);
     } catch (e) {
       setTrustError(e.response?.data?.message || e.message || 'Failed to load trust rules');
     } finally {
@@ -5335,6 +5385,17 @@ function SourceTrustRulesPanel() {
   useEffect(() => {
     loadTrustRules();
   }, [loadTrustRules]);
+
+  useEffect(() => {
+    if (!trustDirty) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [trustDirty]);
 
   const normalizedTrustSearch = sourceTrustSearch.trim().toLowerCase();
   const sourceTrustGroups = useMemo(() => (
@@ -5353,7 +5414,13 @@ function SourceTrustRulesPanel() {
   ), [sourceTrustRegistry, normalizedTrustSearch]);
 
   const moveSourceTrustItem = useCallback((trustKey, nextCredibility) => {
-    setSourceTrustRegistry((current) => moveRegistryItem(current, trustKey, nextCredibility));
+    setSourceTrustRegistry((current) => {
+      const currentItem = current.find((item) => item.trustKey === trustKey);
+      if (!currentItem || currentItem.credibility === nextCredibility) return current;
+      setTrustDirty(true);
+      setTrustSaved(false);
+      return moveRegistryItem(current, trustKey, nextCredibility);
+    });
   }, []);
 
   const saveTrustRules = async () => {
@@ -5364,6 +5431,7 @@ function SourceTrustRulesPanel() {
         sourceTrustMapping: buildSourceTrustMappingFromRegistry(sourceTrustRegistry)
       });
       setSourceTrustRegistry(Array.isArray(data.sourceTrust?.registry) ? data.sourceTrust.registry : sourceTrustRegistry);
+      setTrustDirty(false);
       setTrustSaved(true);
       setTimeout(() => setTrustSaved(false), 2000);
     } catch (e) {
@@ -5378,7 +5446,7 @@ function SourceTrustRulesPanel() {
   if (loadingTrust) return <Loader />;
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+    <div className="admin-source-trust rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <div className="eyebrow mb-1">Source Trust</div>
@@ -5397,11 +5465,11 @@ function SourceTrustRulesPanel() {
           <button
             type="button"
             onClick={saveTrustRules}
-            disabled={savingTrust}
+            disabled={savingTrust || !trustDirty}
             className={`inline-flex min-h-[56px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-white shadow-sm transition-all ${trustSaved ? 'bg-emerald-600' : 'bg-brand-crimson hover:bg-brand-crimson/90'} disabled:cursor-not-allowed disabled:opacity-70`}
           >
             {savingTrust ? <Loader2 size={14} className="animate-spin" /> : trustSaved ? <Check size={14} /> : <Save size={14} />}
-            {savingTrust ? 'Saving' : trustSaved ? 'Saved' : 'Save'}
+            {savingTrust ? 'Saving' : trustSaved ? 'Saved' : trustDirty ? 'Save' : 'Saved'}
           </button>
         </div>
       </div>
@@ -5409,6 +5477,12 @@ function SourceTrustRulesPanel() {
       {trustError ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
           {trustError}
+        </div>
+      ) : null}
+
+      {trustDirty ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+          You have unsaved source trust changes. Save before leaving this page.
         </div>
       ) : null}
 
@@ -5440,7 +5514,7 @@ function SourceTrustRulesPanel() {
               if (draggedTrustKey) moveSourceTrustItem(draggedTrustKey, level.key);
               setDraggedTrustKey('');
             }}
-            className={`rounded-2xl border p-4 transition-all ${trustToneClasses(level.tone)}`}
+            className={`admin-source-trust-column rounded-2xl border p-4 transition-all ${trustToneClasses(level.tone)}`}
           >
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -5609,7 +5683,7 @@ function SystemSettingsTab() {
         </div>
 
         <div className="px-4 py-3 sm:px-5">
-          <div className="grid w-full grid-cols-2 gap-2 rounded-[24px] border border-ink-100 bg-[#fbfbfa] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:inline-grid sm:max-w-full sm:grid-flow-col sm:auto-cols-[170px] sm:overflow-x-auto">
+          <div className="admin-settings-segmented inline-flex w-full max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-ink-100 bg-[#fbfbfa] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:w-auto">
             {SETTINGS_SECTIONS.map((section) => {
               const active = activeSection === section.key;
               const Icon = section.icon;
@@ -5618,7 +5692,7 @@ function SystemSettingsTab() {
                   key={section.key}
                   type="button"
                   onClick={() => setActiveSection(section.key)}
-                  className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-2 rounded-2xl px-3 text-[11px] font-black transition-all sm:min-h-[44px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                  className={`inline-flex min-h-[38px] min-w-[132px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[148px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                 >
                   <Icon size={15} />
                   <span className="truncate">{section.label}</span>
@@ -5648,7 +5722,7 @@ function SystemSettingsTab() {
           </div>
 
           <div className="border-b border-ink-100/80 px-4 py-3 sm:px-5">
-            <div className="grid w-full grid-cols-1 gap-2 rounded-[24px] border border-ink-100 bg-[#fbfbfa] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:grid-cols-3 xl:inline-grid xl:max-w-full xl:grid-flow-col xl:auto-cols-[minmax(170px,1fr)] xl:overflow-x-auto">
+            <div className="admin-settings-segmented inline-flex w-full max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-ink-100 bg-[#fbfbfa] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] xl:w-auto">
               {AI_SETTINGS_TABS.map((tab) => {
                 const active = activeAiTab === tab.key;
                 const Icon = tab.icon;
@@ -5657,7 +5731,7 @@ function SystemSettingsTab() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveAiTab(tab.key)}
-                    className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-2 rounded-2xl px-3 text-[11px] font-black transition-all sm:min-h-[44px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                    className={`inline-flex min-h-[38px] min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[170px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                   >
                     <Icon size={15} />
                     <span className="truncate">{tab.label}</span>
@@ -5688,9 +5762,9 @@ function SystemSettingsTab() {
                   <option value="gpt-4-turbo">GPT-4 Turbo &mdash; Extended Context Window</option>
                 </select>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+              <div className="admin-ai-toggle-list overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
                 {aiToggles.map(({ label, help, val, set }, i) => (
-                  <div key={label} className={`flex min-h-[76px] items-center justify-between gap-4 px-5 py-4 transition-colors ${val ? 'bg-emerald-50/45' : 'bg-white'} ${i ? 'border-t border-ink-100' : ''}`}>
+                  <div key={label} className={`admin-ai-toggle-row flex min-h-[76px] items-center justify-between gap-4 px-5 py-4 transition-colors ${val ? 'admin-ai-toggle-row-on bg-emerald-50/45' : 'admin-ai-toggle-row-off bg-white'} ${i ? 'border-t border-ink-100' : ''}`}>
                     <div className="min-w-0">
                       <div className={`text-[14px] font-black ${val ? 'text-emerald-700' : 'text-ink-700'}`}>{label}</div>
                       <div className="mt-1 text-[12px] font-medium text-ink-300">{help}</div>
@@ -5698,7 +5772,7 @@ function SystemSettingsTab() {
                     <button
                       type="button"
                       onClick={() => set(!val)}
-                      className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                      className={`admin-ai-switch flex h-6 w-11 shrink-0 items-center rounded-full transition-all ${val ? 'admin-ai-switch-on bg-emerald-500' : 'admin-ai-switch-off bg-gray-200'}`}
                     >
                       <div className={`h-5 w-5 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${val ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
@@ -5829,7 +5903,7 @@ function SystemSettingsTab() {
       )}
 
       {activeSection === 'maintenance' && (
-        <div className={`rounded-2xl border bg-white p-5 shadow-sm transition-all sm:p-6 ${maintenanceMode ? 'border-red-200' : 'border-gray-100'}`}>
+        <div className={`admin-maintenance-card rounded-2xl border bg-white p-5 shadow-sm transition-all sm:p-6 ${maintenanceMode ? 'admin-maintenance-card-active border-red-200' : 'border-gray-100'}`}>
           <div className="flex items-center justify-between gap-6">
             <div>
               <div className="mb-1.5 flex items-center gap-2">
@@ -5841,13 +5915,13 @@ function SystemSettingsTab() {
             <button
               type="button"
               onClick={() => setMaintenanceMode(!maintenanceMode)}
-              className={`flex h-7 w-14 shrink-0 items-center rounded-full transition-all ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+              className={`admin-maintenance-switch flex h-7 w-14 shrink-0 items-center rounded-full transition-all ${maintenanceMode ? 'admin-maintenance-switch-on bg-red-500' : 'admin-maintenance-switch-off bg-gray-300'}`}
             >
               <div className={`h-6 w-6 rounded-full bg-white shadow-sm mx-0.5 transition-transform ${maintenanceMode ? 'translate-x-7' : 'translate-x-0'}`} />
             </button>
           </div>
           {maintenanceMode && (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            <div className="admin-maintenance-alert mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
               Maintenance mode is ACTIVE. Regular users cannot access the platform right now.
             </div>
           )}
@@ -5859,7 +5933,7 @@ function SystemSettingsTab() {
           type="button"
           onClick={handleResetSettings}
           disabled={savingSettings || resettingSettings || loadingSettings}
-          className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-ink-100 bg-white px-4 text-sm font-black text-ink-700 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/20 hover:text-brand-crimson disabled:cursor-not-allowed disabled:opacity-60"
+          className="admin-reset-defaults-button inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-ink-100 bg-white px-4 text-sm font-black text-ink-700 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-brand-pink/20 hover:text-brand-crimson disabled:cursor-not-allowed disabled:opacity-60"
           title="Reset AI, theme, and access controls to recommended defaults"
         >
           {resettingSettings ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}

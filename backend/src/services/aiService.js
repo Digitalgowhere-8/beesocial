@@ -58,14 +58,14 @@ function wordsToMaxTokens(words, fallbackTokens) {
   return Math.max(500, Math.min(6000, Math.ceil(normalizedWords * 1.7)));
 }
 
-const ASCENTIUM_BRAND_GUIDELINES = [
-  'Ascentium brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
+const BEESOCIAL_BRAND_GUIDELINES = [
+  'BeeSocial brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
   'Voice: clear, practical, commercially aware, credible, calm, and advisory. The content should feel premium and expert, not casual, hype-led, or generic.',
   'Audience: founders, CFOs, finance leaders, boards, investors, regional expansion teams, and business owners who need actionable guidance, not academic explanation.',
   'Point of view: translate policy, tax, regulatory, market, or operational updates into business implications, decision points, risks, and next steps.',
   'Style: use plain English, short-to-medium paragraphs, concrete examples, structured lists, and careful advisory caveats where law, tax, employment, immigration, or compliance is involved.',
   'Do not overpromise outcomes, guarantee ease/speed, or make unsupported claims. Prefer wording such as "may", "can", "should review", "subject to facts", and "businesses should assess".',
-  'CTA style: consultative and useful. Explain briefly how Ascentium can help with the relevant service area without turning the conclusion into a sales pitch.'
+  'CTA style: consultative and useful. Explain briefly how BeeSocial can help with the relevant service area without turning the conclusion into a sales pitch.'
 ].join('\n');
 
 const BLOG_WRITING_SOP = [
@@ -78,7 +78,7 @@ const BLOG_WRITING_SOP = [
   '6. Use bullet points and numbered lists to break up dense sections. Avoid walls of text.',
   '7. Use seed and long-tail keywords wisely. Do not stuff keywords.',
   '8. The introduction must be specific and engaging enough to hook the reader into the business issue.',
-  '9. The conclusion must summarise the blog, include 2-3 lines on how Ascentium can help with the relevant problem or service area, and nudge the reader toward the desired CTA.',
+  '9. The conclusion must summarise the blog, include 2-3 lines on how BeeSocial can help with the relevant problem or service area, and nudge the reader toward the desired CTA.',
   '10. FAQs must be search-friendly, informative, and answer real questions a buyer might ask.',
   '11. SEO title should be catchy, keyword-aware, and around 50-60 characters where possible. Meta description should summarise the page and be around 145-155 characters.',
   '12. Include a Resources section listing the selected source URL and any reference/competitor URLs provided by the user. Do not fabricate resource links.',
@@ -732,7 +732,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         'GOVERNMENT UPDATE FOCUS AREAS',
         govtCategoryPromptText(),
         '',
-        'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+        'BEESOCIAL SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
         taxonomyPromptText(),
         '',
         'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
@@ -793,7 +793,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           'TRACKED COMPETITORS (ONLY these qualify - verify by exact name)',
           competitors.join(', ') || 'No tracked competitors provided',
           '',
-          'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+          'BEESOCIAL SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
           taxonomyPromptText(),
           '',
           'STEP 1: REJECT IMMEDIATELY (score 0)',
@@ -855,7 +855,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           'EVERGREEN CONTENT FOCUS AREAS',
           evergreenCategoryPromptText(),
           '',
-          'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
+          'BEESOCIAL SERVICES - EXACT CATEGORIES & SUB-CATEGORIES FOR STORAGE',
           taxonomyPromptText(),
           '',
           'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
@@ -917,7 +917,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         'MARKETS COVERED',
         ...markets.length ? markets.map((market, index) => `${index + 1}. ${market}`) : ['1. the selected market'],
         '',
-        'ASCENTIUM SERVICES - EXACT CATEGORIES & SUB-CATEGORIES',
+        'BEESOCIAL SERVICES - EXACT CATEGORIES & SUB-CATEGORIES',
         taxonomyPromptText(),
         '',
         'STEP 1: REJECT IMMEDIATELY WITH SCORE 0',
@@ -1082,8 +1082,8 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '',
             'The finished blog should read like it was written by an experienced advisor for business owners, CFOs, investors, founders, boards, and regional expansion teams. It must not read like generic AI content.',
             '',
-            'ASCENTIUM BRAND GUIDELINES',
-            ASCENTIUM_BRAND_GUIDELINES,
+            'BEESOCIAL BRAND GUIDELINES',
+            BEESOCIAL_BRAND_GUIDELINES,
             '',
             'BLOG DRAFTING SOP',
             BLOG_WRITING_SOP,
@@ -1206,7 +1206,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '9. Include practical takeaways that a reader can act on or discuss internally.',
             '10. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
             '11. Add a Resources section containing only real source/reference URLs provided in this request.',
-            '12. End with a concise conclusion and CTA that includes 2-3 lines explaining how Ascentium can help with the relevant service/problem.',
+            '12. End with a concise conclusion and CTA that includes 2-3 lines explaining how BeeSocial can help with the relevant service/problem.',
             '13. Keep the blog coherent, flowing, and professionally written.',
             `14. Keep the final article at or below approximately ${runtimeConfig.maxWords} words unless essential source context requires a short overage.`,
             '',

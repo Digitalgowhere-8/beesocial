@@ -1,7 +1,7 @@
 const FetchLog = require('../models/FetchLog');
 const { CATEGORIES } = require('../config/categories');
 const { configuredFetchCountries } = require('../config/fetchSources');
-const { buildN8nPayload, cleanList, cleanSourceDomains } = require('./queryBuilder');
+const { buildProfileSearchPayload, cleanList, cleanSourceDomains } = require('./queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('./systemSettings');
 const { runProfileSearch } = require('./profileSearchRunner');
 const { persistProfileResults } = require('./profileResultsService');
@@ -31,6 +31,18 @@ const DEFAULT_CONFIG = {
 
 let running = false;
 let runningLogId = '';
+let cancelRequested = false;
+
+function makeCancelledError() {
+  const error = new Error('Platform fetch cancelled by user');
+  error.code = 'FETCH_CANCELLED';
+  return error;
+}
+
+function throwIfCancelled(logId) {
+  if (!cancelRequested && !progress.isCancelled(logId)) return;
+  throw makeCancelledError();
+}
 
 function unique(values) {
   return [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))];
@@ -201,6 +213,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
   const perSource = [];
 
   for (let i = 0; i < config.countries.length; i += 1) {
+    throwIfCancelled(logId);
     const country = config.countries[i];
     const countryPrefix = `${country} (${i + 1}/${config.countries.length})`;
     const basePercent = 8 + Math.floor((i / config.countries.length) * 82);
@@ -211,7 +224,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
     });
 
     try {
-      const payload = buildN8nPayload({
+      const payload = buildProfileSearchPayload({
         // Scheduled platform fetch is global, so it may not have a real user id.
         // Use a stable synthetic id for the search pipeline and clear ownership
         // again before persisting the final shared results.
@@ -238,8 +251,10 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
           step,
           percent: Math.min(90, basePercent + 4),
           message: `${countryPrefix}: ${message}`
-        })
+        }),
+        isCancelled: () => cancelRequested || progress.isCancelled(logId)
       });
+      throwIfCancelled(logId);
 
       const persisted = await persistProfileResults({
         ...resultPayload,
@@ -269,6 +284,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         message: `${countryPrefix}: saved ${persisted.inserted} new result${persisted.inserted === 1 ? '' : 's'} (${persisted.duplicates} duplicate${persisted.duplicates === 1 ? '' : 's'})`
       });
     } catch (error) {
+      if (error.code === 'FETCH_CANCELLED') throw error;
       totals.errors += 1;
       perSource.push({
         sourceId: `platform-${country}`,
@@ -296,6 +312,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
     }
   }
 
+  throwIfCancelled(logId);
   const finishedAt = new Date();
   const status = totals.errors && totals.inserted === 0 ? 'failed' : totals.errors ? 'partial' : 'success';
   await FetchLog.findByIdAndUpdate(logId, {
@@ -369,11 +386,29 @@ async function triggerPlatformFetch({ triggeredByUser, config, trigger = 'manual
 
   running = true;
   runningLogId = String(log._id);
+  cancelRequested = false;
   progress.startRun(runningLogId, 'Platform fetch queued');
 
   setImmediate(() => {
     runPlatformFetchJob({ logId: runningLogId, triggeredByUser, config: normalized, trigger })
       .catch(async (error) => {
+        if (error.code === 'FETCH_CANCELLED' || cancelRequested || progress.isCancelled(runningLogId)) {
+          await FetchLog.findByIdAndUpdate(log._id, {
+            $set: {
+              status: 'cancelled',
+              finishedAt: new Date(),
+              durationMs: Date.now() - new Date(log.startedAt).getTime(),
+              notes: 'Platform fetch cancelled by user'
+            }
+          });
+          progress.finishRun(runningLogId, {
+            status: 'cancelled',
+            step: 'cancelled',
+            percent: 100,
+            message: 'Platform fetch cancelled.'
+          });
+          return;
+        }
         await FetchLog.findByIdAndUpdate(log._id, {
           $set: {
             status: 'failed',
@@ -393,6 +428,7 @@ async function triggerPlatformFetch({ triggeredByUser, config, trigger = 'manual
       .finally(() => {
         running = false;
         runningLogId = '';
+        cancelRequested = false;
       });
   });
 
@@ -411,11 +447,27 @@ function getPlatformFetchStatus() {
   return { running, logId: runningLogId };
 }
 
+async function cancelPlatformFetch() {
+  if (!running || !runningLogId) return { cancelled: false, running: false };
+  const logId = runningLogId;
+  cancelRequested = true;
+  progress.cancelRun(logId, 'Platform fetch cancellation requested by user');
+  await FetchLog.findByIdAndUpdate(logId, {
+    $set: {
+      status: 'cancelled',
+      finishedAt: new Date(),
+      notes: 'Platform fetch cancellation requested by user'
+    }
+  });
+  return { cancelled: true, running: true, logId };
+}
+
 module.exports = {
   TOPICS,
   getPlatformFetchConfig,
   savePlatformFetchConfig,
   triggerPlatformFetch,
+  cancelPlatformFetch,
   runDuePlatformFetch,
   getPlatformFetchStatus,
   normalizeConfig

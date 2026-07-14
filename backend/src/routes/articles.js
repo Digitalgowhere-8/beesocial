@@ -2,7 +2,7 @@ const express = require('express');
 const Article = require('../models/Article');
 const UserResult = require('../models/UserResult');
 const { protect } = require('../middleware/auth');
-const { asTree } = require('../config/categories');
+const { asVisibleTree, VISIBLE_CATEGORIES } = require('../config/categories');
 const { configuredFetchCountries } = require('../config/fetchSources');
 const { getSystemSettings } = require('../services/systemSettings');
 const { buildSourceTrustRegistry, groupRegistryByCredibility, resolveSourceCredibility } = require('../services/sourceTrust');
@@ -168,10 +168,11 @@ function emptySourcesByType() {
 
 function buildDataCategoryTree(rows = []) {
   const tree = {};
+  const allowedCategories = new Set(VISIBLE_CATEGORIES);
   for (const row of rows) {
     const category = optionLabel(row._id?.category);
     const subcategory = optionLabel(row._id?.subcategory);
-    if (!category) continue;
+    if (!category || !allowedCategories.has(category)) continue;
     if (!tree[category]) tree[category] = new Set();
     if (subcategory) tree[category].add(subcategory);
   }
@@ -434,7 +435,7 @@ router.get('/meta/filters', protect, asyncHandler(async (req, res) => {
   }
 
   res.json({
-    categories: asTree(),
+    categories: asVisibleTree(),
     dataCategories: buildDataCategoryTree(categoryRows),
     fetchCountries: configuredFetchCountries(),
     countries: countries.map(optionLabel).filter(Boolean).sort(),
