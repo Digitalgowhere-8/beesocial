@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
 
-function apiBaseUrl() {
+export function apiBaseUrl() {
   const raw = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
   if (!raw) return '/api';
   return /\/api$/i.test(raw) ? raw : `${raw}/api`;

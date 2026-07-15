@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import api from '../api/axios';
+import api, { apiBaseUrl } from '../api/axios';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED, emitAppEvent } from '../utils/appEvents';
 
 const AuthContext = createContext(null);
@@ -347,7 +347,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user?._id) return undefined;
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+    const baseUrl = apiBaseUrl();
     let stream = null;
     let closed = false;
     let reconnectTimer = null;

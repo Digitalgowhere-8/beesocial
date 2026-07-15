@@ -162,6 +162,16 @@ app.use('/api/profile-search', profileSearchRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
+// Compatibility for deployments/proxies that route the API host directly
+// without preserving the /api prefix.
+app.use('/auth', authRoutes);
+app.use('/analytics', analyticsRoutes);
+app.use('/articles', articleRoutes);
+app.use('/admin', adminRoutes);
+app.use('/profile-search', profileSearchRoutes);
+app.use('/blogs', blogRoutes);
+app.use('/realtime', realtimeRoutes);
+
 // --------- 404 + Error ---------
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.method} ${req.path}` }));
 app.use((err, _req, res, _next) => {
