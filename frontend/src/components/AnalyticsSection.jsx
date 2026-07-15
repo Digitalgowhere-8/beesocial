@@ -756,7 +756,7 @@ function AllDataDashboard({ total, counts, categoryCount, donutData, signalData,
     <div className="analytics-full-grid space-y-5 pb-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={TrendingUp} label="Total Signals" value={total} sub={`${categoryCount} categories`} color={CRIMSON} delay={0.05} />
-        <StatCard icon={Landmark} label="Gov't Updates" value={counts.govt} sub="Policy and public-sector signals" color="#10b981" delay={0.1} />
+        <StatCard icon={Landmark} label="Government Updates" value={counts.govt} sub="Policy and public-sector signals" color="#10b981" delay={0.1} />
         <StatCard icon={Newspaper} label="News Items" value={counts.news} sub="Market coverage indexed" color="#3b82f6" delay={0.15} />
         <StatCard icon={Building2} label="Competitor Intel" value={counts.competitor} sub="Competitive movement tracked" color="#f59e0b" delay={0.2} />
       </div>

@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import {
   Play, Eye, EyeOff, Trash2, RefreshCw, Activity,
-  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, UserPlus, MoreHorizontal,
+  Users, FileText, BarChart3, Loader2, Check, X, ChevronRight, ChevronDown, UserPlus, MoreHorizontal,
   Search, Clock3, Save, Crown, ShieldCheck, Database, Gauge, KeyRound, AlertTriangle, Globe2, Sparkles, Mail, Send,
   MousePointerClick, Timer, MonitorUp, TrendingUp, Building2, Wallet, Server, HardDrive
 } from 'lucide-react';
@@ -141,6 +141,15 @@ const COUNTRY_TIMEZONES = {
   'New Zealand': ['Pacific/Auckland']
 };
 
+const superAdminPlatformCache = {
+  overview: null,
+  analytics: null,
+  dbHealth: null
+};
+
+const superAdminArticlesCache = new Map();
+let superAdminUsersCache = null;
+
 function getBrowserTimezones() {
   try {
     if (typeof Intl.supportedValuesOf === 'function') {
@@ -184,6 +193,24 @@ export default function AdminPanel() {
   useEffect(() => {
     loadDbPlans();
   }, [loadDbPlans]);
+
+  const refreshSuperAdminSection = useCallback(() => {
+    if (tab === 'platform') {
+      superAdminPlatformCache.overview = null;
+      superAdminPlatformCache.analytics = null;
+      superAdminPlatformCache.dbHealth = null;
+    }
+    if (tab === 'articles') {
+      superAdminArticlesCache.clear();
+    }
+    if (tab === 'users') {
+      superAdminUsersCache = null;
+    }
+    if (tab === 'plans') {
+      loadDbPlans();
+    }
+    setSuperAdminRefreshKey((value) => value + 1);
+  }, [loadDbPlans, tab]);
 
   useEffect(() => {
     if (!tabs.length) return;
@@ -254,7 +281,7 @@ export default function AdminPanel() {
             {isSuperAdmin ? (
               <button
                 type="button"
-                onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+                onClick={refreshSuperAdminSection}
                 className="app-refresh-button admin-mobile-refresh-button inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border px-3 shadow-sm transition-all"
                 aria-label="Refresh admin panel"
               >
@@ -300,7 +327,7 @@ export default function AdminPanel() {
           {isSuperAdmin ? (
             <button
               type="button"
-              onClick={() => setSuperAdminRefreshKey((value) => value + 1)}
+              onClick={refreshSuperAdminSection}
               className="app-refresh-button inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all"
             >
               <RefreshCw size={14} />
@@ -402,7 +429,7 @@ export default function AdminPanel() {
               subTabs={SUPER_ADMIN_SUBTABS[tab] || []}
               activeSubTab={subTab}
               onSubTabChange={setSubTab}
-              onRefresh={() => setSuperAdminRefreshKey((value) => value + 1)}
+              onRefresh={refreshSuperAdminSection}
               onOpenMenu={() => setMobileAdminMenuOpen((value) => !value)}
             >
               {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
@@ -466,10 +493,10 @@ function parsePlanPrice(value) {
 }
 
 function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
-  const [overview, setOverview] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
-  const [dbHealth, setDbHealth] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState(() => superAdminPlatformCache.overview);
+  const [analytics, setAnalytics] = useState(() => superAdminPlatformCache.analytics);
+  const [dbHealth, setDbHealth] = useState(() => superAdminPlatformCache.dbHealth);
+  const [loading, setLoading] = useState(() => !superAdminPlatformCache.overview || !superAdminPlatformCache.analytics);
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
   const [cleanupNotice, setCleanupNotice] = useState('');
@@ -478,6 +505,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     if (!silent) setRefreshingHealth(true);
     try {
       const { data } = await api.get('/admin/super/database-health');
+      superAdminPlatformCache.dbHealth = data;
       setDbHealth(data);
       return data;
     } finally {
@@ -485,23 +513,28 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [overviewRes, analyticsRes, dbHealthRes] = await Promise.all([
         api.get('/admin/super/overview'),
         api.get('/admin/super/analytics'),
         api.get('/admin/super/database-health')
       ]);
+      superAdminPlatformCache.overview = overviewRes.data;
+      superAdminPlatformCache.analytics = analyticsRes.data;
+      superAdminPlatformCache.dbHealth = dbHealthRes.data;
       setOverview(overviewRes.data);
       setAnalytics(analyticsRes.data);
       setDbHealth(dbHealthRes.data);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load({ silent: Boolean(superAdminPlatformCache.overview && superAdminPlatformCache.analytics) });
+  }, [load]);
 
   useEffect(() => {
     if (activeSubTab !== 'analytics') return undefined;
@@ -582,8 +615,8 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 relative z-10">
-            <div className="premium-glass p-6 xl:col-span-2" data-analytics-section="Top users table">
-              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="premium-glass overflow-hidden p-0 xl:col-span-2" data-analytics-section="Top users table">
+              <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-crimson mb-1 flex items-center gap-1.5">
                     <Gauge size={12} /> Usage Leaders
@@ -594,7 +627,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <Gauge size={18} className="text-brand-crimson" />
                 </div>
               </div>
-              <div className="space-y-3 lg:hidden">
+              <div className="space-y-3 p-4 lg:hidden">
                 {mobileTopUsers.map((row, index) => (
                   <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
@@ -625,42 +658,42 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   </div>
                 )}
               </div>
-              <div className="hidden overflow-x-auto lg:block">
-                <table className="w-full min-w-[680px] text-sm border-separate border-spacing-y-2">
-                  <thead className="text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
+              <div className="hidden overflow-x-auto px-4 pb-4 pt-3 lg:block">
+                <table className="admin-top-users-table w-full min-w-[680px] border-separate border-spacing-y-2 text-sm">
+                  <thead className="text-left text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">
                     <tr>
-                      <th className="py-2 px-3">User</th>
-                      <th className="py-2 px-3">Plan</th>
-                      <th className="py-2 px-3 text-right">Fetches</th>
-                      <th className="py-2 px-3 text-right">Stored</th>
-                      <th className="py-2 px-3 text-right">Errors</th>
-                      <th className="py-2 px-3 text-right">Est. tokens</th>
+                      <th className="px-3 py-2">User</th>
+                      <th className="px-3 py-2">Plan</th>
+                      <th className="px-3 py-2 text-right">Fetches</th>
+                      <th className="px-3 py-2 text-right">Stored</th>
+                      <th className="px-3 py-2 text-right">Errors</th>
+                      <th className="px-3 py-2 text-right">Est. tokens</th>
                     </tr>
                   </thead>
                   <tbody>
                     {topUsers.map((row, index) => (
                       <tr key={row.user?._id || index} className="premium-table-row">
-                        <td className="py-3 px-3 rounded-l-xl">
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                        <td className="rounded-l-2xl px-3 py-4">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white shadow-sm ring-4 ring-brand-pink/40">
                               {(row.user?.name || 'U')[0].toUpperCase()}
                             </div>
-                            <div>
-                              <div className="font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
-                              <div className="text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
+                            <div className="min-w-0">
+                              <div className="truncate font-black leading-tight text-gray-900">{row.user?.name || 'Unknown user'}</div>
+                              <div className="mt-0.5 truncate text-xs font-semibold text-gray-500">{row.user?.email || '-'}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="px-3 py-4">
                           <span className={`tag px-2.5 py-1 ${PLAN_BADGE[row.user?.subscriptionPlan] || PLAN_BADGE.free}`}>
                             {(row.user?.subscriptionPlan === 'enterprise' || row.user?.subscriptionPlan === 'premium') && <Crown size={10} className="mr-1 inline" />}
                             {row.user?.subscriptionPlan || 'free'}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right font-black text-gray-700">{row.runs || 0}</td>
-                        <td className="py-3 px-3 text-right font-black text-gray-700">{row.inserted || 0}</td>
-                        <td className="py-3 px-3 text-right font-black text-red-500">{row.errors || 0}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs font-bold text-gray-400 rounded-r-xl">{Number(row.estimatedTokens || 0).toLocaleString()}</td>
+                        <td className="px-3 py-4 text-right font-black text-gray-700">{row.runs || 0}</td>
+                        <td className="px-3 py-4 text-right font-black text-gray-700">{row.inserted || 0}</td>
+                        <td className="px-3 py-4 text-right font-black text-red-500">{row.errors || 0}</td>
+                        <td className="rounded-r-2xl px-3 py-4 text-right font-mono text-xs font-black text-gray-500">{Number(row.estimatedTokens || 0).toLocaleString()}</td>
                       </tr>
                     ))}
                     {!topUsers.length && (
@@ -1188,33 +1221,38 @@ function DatabaseHealthPanel({ dbHealth, onRefresh, refreshing = false, onCleanu
 // =============== ARTICLES TAB ===============
 
 function ArticlesTab({ ownerOnly = false }) {
-  const [items, setItems] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 });
-  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({});
+  const getCacheKey = useCallback((f = filters, page = 1) => JSON.stringify({ ownerOnly, filters: f || {}, page }), [filters, ownerOnly]);
+  const initialCache = superAdminArticlesCache.get(getCacheKey({}, 1));
+  const [items, setItems] = useState(() => initialCache?.items || []);
+  const [pagination, setPagination] = useState(() => initialCache?.pagination || { page: 1, total: 0, pages: 0 });
+  const [loading, setLoading] = useState(() => !initialCache);
   const [selected, setSelected] = useState(new Set());
   const filterMetaParams = useMemo(() => (
     ownerOnly ? { ownerOnly: 'true' } : {}
   ), [ownerOnly]);
 
-  const load = useCallback(async (f = filters, page = 1) => {
-    setLoading(true);
+  const load = useCallback(async (f = filters, page = 1, { silent = false } = {}) => {
+    const cacheKey = getCacheKey(f, page);
+    if (!silent) setLoading(true);
     try {
       const params = { page, limit: 24 };
       if (ownerOnly) params.ownerOnly = 'true';
       for (const [k, v] of Object.entries(f || {})) if (v) params[k] = v;
       const { data } = await api.get('/articles', { params });
+      const nextPagination = { page: data.page, total: data.total, pages: data.pages };
+      superAdminArticlesCache.set(cacheKey, { items: data.items, pagination: nextPagination });
       setItems(data.items);
-      setPagination({ page: data.page, total: data.total, pages: data.pages });
+      setPagination(nextPagination);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [filters, ownerOnly]);
+  }, [filters, getCacheKey, ownerOnly]);
 
   useEffect(() => {
     setSelected(new Set());
-    load(filters, 1);
-  }, [filters, load]);
+    load(filters, 1, { silent: superAdminArticlesCache.has(getCacheKey(filters, 1)) });
+  }, [filters, getCacheKey, load]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -1263,7 +1301,7 @@ function ArticlesTab({ ownerOnly = false }) {
             {selected.size} selected
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => bulk('delete')} className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-black text-red-600 ring-1 ring-red-100 hover:bg-red-100">
+            <button onClick={() => bulk('delete')} className="admin-bulk-delete-button inline-flex items-center gap-2 rounded-xl bg-brand-crimson px-3 py-2 text-sm font-black text-white ring-1 ring-brand-crimson/30 hover:bg-brand-crimson/90">
               <Trash2 size={14} /> Delete
             </button>
             <button onClick={clearSelection} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 ring-1 ring-gray-200 hover:bg-gray-50">
@@ -1733,11 +1771,11 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                 <div className="space-y-4">
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                     <FetchField label="Country">
-                      <select className="select min-h-[48px] rounded-2xl border-slate-200 bg-white" value={sourceCountry} onChange={(e) => setSourceCountry(e.target.value)}>
-                        {sourceCountries.map((country) => (
-                          <option key={country} value={country}>{country}</option>
-                        ))}
-                      </select>
+                      <CountrySourceSelect
+                        value={sourceCountry}
+                        options={sourceCountries}
+                        onChange={setSourceCountry}
+                      />
                     </FetchField>
                     <div className="mt-3 text-xs font-medium leading-6 text-slate-500">
                       Countries added here will also be available in the Fetch Settings tab.
@@ -1759,7 +1797,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                         type="button"
                         onClick={addCustomCountry}
                         disabled={!customCountryInput.trim()}
-                        className="rounded-2xl bg-brand-crimson px-4 py-2 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+                        className="admin-source-action-button rounded-2xl bg-brand-crimson px-4 py-2 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Add Countries
                       </button>
@@ -1818,7 +1856,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                           type="button"
                           onClick={() => addSourceEntries(sourceInput)}
                           disabled={!sourceInput.trim() || !sourceCountry}
-                          className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                          className="admin-source-action-button inline-flex items-center justify-center rounded-2xl bg-brand-crimson px-4 py-2 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Add Sources
                         </button>
@@ -1896,7 +1934,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                   type="button"
                   onClick={saveConfig}
                   disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                  className="admin-source-action-button inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                   Save Sources
@@ -2885,6 +2923,76 @@ function FetchField({ label, children, className = '' }) {
   );
 }
 
+function CountrySourceSelect({ value, options = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnOutside = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  const selectOption = (nextValue) => {
+    onChange?.(nextValue);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="admin-country-select relative">
+      <button
+        type="button"
+        className="admin-country-select-trigger flex min-h-[48px] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-left text-sm font-black text-slate-950 transition hover:border-slate-300 focus:border-brand-crimson focus:outline-none focus:ring-2 focus:ring-brand-crimson/20"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 truncate">{value || 'Select country'}</span>
+        <ChevronDown size={16} className={`shrink-0 text-brand-crimson transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          className="admin-country-select-menu absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_20px_45px_rgba(15,23,42,0.18)]"
+          role="listbox"
+        >
+          {options.map((country) => {
+            const selected = country === value;
+            return (
+              <button
+                key={country}
+                type="button"
+                className={`admin-country-select-option flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-bold transition ${selected ? 'admin-country-select-option-active bg-slate-200 text-slate-950' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'}`}
+                onClick={() => selectOption(country)}
+                role="option"
+                aria-selected={selected}
+              >
+                <span className="min-w-0 truncate">{country}</span>
+              </button>
+            );
+          })}
+          {!options.length && (
+            <div className="px-3 py-3 text-sm font-bold text-slate-400">No countries available.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function cleanList(value) {
   return String(value || '')
     .split(',')
@@ -2915,9 +3023,9 @@ function parseSourceDomains(value) {
 
 function Stat({ label, value, highlight }) {
   return (
-    <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
-      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{label}</span>
-      <span className={highlight ? 'text-brand-crimson text-base font-black' : 'text-gray-700 text-sm font-bold'}>
+    <div className="flex min-h-[38px] items-start justify-between gap-3 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
+      <span className="shrink-0 pt-0.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">{label}</span>
+      <span className={`min-w-0 flex-1 text-right leading-snug break-words ${highlight ? 'text-brand-crimson text-base font-black' : 'text-gray-700 text-sm font-bold'}`}>
         {value ?? '-'}
       </span>
     </div>
@@ -3278,9 +3386,10 @@ function LogDetailPill({ label, value, subValue = '' }) {
 function UsersTab({ dbPlans, activeSubTab = 'add' }) {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'super_admin';
-  const [items, setItems] = useState([]);
+  const initialUsersCache = isSuperAdmin ? superAdminUsersCache : null;
+  const [items, setItems] = useState(() => initialUsersCache?.items || []);
   const [userQuery, setUserQuery] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialUsersCache);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -3315,6 +3424,7 @@ function UsersTab({ dbPlans, activeSubTab = 'add' }) {
     if (!silent) setLoading(true);
     try {
       const { data } = await api.get('/admin/users', { params: { limit: 50 } });
+      if (isSuperAdmin) superAdminUsersCache = { items: data.items || [] };
       setItems(data.items);
     } finally {
       if (!silent) setLoading(false);
@@ -3322,10 +3432,10 @@ function UsersTab({ dbPlans, activeSubTab = 'add' }) {
   }, []);
 
   useEffect(() => {
-    load();
+    load({ silent: Boolean(isSuperAdmin && superAdminUsersCache) });
     const id = window.setInterval(() => load({ silent: true }), 30 * 1000);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [isSuperAdmin, load]);
 
   useEffect(() => {
     setForm((prev) => {
@@ -4163,7 +4273,7 @@ function StatsTab() {
                   </span>
                 </div>
                 <div className="h-2.5 overflow-hidden rounded-full bg-gray-100">
-                  <div className={`h-full rounded-full ${card.accent}`} style={{ width: `${usedPct}%` }} />
+                  <div className={`admin-usage-progress-fill h-full rounded-full ${card.accent}`} style={{ width: `${usedPct}%` }} />
                 </div>
                 <div className="mt-2 text-[11px] font-semibold text-gray-400">Limit: {fmt(card.limit)}</div>
               </div>

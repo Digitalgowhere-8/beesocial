@@ -7,7 +7,7 @@ import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appE
 import GuidedOnboarding from './GuidedOnboarding';
 import ThemeToggle from './ThemeToggle';
 import {
-  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
+  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, PenLine, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -735,6 +735,9 @@ export default function Layout({ children, headerActions = null }) {
   }, [generationLocked, location.pathname, navigate, showGenerationLockMessage]);
 
   const navigateIfNeeded = useCallback((path) => {
+    if (path.startsWith('/blogs')) {
+      markContentRepositoryNotificationsRead();
+    }
     const currentPath = `${location.pathname}${location.search || ''}`;
     const isSameTarget = path.includes('?')
       ? currentPath === path
@@ -746,7 +749,7 @@ export default function Layout({ children, headerActions = null }) {
     }
     navigate(path);
     return true;
-  }, [generationLocked, location.pathname, location.search, navigate, showGenerationLockMessage]);
+  }, [generationLocked, location.pathname, location.search, markContentRepositoryNotificationsRead, navigate, showGenerationLockMessage]);
 
   const navigateAndCollapseSidebar = useCallback((path) => {
     if (navigateIfNeeded(path)) setCollapsed(true);
@@ -759,7 +762,10 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     setShowNotifications(false);
     setShowProfileMenu(false);
-  }, [location.pathname]);
+    if (location.pathname.startsWith('/blogs')) {
+      markContentRepositoryNotificationsRead();
+    }
+  }, [location.pathname, markContentRepositoryNotificationsRead]);
 
   useEffect(() => {
     if (!user?._id) return undefined;
@@ -881,9 +887,9 @@ export default function Layout({ children, headerActions = null }) {
       ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 overflow-hidden xl:h-screen xl:flex-row" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="mobile-app-header sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur xl:hidden">
-        <div className="mobile-app-header-card overflow-visible rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden xl:h-screen xl:flex-row xl:overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
+      <header className="mobile-app-header fixed inset-x-0 top-0 z-50 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-0 pb-0 pt-0 backdrop-blur xl:hidden">
+        <div className="mobile-app-header-card overflow-visible rounded-none border-x-0 border-t-0 border-b border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
         <div className="mobile-app-header-glow pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -1069,6 +1075,12 @@ export default function Layout({ children, headerActions = null }) {
                 className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                 <Newspaper size={16} />
               </button>
+              {canUseBlogStudio && (
+                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
+                  className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
+                  <PenLine size={16} />
+                </button>
+              )}
               {canUseContentRepository && (
                 <button onClick={() => navigateIfNeeded('/blogs')} title="Content Repository" data-tour="nav-content-repository"
                   className={`collapsed-nav-icon-button relative w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
@@ -1080,12 +1092,6 @@ export default function Layout({ children, headerActions = null }) {
                   ) : null}
                 </button>
               )}
-              {canUseBlogStudio && (
-                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
-                  className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
-                  <BookOpenText size={16} />
-                </button>
-              )}
               <button onClick={() => navigateIfNeeded('/profile')} title="My Hive Profile" data-tour="nav-profile"
                 className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                 <UserIcon size={16} />
@@ -1095,10 +1101,10 @@ export default function Layout({ children, headerActions = null }) {
             <>
               <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" badge={contentRepositoryBadge} dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
+                <SideNavItem icon={PenLine} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               )}
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" badge={contentRepositoryBadge} dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
             </>
           )}
@@ -1124,7 +1130,7 @@ export default function Layout({ children, headerActions = null }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden pt-[132px] xl:pt-0">
         {/* Top Header */}
         <header className="hidden h-[72px] shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 xl:flex xl:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>

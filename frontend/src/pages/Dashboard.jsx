@@ -1019,7 +1019,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
             </button>
           </div>
         </div>
-        <div className="dashboard-pill-switch hidden w-full grid-cols-3 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:grid sm:w-auto">
+        <div className="dashboard-pill-switch hidden w-full grid-cols-3 gap-2 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm sm:grid sm:w-auto">
           {[
             { key: 'intel', label: 'Intelligence Library', mobileLabel: 'Intelligence Library', icon: Sparkles },
             { key: 'tailored', label: 'Personalised Feed', mobileLabel: 'Personalised Feed', icon: Newspaper },

@@ -1003,8 +1003,8 @@ export default function BlogStudio() {
   const generationOverlaySubtitle = generationFinalizing
     ? 'Finalizing your content. It will open automatically in a moment.'
     : (isGeneratingLinkedin
-      ? 'Please wait here. The post preview will open automatically as soon as generation finishes.'
-      : 'Please wait here. Review & Publishing will refresh and open the new content automatically.');
+      ? "The content will be ready shortly and will open automatically when it's ready."
+      : "The content will be ready shortly and will open automatically when it's ready.");
   const generationOverlayTopic = selectedArticle?.title || style.topic || 'Selected intelligence topic';
 
   const headerActions = contentType === 'social' && socialPreviewOpen ? null : (
@@ -1203,11 +1203,12 @@ export default function BlogStudio() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                         }}
-                        className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
+                        className={`group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                       >
                         <ArticleCard
                           item={item}
                           compact
+                          equalHeight
                           selected={isSelected}
                           compactFooter={(
                             <TopicSelectionFooter
@@ -2232,11 +2233,12 @@ function LinkedInStudio({
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                     }}
-                    className={`group/topic relative w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
+                    className={`group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                   >
                     <ArticleCard
                       item={item}
                       compact
+                      equalHeight
                       selected={isSelected}
                       compactFooter={(
                         <TopicSelectionFooter

@@ -443,6 +443,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     setSession(null);
     setUiSettings(null);
+    emitAppEvent(APP_EVENT_AUTH_CHANGED, { user: null, session: null });
     return data;
   }, []);
 

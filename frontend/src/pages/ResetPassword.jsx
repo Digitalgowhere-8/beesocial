@@ -24,7 +24,7 @@ export default function ResetPassword() {
   const inputFocus = (e) => {
     e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
-      ? '0 0 0 4px rgba(209,18,67,0.18)'
+      ? 'none'
       : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
@@ -81,7 +81,7 @@ export default function ResetPassword() {
           className="rounded-2xl p-5 transition-colors duration-300 sm:p-8 lg:p-9"
           style={{
             background: isDark ? '#111827' : '#ffffff',
-            boxShadow: isDark ? '0 24px 54px rgba(2,6,23,0.44)' : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+            boxShadow: isDark ? 'none' : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
             border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
           }}
         >
@@ -146,7 +146,7 @@ export default function ResetPassword() {
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white transition-all duration-300"
               style={{
                 background: loading || !hasToken ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
-                boxShadow: '0 4px 14px rgba(209,18,67,0.3)',
+                boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
                 fontFamily: robotoFont
               }}
             >

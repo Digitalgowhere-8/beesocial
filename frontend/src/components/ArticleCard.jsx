@@ -70,6 +70,7 @@ function MetaPill({ icon: Icon, children, title, relaxed = false }) {
 function ArticleCard({
   item = {},
   compact = false,
+  equalHeight = false,
   hideTypeLabel = false,
   selectable = false,
   selected = false,
@@ -92,7 +93,7 @@ function ArticleCard({
   const region = item.region || '';
   const compactMetaPillClass = 'article-meta-pill inline-flex min-w-0 items-center gap-1.5 rounded-xl bg-[#f8fafc] px-3 py-2 text-[11px] font-black uppercase tracking-wider text-[#6b7280] ring-1 ring-[#e8edf3]';
   const compactCardShell = compact
-    ? 'rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,249,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4'
+    ? `${equalHeight ? 'h-full min-h-[464px]' : ''} rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,249,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4`
     : 'rounded-[22px] bg-white p-4 sm:p-5';
   const source = item.source || sourceHost(item.url) || 'Unknown source';
   const host = sourceHost(item.url);
@@ -104,8 +105,8 @@ function ArticleCard({
     : 'moderate';
   const compactScoreOnlyHeader = compact && hideTypeLabel;
   const compactCategoryBlockClass = compactScoreOnlyHeader
-    ? 'article-compact-category-stack mb-3 flex flex-col gap-2 pr-14'
-    : 'article-compact-category-stack mb-3 flex flex-col gap-2';
+    ? `article-compact-category-stack mb-3 flex ${equalHeight ? 'min-h-[74px]' : ''} flex-col gap-2 pr-14`
+    : `article-compact-category-stack mb-3 flex ${equalHeight ? 'min-h-[74px]' : ''} flex-col gap-2`;
   const saveButtonClass = [
     'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
     compact ? 'h-9 w-9 rounded-xl px-0' : 'w-9 px-0 sm:w-auto sm:px-3',
@@ -215,7 +216,7 @@ function ArticleCard({
         </div>
       </div>
 
-      {compact && ((item.category && item.category !== 'General') || item.subcategory) && (
+      {compact && (
         <div className={compactCategoryBlockClass}>
           {item.category && item.category !== 'General' && (
             <span className={`${compactMetaPillClass} article-compact-category-pill w-full`} title="Category">
@@ -249,7 +250,7 @@ function ArticleCard({
         </div>
       )}
 
-      <h3 className={['article-title font-black leading-snug text-gray-900 transition-colors duration-200 group-hover:text-brand-crimson', compact ? 'mb-2.5 text-[15px]' : 'mb-2.5 pl-3 text-[15px]'].join(' ')}>
+      <h3 className={['article-title font-black leading-snug text-gray-900 transition-colors duration-200 group-hover:text-brand-crimson', compact ? `mb-2.5 ${equalHeight ? 'min-h-[58px]' : ''} text-[15px]` : 'mb-2.5 pl-3 text-[15px]'].join(' ')}>
         <a
           href={item.url}
           target="_blank"
@@ -262,7 +263,7 @@ function ArticleCard({
       </h3>
 
       {summary && (
-        <p className={['article-summary flex-1 leading-relaxed text-gray-500', compact ? 'mb-4 text-[12px] line-clamp-3 xl:text-[13px]' : 'mb-4 pl-3 text-[13px] line-clamp-3'].join(' ')}>
+        <p className={['article-summary flex-1 leading-relaxed text-gray-500', compact ? `mb-4 ${equalHeight ? 'min-h-[62px]' : ''} text-[12px] line-clamp-3 xl:text-[13px]` : 'mb-4 pl-3 text-[13px] line-clamp-3'].join(' ')}>
           {summary}
         </p>
       )}

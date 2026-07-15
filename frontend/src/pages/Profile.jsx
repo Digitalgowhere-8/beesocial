@@ -419,7 +419,7 @@ export default function Profile() {
                 </Field>
               </div>
               <div className="mt-6">
-                <button className="profile-outline-button btn-secondary mt-2 w-full rounded-xl bg-white py-2.5" disabled={loadingPwd}>
+                <button className="profile-outline-button btn-secondary mt-2 w-full rounded-xl py-2.5" disabled={loadingPwd}>
                   {loadingPwd ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
                   Update Password
                 </button>

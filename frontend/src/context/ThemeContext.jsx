@@ -4,6 +4,7 @@ import { APP_EVENT_AUTH_CHANGED } from '../utils/appEvents';
 const GUEST_STORAGE_KEY = 'beesocial_theme_mode_guest';
 const USER_STORAGE_PREFIX = 'beesocial_theme_mode_user_';
 const USER_MANUAL_STORAGE_PREFIX = 'beesocial_theme_mode_manual_user_';
+const SESSION_STORAGE_PREFIX = 'beesocial_theme_session_user_';
 const ThemeContext = createContext(null);
 
 function normalizeTheme(value) {
@@ -32,11 +33,28 @@ function storageKeyForIdentity(identity) {
 }
 
 function hasManualTheme(identity, storageKey) {
-  return false;
+  if (!identity || typeof sessionStorage === 'undefined') return false;
+  return Boolean(normalizeTheme(sessionStorage.getItem(`${SESSION_STORAGE_PREFIX}${identity}`)));
 }
 
 function readThemeForState(identity, storageKey) {
+  if (identity && typeof sessionStorage !== 'undefined') {
+    const sessionTheme = normalizeTheme(sessionStorage.getItem(`${SESSION_STORAGE_PREFIX}${identity}`));
+    if (sessionTheme) return sessionTheme;
+  }
   return getSystemTheme();
+}
+
+function writeSessionTheme(identity, theme) {
+  if (!identity || typeof sessionStorage === 'undefined') return;
+  sessionStorage.setItem(`${SESSION_STORAGE_PREFIX}${identity}`, theme);
+}
+
+function clearSessionThemes() {
+  if (typeof sessionStorage === 'undefined') return;
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith(SESSION_STORAGE_PREFIX))
+    .forEach((key) => sessionStorage.removeItem(key));
 }
 
 function getInitialThemeState() {
@@ -80,7 +98,11 @@ export function ThemeProvider({ children }) {
       });
     };
 
-    const handleAuthChanged = (event) => syncThemeOwner(event.detail?.user || null);
+    const handleAuthChanged = (event) => {
+      const user = event.detail?.user || null;
+      if (!user) clearSessionThemes();
+      syncThemeOwner(user);
+    };
     const handleStorage = (event) => {
       if (!event.key || event.key === 'beesocial_user' || event.key.startsWith(USER_STORAGE_PREFIX) || event.key.startsWith(USER_MANUAL_STORAGE_PREFIX)) {
         syncThemeOwner();
@@ -101,7 +123,11 @@ export function ThemeProvider({ children }) {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemThemeChange = () => {
-      setThemeState((current) => ({ ...current, theme: getSystemTheme() }));
+      setThemeState((current) => {
+        if (current.identity) return current;
+        if (hasManualTheme(current.identity, current.storageKey)) return current;
+        return { ...current, theme: getSystemTheme() };
+      });
     };
 
     systemThemeQuery.addEventListener?.('change', handleSystemThemeChange);
@@ -115,12 +141,14 @@ export function ThemeProvider({ children }) {
       setThemeState((current) => {
         const resolved = typeof nextTheme === 'function' ? nextTheme(current.theme) : nextTheme;
         const theme = normalizeTheme(resolved) || getSystemTheme();
+        writeSessionTheme(current.identity, theme);
         return { ...current, theme };
       });
     },
     toggleTheme: () => {
       setThemeState((current) => {
         const theme = current.theme === 'dark' ? 'light' : 'dark';
+        writeSessionTheme(current.identity, theme);
         return { ...current, theme };
       });
     }

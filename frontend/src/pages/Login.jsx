@@ -54,13 +54,13 @@ export default function Login() {
   const inputFocus = (e) => {
     e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
-      ? '0 0 0 4px rgba(209,18,67,0.16), 0 10px 24px rgba(2,6,23,0.22)'
+      ? 'none'
       : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const inputBlur = (e) => {
     e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
-    e.target.style.boxShadow = isDark ? '0 10px 24px rgba(2,6,23,0.18)' : 'none';
+    e.target.style.boxShadow = 'none';
   };
 
   const shellStyle = {
@@ -70,13 +70,13 @@ export default function Login() {
   };
   const formPanelStyle = {
     background: isDark
-      ? 'radial-gradient(circle at top left, rgba(209,18,67,0.10), transparent 28%), linear-gradient(180deg, rgba(13,23,36,0.98) 0%, rgba(8,15,25,0.98) 100%)'
+      ? '#070d17'
       : '#FAF0F2'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
-      ? '0 24px 54px rgba(2,6,23,0.44), inset 0 1px 0 rgba(255,255,255,0.04)'
+      ? 'none'
       : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
     border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
   };
@@ -84,7 +84,7 @@ export default function Login() {
     background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
     color: isDark ? '#f8fafc' : '#1f2937',
     borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb',
-    boxShadow: isDark ? '0 10px 24px rgba(2,6,23,0.18)' : undefined,
+    boxShadow: 'none',
     fontFamily: robotoFont
   };
   const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
@@ -213,18 +213,18 @@ export default function Login() {
                 className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 mt-4"
                 style={{
                   background: loading ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
-                  boxShadow: '0 4px 14px rgba(209,18,67,0.3)',
+                  boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
                   fontFamily: robotoFont
                 }}
                 onMouseOver={(e) => {
                   if (!loading) {
                     e.currentTarget.style.transform = 'translateY(-1.5px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(209,18,67,0.4)';
+                    e.currentTarget.style.boxShadow = isDark ? 'none' : '0 6px 20px rgba(209,18,67,0.4)';
                   }
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(209,18,67,0.3)';
+                  e.currentTarget.style.boxShadow = isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)';
                 }}
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <>Sign In <ArrowRight size={14} /></>}

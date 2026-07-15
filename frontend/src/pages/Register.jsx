@@ -53,20 +53,20 @@ export default function Register() {
     width: '100%',
     outline: 'none',
     transition: 'all 0.2s',
-    boxShadow: isDark ? '0 10px 24px rgba(2,6,23,0.18)' : '0 1px 2px rgba(0,0,0,0.02)',
+    boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.02)',
     fontFamily: robotoFont
   };
 
   const handleFocus = (e) => {
     e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
-      ? '0 0 0 4px rgba(209,18,67,0.16), 0 10px 24px rgba(2,6,23,0.22)'
+      ? 'none'
       : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const handleBlur = (e) => {
     e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
-    e.target.style.boxShadow = isDark ? '0 10px 24px rgba(2,6,23,0.18)' : 'none';
+    e.target.style.boxShadow = 'none';
   };
 
   const shellStyle = {
@@ -76,13 +76,13 @@ export default function Register() {
   };
   const formPanelStyle = {
     background: isDark
-      ? 'radial-gradient(circle at top left, rgba(209,18,67,0.10), transparent 28%), linear-gradient(180deg, rgba(13,23,36,0.98) 0%, rgba(8,15,25,0.98) 100%)'
+      ? '#070d17'
       : '#FAF0F2'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
-      ? '0 24px 54px rgba(2,6,23,0.44), inset 0 1px 0 rgba(255,255,255,0.04)'
+      ? 'none'
       : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
     border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
   };

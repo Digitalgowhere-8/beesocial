@@ -179,6 +179,25 @@ function minStoreScore(body = {}) {
   return Math.max(0, Math.min(100, Number(body.minStoreScore ?? fallback) || fallback));
 }
 
+function maxAgeDays(body = {}) {
+  return Math.max(1, Math.min(365, Number(body.days || body.maxAgeDays || 30) || 30));
+}
+
+function parseItemPublishedAt(item = {}) {
+  const raw = item.publishedAt || item.published_at || item.date || item.rawData?.publishedAt || item.rawData?.published_date;
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isInsideDateAge(item = {}, body = {}) {
+  const publishedAt = parseItemPublishedAt(item);
+  if (!publishedAt) return false;
+  const ageMs = Date.now() - publishedAt.getTime();
+  if (ageMs < 0) return true;
+  return ageMs <= maxAgeDays(body) * 24 * 60 * 60 * 1000;
+}
+
 async function persistProfileResults(body = {}, options = {}) {
   const rawItems = Array.isArray(body.results) ? body.results : [];
   const dedupedItems = dedupeResultItems(rawItems);
@@ -216,6 +235,10 @@ async function persistProfileResults(body = {}, options = {}) {
     }
     const topicType = normalizeArticleType(item);
     item.type = topicType;
+    if (!isInsideDateAge(item, body)) {
+      filteredCounts.stale += 1;
+      continue;
+    }
     if (isCrossCountySource(item, body)) {
       filteredCounts.crossCountyDomain += 1;
       continue;
