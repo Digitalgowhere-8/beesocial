@@ -1,7 +1,6 @@
-const axios = require('axios');
 const FetchLog = require('../models/FetchLog');
 const User = require('../models/User');
-const { buildN8nPayload } = require('../services/queryBuilder');
+const { buildProfileSearchPayload } = require('../services/queryBuilder');
 const { runProfileSearch } = require('../services/profileSearchRunner');
 const { persistProfileResults } = require('../services/profileResultsService');
 const progress = require('../services/profileRunProgress');
@@ -80,22 +79,15 @@ function shouldRunNow(user, now = new Date()) {
 }
 
 async function triggerUser(user) {
-  const useN8nWebhook = process.env.PROFILE_SEARCH_USE_N8N === 'true';
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
-  if (useN8nWebhook && !webhookUrl) throw new Error('N8N_WEBHOOK_URL is not configured');
-
   const startedAt = new Date();
-  const publicApiUrl = String(process.env.PUBLIC_API_URL || process.env.API_BASE_URL || '').replace(/\/$/, '');
-  const payload = buildN8nPayload(user, {
+  const payload = buildProfileSearchPayload(user, {
     userId: user._id.toString(),
     trigger: 'schedule',
-    callbackUrl: process.env.N8N_CALLBACK_URL || (publicApiUrl ? `${publicApiUrl}/api/n8n/results` : ''),
-    callbackSecret: process.env.N8N_CALLBACK_SECRET || '',
     startedAt: startedAt.toISOString()
   });
 
   const log = await FetchLog.create({
-    triggeredBy: 'n8n',
+    triggeredBy: 'cron',
     userId: user._id,
     country: payload.country,
     region: payload.region,
@@ -110,40 +102,27 @@ async function triggerUser(user) {
   progress.startRun(payload.logId, 'Fetch queued from scheduler');
 
   try {
-    if (!useN8nWebhook) {
-      progress.updateRun(payload.logId, {
-        step: 'start',
-        percent: 8,
-        message: 'Scheduled fetch started'
-      });
-      const resultPayload = await runProfileSearch(payload, {
-        onProgress: ({ step, message }) => progress.updateRun(payload.logId, { step, message })
-      });
-      progress.updateRun(payload.logId, {
-        step: 'save',
-        percent: 88,
-        message: 'Saving scheduled results to database'
-      });
-      await persistProfileResults(resultPayload);
-      progress.finishRun(payload.logId, {
-        status: 'success',
-        step: 'complete',
-        processed: resultPayload.resultCount,
-        resultCount: resultPayload.resultCount,
-        message: `Scheduled fetch complete: ${resultPayload.resultCount} result${resultPayload.resultCount === 1 ? '' : 's'} saved`
-      });
-      user.fetchSchedule.lastRunAt = startedAt;
-      await user.save();
-      return;
-    }
-
-    await axios.post(webhookUrl, payload, {
-      timeout: parseInt(process.env.N8N_WEBHOOK_TIMEOUT_MS, 10) || 1000 * 60 * 20,
-      headers: {
-        ...(process.env.N8N_WEBHOOK_SECRET ? { 'x-n8n-secret': process.env.N8N_WEBHOOK_SECRET } : {})
-      }
+    progress.updateRun(payload.logId, {
+      step: 'start',
+      percent: 8,
+      message: 'Scheduled fetch started'
     });
-
+    const resultPayload = await runProfileSearch(payload, {
+      onProgress: ({ step, message }) => progress.updateRun(payload.logId, { step, message })
+    });
+    progress.updateRun(payload.logId, {
+      step: 'save',
+      percent: 88,
+      message: 'Saving scheduled results to database'
+    });
+    await persistProfileResults(resultPayload);
+    progress.finishRun(payload.logId, {
+      status: 'success',
+      step: 'complete',
+      processed: resultPayload.resultCount,
+      resultCount: resultPayload.resultCount,
+      message: `Scheduled fetch complete: ${resultPayload.resultCount} result${resultPayload.resultCount === 1 ? '' : 's'} saved`
+    });
     user.fetchSchedule.lastRunAt = startedAt;
     await user.save();
   } catch (error) {
@@ -152,7 +131,7 @@ async function triggerUser(user) {
       finishedAt: new Date(),
       durationMs: Date.now() - startedAt.getTime(),
       totalErrors: 1,
-      notes: `Scheduled n8n trigger failed: ${error.message}`
+      notes: `Scheduled profile search failed: ${error.message}`
     });
     progress.finishRun(payload.logId, {
       status: 'failed',

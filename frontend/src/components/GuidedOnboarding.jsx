@@ -251,17 +251,17 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
       ) : null}
 
       {/* Modal card — always centered, never clips */}
-      <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-[24px] border border-white/20 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)] sm:max-w-[440px] sm:rounded-3xl"
+      <div className="guided-onboarding-card relative z-10 flex w-full max-w-[420px] flex-col rounded-[24px] border border-white/20 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)] sm:max-w-[440px] sm:rounded-3xl"
         style={{ maxHeight: 'calc(100dvh - 24px)' }}>
 
         {/* Gradient top decoration */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-[24px] bg-[radial-gradient(circle_at_20%_0%,rgba(225,29,72,0.13),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.10),transparent_50%)] sm:rounded-t-3xl" />
+        <div className="guided-onboarding-glow pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-[24px] bg-[radial-gradient(circle_at_20%_0%,rgba(209,18,67,0.13),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.10),transparent_50%)] sm:rounded-t-3xl" />
 
         {/* Close button */}
         <button
           type="button"
           onClick={() => onClose?.(false)}
-          className="absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-400 shadow-sm transition hover:bg-gray-100 hover:text-gray-700"
+          className="guided-onboarding-close absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-400 shadow-sm transition hover:bg-gray-100 hover:text-gray-700"
         >
           <X size={14} />
         </button>
@@ -270,7 +270,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
         <div className="relative flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
 
           {/* Badge */}
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-rose-600">
+          <div className="guided-onboarding-badge inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-rose-600">
             <Sparkles size={11} />
             Guided tour
           </div>
@@ -278,21 +278,21 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
           {/* Step number + title + icon */}
           <div className="mt-4 flex items-start justify-between gap-3 pr-6">
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              <p className="guided-onboarding-step text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 Step {stepIndex + 1} of {steps.length}
               </p>
-              <h2 className="mt-1.5 text-xl font-black leading-tight tracking-tight text-slate-900 sm:text-[1.7rem]">
+              <h2 className="guided-onboarding-title mt-1.5 text-xl font-black leading-tight tracking-tight text-slate-900 sm:text-[1.7rem]">
                 {step.title}
               </h2>
             </div>
-            <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+            <div className="guided-onboarding-icon mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
               <Sparkles size={18} />
             </div>
           </div>
 
           {/* Progress bar + dots */}
           <div className="mt-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="guided-onboarding-track h-1.5 overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-rose-600 via-rose-400 to-rose-200 transition-all duration-500"
                 style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
@@ -311,14 +311,14 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
           </div>
 
           {/* Description card */}
-          <div className="mt-4 rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm sm:p-5">
-            <p className="text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+          <div className="guided-onboarding-description mt-4 rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm sm:p-5">
+            <p className="guided-onboarding-copy text-[14px] leading-7 text-slate-600 sm:text-[15px]">
               {step.description}
             </p>
 
             {/* Animated drag-to-generate flow (intel-feed step) */}
             {showAnimatedFlow ? (
-              <div className="mt-4 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/80 to-slate-50/80 p-3.5">
+              <div className="guided-onboarding-flow mt-4 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/80 to-slate-50/80 p-3.5">
                 <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2 shadow-sm">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Intel signal</div>
@@ -345,7 +345,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
         </div>
 
         {/* ── Sticky footer — always visible ── */}
-        <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="guided-onboarding-footer shrink-0 border-t border-slate-100 bg-white px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: back or label */}
             <div className="flex items-center gap-3">
@@ -353,13 +353,13 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
                 <button
                   type="button"
                   onClick={prevStep}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 sm:w-auto"
+                  className="guided-onboarding-back inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-black text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 sm:w-auto"
                 >
                   <ChevronLeft size={14} />
                   Back
                 </button>
               ) : (
-                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                <span className="guided-onboarding-footnote text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
                   {isLast ? 'Tour complete' : 'Keep exploring'}
                 </span>
               )}
@@ -371,7 +371,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
                 <button
                   type="button"
                   onClick={() => onClose?.(false)}
-                  className="inline-flex min-h-[40px] items-center justify-center rounded-2xl px-2 text-[12px] font-black uppercase tracking-[0.12em] text-slate-400 transition hover:text-slate-700"
+                  className="guided-onboarding-skip inline-flex min-h-[40px] items-center justify-center rounded-2xl px-2 text-[12px] font-black uppercase tracking-[0.12em] text-slate-400 transition hover:text-slate-700"
                 >
                   Skip tour
                 </button>
@@ -379,7 +379,7 @@ export default function GuidedOnboarding({ user, open, onClose, initialStepIndex
               <button
                 type="button"
                 onClick={nextStep}
-                className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 px-4 py-2.5 text-[13px] font-black text-white shadow-[0_8px_24px_rgba(225,29,72,0.28)] transition hover:brightness-105 active:scale-[0.98] sm:px-5"
+                className="guided-onboarding-next inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 px-4 py-2.5 text-[13px] font-black text-white shadow-[0_8px_24px_rgba(209,18,67,0.28)] transition hover:brightness-105 active:scale-[0.98] sm:px-5"
               >
                 {isLast ? <Check size={14} /> : <ArrowRight size={14} />}
                 {step.cta || (isLast ? 'Finish' : 'Next step')}

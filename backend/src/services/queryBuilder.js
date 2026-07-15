@@ -7,79 +7,377 @@ const DEFAULT_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergr
 const DEFAULT_TARGET_PER_TOPIC = 150;
 const MAX_TARGET_PER_TOPIC = 150;
 const MAX_TAVILY_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_TAVILY_QUERY_LENGTH || 380) || 380));
+
+function queryTermList(...groups) {
+  return [...new Set(
+    groups
+      .flatMap((group) => Array.isArray(group) ? group : [group])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  )].join(' ');
+}
+
 const CATEGORY_QUERY_MAP = {
   'Corporate Services':
-    'company incorporation company registration company formation company secretary corporate compliance entity management business setup market entry branch office representative office share registry acquisition liquidation regulatory update',
+    queryTermList(
+      'company incorporation',
+      'company registration',
+      'company formation',
+      'company secretary',
+      'corporate compliance',
+      'entity management',
+      'business setup',
+      'market entry',
+      'branch office',
+      'representative office',
+      'share registry',
+      'acquisition',
+      'liquidation',
+      'regulatory update'
+    ),
   'Accounting & Tax':
-    'corporate tax income tax tax filing VAT GST sales tax indirect tax payroll tax accounting bookkeeping financial reporting tax advisory tax incentive government grant budget tax refund compliance filing requirement regulatory update',
+    queryTermList(
+      'corporate tax',
+      'income tax',
+      'tax filing',
+      'VAT',
+      'GST',
+      'sales tax',
+      'indirect tax',
+      'payroll tax',
+      'accounting',
+      'bookkeeping',
+      'financial reporting',
+      'tax advisory',
+      'tax incentive',
+      'government grant',
+      'budget',
+      'tax refund',
+      'compliance filing requirement',
+      'regulatory update'
+    ),
   'Compliance & Governance':
-    'business compliance corporate governance AML KYC risk management beneficial ownership licensing regulatory filing audit requirement enforcement policy circular compliance update',
+    queryTermList(
+      'business compliance',
+      'corporate governance',
+      'AML',
+      'KYC',
+      'risk management',
+      'beneficial ownership',
+      'licensing',
+      'regulatory filing',
+      'audit requirement',
+      'enforcement',
+      'policy circular',
+      'compliance update'
+    ),
   'HR & Employment':
-    'labour law employment law work pass immigration visa payroll social security provident fund employee compliance workforce policy hiring regulation HR compliance rule change',
+    queryTermList(
+      'labour law',
+      'employment law',
+      'work pass',
+      'immigration',
+      'visa',
+      'payroll',
+      'social security',
+      'provident fund',
+      'employee compliance',
+      'workforce policy',
+      'hiring',
+      'regulation',
+      'HR compliance',
+      'rule change'
+    ),
   'Fund Administration':
-    'fund administration fund governance private fund investment fund fund manager licensing fund compliance investor reporting regulatory circular asset management compliance update',
+    queryTermList(
+      'fund administration',
+      'fund governance',
+      'private fund',
+      'investment fund',
+      'fund manager licensing',
+      'fund compliance',
+      'investor reporting',
+      'regulatory circular',
+      'asset management',
+      'compliance update'
+    ),
   'Financial Advisory':
-    'M&A merger acquisition corporate advisory restructuring valuation transaction advisory business consultancy fundraising investment deal market entry strategic advisory regulatory update',
+    queryTermList(
+      'M&A',
+      'merger',
+      'acquisition',
+      'corporate advisory',
+      'restructuring',
+      'valuation',
+      'transaction advisory',
+      'business consultancy',
+      'fundraising',
+      'investment deal',
+      'market entry',
+      'strategic advisory',
+      'regulatory update'
+    ),
   'Fiduciary & Trust Services':
-    'trust services fiduciary services family office private client wealth management succession planning estate planning trustee tax incentive asset protection regulatory requirement',
+    queryTermList(
+      'trust services',
+      'fiduciary services',
+      'family office',
+      'private client',
+      'wealth management',
+      'succession planning',
+      'estate planning',
+      'trustee',
+      'tax incentive',
+      'asset protection',
+      'regulatory requirement'
+    ),
   'Cross Border & FDI':
-    'foreign investment FDI market entry cross border business expansion investment approval company setup trade policy investment regulation international business compliance',
+    queryTermList(
+      'foreign investment',
+      'FDI',
+      'market entry',
+      'cross border',
+      'business expansion',
+      'investment approval',
+      'company setup',
+      'trade policy',
+      'investment regulation',
+      'international business compliance'
+    ),
   'Economy & Trade':
-    'economy trade investment government budget tax incentive business policy industry scheme grant export import market outlook economic update business announcement'
+    queryTermList(
+      'economy',
+      'trade',
+      'investment',
+      'government budget',
+      'tax incentive',
+      'business policy',
+      'industry scheme',
+      'grant',
+      'export',
+      'import',
+      'market outlook',
+      'economic update',
+      'business announcement'
+    )
 };
 
 const EVERGREEN_QUERY_MAP = {
   'Corporate Services':
-    'how to incorporate a company company registration requirements company secretary business setup compliance guide entity management requirements',
+    queryTermList(
+      'how to incorporate a company',
+      'company registration requirements',
+      'company secretary',
+      'business setup',
+      'compliance guide',
+      'entity management requirements'
+    ),
   'Accounting & Tax':
-    'corporate tax filing GST VAT accounting compliance requirements bookkeeping tax incentive tax refund guide business tax requirements',
+    queryTermList(
+      'corporate tax filing',
+      'GST',
+      'VAT',
+      'accounting compliance requirements',
+      'bookkeeping',
+      'tax incentive',
+      'tax refund guide',
+      'business tax requirements'
+    ),
   'Compliance & Governance':
-    'business compliance requirements AML KYC corporate governance risk management licensing regulatory filing guide company compliance checklist',
+    queryTermList(
+      'business compliance requirements',
+      'AML',
+      'KYC',
+      'corporate governance',
+      'risk management',
+      'licensing',
+      'regulatory filing guide',
+      'company compliance checklist'
+    ),
   'HR & Employment':
-    'employment law payroll compliance work pass immigration visa labour law hiring employee compliance requirements guide',
+    queryTermList(
+      'employment law',
+      'payroll compliance',
+      'work pass',
+      'immigration',
+      'visa',
+      'labour law',
+      'hiring',
+      'employee compliance requirements guide'
+    ),
   'Fund Administration':
-    'fund administration requirements fund governance private fund compliance fund manager licensing investor reporting guide',
+    queryTermList(
+      'fund administration requirements',
+      'fund governance',
+      'private fund compliance',
+      'fund manager licensing',
+      'investor reporting guide'
+    ),
   'Financial Advisory':
-    'M&A advisory corporate restructuring valuation fundraising transaction advisory business consultancy market entry guide',
+    queryTermList(
+      'M&A advisory',
+      'corporate restructuring',
+      'valuation',
+      'fundraising',
+      'transaction advisory',
+      'business consultancy',
+      'market entry guide'
+    ),
   'Fiduciary & Trust Services':
-    'family office setup trust services fiduciary services private client wealth management succession planning requirements guide',
+    queryTermList(
+      'family office setup',
+      'trust services',
+      'fiduciary services',
+      'private client',
+      'wealth management',
+      'succession planning requirements guide'
+    ),
   'Cross Border & FDI':
-    'foreign investment requirements FDI company setup market entry business expansion cross border compliance guide',
+    queryTermList(
+      'foreign investment requirements',
+      'FDI',
+      'company setup',
+      'market entry',
+      'business expansion',
+      'cross border compliance guide'
+    ),
   'Economy & Trade':
-    'business economy trade government incentive grant scheme investment policy market opportunity guide'
+    queryTermList(
+      'business economy trade',
+      'government incentive',
+      'grant scheme',
+      'investment policy',
+      'market opportunity guide'
+    )
 };
 
 const CATEGORY_GOVT_INTENT_MAP = {
-  'Corporate Services': 'company registration incorporation business regulation policy law rule change',
-  'Accounting & Tax': 'government budget tax incentive grant GST VAT corporate tax new announcement',
-  'Compliance & Governance': 'AML compliance corporate governance risk regulation policy circular announcement',
-  'HR & Employment': 'labour law employment rule work pass immigration social security change policy',
-  'Fund Administration': 'fund regulation private equity asset management licensing circular policy update',
-  'Financial Advisory': 'M&A restructuring insolvency financial advisory ESG regulation policy announcement',
-  'Fiduciary & Trust Services': 'family office trust wealth management AML regulation circular policy announcement',
-  'Cross Border & FDI': 'foreign investment FDI market entry cross border business regulation policy update',
-  'Economy & Trade': 'government policy reform foreign investment business regulation budget trade update'
+  'Corporate Services': queryTermList('company registration', 'incorporation', 'business regulation', 'policy', 'law', 'rule change'),
+  'Accounting & Tax': queryTermList('government budget', 'tax incentive', 'grant', 'GST', 'VAT', 'corporate tax', 'new announcement'),
+  'Compliance & Governance': queryTermList('AML compliance', 'corporate governance', 'risk regulation', 'policy circular', 'announcement'),
+  'HR & Employment': queryTermList('labour law', 'employment rule', 'work pass', 'immigration', 'social security', 'change policy'),
+  'Fund Administration': queryTermList('fund regulation', 'private equity', 'asset management', 'licensing', 'circular', 'policy update'),
+  'Financial Advisory': queryTermList('M&A', 'restructuring', 'insolvency', 'financial advisory', 'ESG regulation', 'policy announcement'),
+  'Fiduciary & Trust Services': queryTermList('family office', 'trust', 'wealth management', 'AML regulation', 'circular', 'policy announcement'),
+  'Cross Border & FDI': queryTermList('foreign investment', 'FDI', 'market entry', 'cross border business regulation', 'policy update'),
+  'Economy & Trade': queryTermList('government policy reform', 'foreign investment', 'business regulation', 'budget', 'trade update')
 };
 
 const COMPETITOR_QUERY_MAP = {
   'Corporate Services':
-    'company incorporation company registration corporate services company secretary entity management competitor expansion acquisition partnership new office service launch',
+    queryTermList(
+      'company incorporation',
+      'company registration',
+      'corporate services',
+      'company secretary',
+      'entity management',
+      'competitor expansion',
+      'acquisition',
+      'partnership',
+      'new office',
+      'service launch'
+    ),
   'Accounting & Tax':
-    'accounting tax advisory bookkeeping payroll GST VAT corporate tax competitor expansion acquisition partnership new service launch client announcement',
+    queryTermList(
+      'accounting',
+      'tax advisory',
+      'bookkeeping',
+      'payroll',
+      'GST',
+      'VAT',
+      'corporate tax',
+      'competitor expansion',
+      'acquisition',
+      'partnership',
+      'new service launch',
+      'client announcement'
+    ),
   'Compliance & Governance':
-    'compliance governance AML KYC risk management licensing regulatory filing competitor expansion acquisition partnership service launch hiring',
+    queryTermList(
+      'compliance governance',
+      'AML',
+      'KYC',
+      'risk management',
+      'licensing',
+      'regulatory filing',
+      'competitor expansion',
+      'acquisition',
+      'partnership',
+      'service launch',
+      'hiring'
+    ),
   'HR & Employment':
-    'employment law payroll immigration visa work pass HR compliance competitor expansion partnership hiring new office service launch',
+    queryTermList(
+      'employment law',
+      'payroll',
+      'immigration',
+      'visa',
+      'work pass',
+      'HR compliance',
+      'competitor expansion',
+      'partnership',
+      'hiring',
+      'new office',
+      'service launch'
+    ),
   'Fund Administration':
-    'fund administration fund governance private fund asset management competitor expansion acquisition partnership fund services launch',
+    queryTermList(
+      'fund administration',
+      'fund governance',
+      'private fund',
+      'asset management',
+      'competitor expansion',
+      'acquisition',
+      'partnership',
+      'fund services launch'
+    ),
   'Financial Advisory':
-    'M&A advisory restructuring valuation transaction advisory fundraising competitor acquisition partnership deal announcement service launch',
+    queryTermList(
+      'M&A advisory',
+      'restructuring',
+      'valuation',
+      'transaction advisory',
+      'fundraising',
+      'competitor acquisition',
+      'partnership',
+      'deal announcement',
+      'service launch'
+    ),
   'Fiduciary & Trust Services':
-    'trust services fiduciary services family office wealth management competitor expansion partnership acquisition service launch senior appointment',
+    queryTermList(
+      'trust services',
+      'fiduciary services',
+      'family office',
+      'wealth management',
+      'competitor expansion',
+      'partnership',
+      'acquisition',
+      'service launch',
+      'senior appointment'
+    ),
   'Cross Border & FDI':
-    'FDI foreign investment market entry cross border business expansion competitor partnership acquisition new office service launch',
+    queryTermList(
+      'FDI',
+      'foreign investment',
+      'market entry',
+      'cross border business expansion',
+      'competitor partnership',
+      'acquisition',
+      'new office',
+      'service launch'
+    ),
   'Economy & Trade':
-    'economy trade investment business policy market outlook competitor expansion partnership acquisition business announcement'
+    queryTermList(
+      'economy',
+      'trade',
+      'investment',
+      'business policy',
+      'market outlook',
+      'competitor expansion',
+      'partnership',
+      'acquisition',
+      'business announcement'
+    )
 };
 
 const COUNTRY_AUTHORITY_HINTS = {
@@ -216,8 +514,16 @@ function compactQuery(parts) {
   return query.slice(0, MAX_TAVILY_QUERY_LENGTH).trim();
 }
 
-function serviceAnchorTerms() {
-  return 'corporate services accounting tax compliance payroll hr employment immigration market entry company registration trust fiduciary fund administration business advisory';
+function govtAnchorTerms() {
+  return 'official notification circular guideline consultation enforcement notice compliance update';
+}
+
+function competitorAnchorTerms() {
+  return 'expansion acquisition partnership new office service launch leadership hiring client mandate';
+}
+
+function evergreenAnchorTerms() {
+  return 'guide checklist requirements process framework compliance';
 }
 
 function categoryQuery(category) {
@@ -238,18 +544,6 @@ function govtCategoryQuery(category) {
 function competitorCategoryQuery(category) {
   const selectedCategory = cleanText(category) || defaultCategory();
   return COMPETITOR_QUERY_MAP[selectedCategory] || compactQuery([categoryQuery(selectedCategory), 'competitor expansion partnership acquisition service launch']);
-}
-
-function topicQueryForCategory(topic, category, competitors = []) {
-  if (topic === 'govt') return govtCategoryQuery(category);
-  if (topic === 'evergreen') return evergreenCategoryQuery(category);
-  if (topic === 'competitor') {
-    return compactQuery([
-      competitors.length ? competitors.map(quoteIfNeeded).filter(Boolean).join(' OR ') : '',
-      competitorCategoryQuery(category)
-    ]);
-  }
-  return categoryQuery(category);
 }
 
 function buildLocation(profile = {}) {
@@ -296,14 +590,6 @@ function categoryScope(profile = {}) {
   };
 }
 
-function daysToTimeRange(days) {
-  const value = Number(days || 30);
-  if (value <= 1) return 'day';
-  if (value <= 7) return 'week';
-  if (value <= 31) return 'month';
-  return 'year';
-}
-
 function currentIntelYear(profile = {}) {
   return Math.min(2100, Number(profile.year || profile.currentYear || new Date().getFullYear()) || new Date().getFullYear());
 }
@@ -326,6 +612,17 @@ function authorityHintsForCountry(country) {
   return COUNTRY_AUTHORITY_HINTS[canonicalCountry(cleanText(country))] || cleanText(country);
 }
 
+function authorityQueryTerms(country) {
+  const normalizedCountry = canonicalCountry(cleanText(country));
+  const authorityHints = authorityHintsForCountry(normalizedCountry);
+  if (!authorityHints) return '';
+  const lowerCountry = normalizedCountry.toLowerCase();
+  return authorityHints
+    .split(/\s+/)
+    .filter((term) => term && term.toLowerCase() !== lowerCountry)
+    .join(' ');
+}
+
 function conciseTopicTerms(topic, category, competitors = []) {
   if (topic === 'govt') return govtCategoryQuery(category);
   if (topic === 'competitor') {
@@ -339,83 +636,48 @@ function conciseTopicTerms(topic, category, competitors = []) {
   return categoryQuery(category);
 }
 
-function broadTopicQueryVariant(topic, profile = {}) {
-  const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
-  const year = currentIntelYear(profile);
-  const authorityHints = authorityHintsForCountry(country);
-  const competitors = uniqueList(profile.competitors);
-
-  if (topic === 'news') {
-    return compactQuery([
-      country,
-      'business news market economy investment tax compliance corporate services employment trade update latest',
-      year
-    ]);
-  }
-
-  if (topic === 'govt') {
-    return compactQuery([
-      country,
-      authorityHints,
-      'official government regulation policy circular tax employment licensing company registry compliance update',
-      year
-    ]);
-  }
-
-  if (topic === 'competitor') {
-    return compactQuery([
-      competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '',
-      country,
-      'professional services competitor expansion acquisition partnership new office service launch leadership',
-      year
-    ]);
-  }
-
-  if (topic === 'evergreen') {
-    return compactQuery([
-      country,
-      'business setup company registration tax compliance payroll employment market entry guide requirements checklist',
-      year
-    ]);
-  }
-
-  return '';
-}
-
 function buildCategoryQueryVariants(topic, category, profile = {}) {
   const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
   const year = currentIntelYear(profile);
   const competitors = uniqueList(profile.competitors);
-  const authorityHints = authorityHintsForCountry(country);
+  const authorityHints = authorityQueryTerms(country);
   const base = conciseTopicTerms(topic, category, competitors);
   const subcategoryTerms = categorySubcategoryTerms(category);
   const keywordTerms = categoryKeywordTerms(category);
+  const competitorTerms = competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '';
 
   if (topic === 'news') {
     return [
-      compactQuery([country, base, serviceAnchorTerms(), 'business news market update latest', year]),
-      compactQuery([country, category, subcategoryTerms, keywordTerms, serviceAnchorTerms(), 'business news economy investment compliance update', year])
+      compactQuery([country, base, 'business news market update latest', year]),
+      compactQuery([country, category, subcategoryTerms, keywordTerms, 'business news regulation market update', year])
     ].filter(Boolean);
   }
 
   if (topic === 'govt') {
     return [
-      compactQuery([country, category, keywordTerms, serviceAnchorTerms(), 'official government regulation policy circular announcement', year]),
-      compactQuery([country, authorityHints, category, serviceAnchorTerms(), 'tax employment licensing company registry compliance update', year])
+      compactQuery([country, authorityHints, govtCategoryQuery(category), govtAnchorTerms(), year]),
+      compactQuery([country, authorityHints, category, keywordTerms, 'government policy regulation licensing company registry', year])
+    ].filter(Boolean);
+  }
+
+  if (topic === 'competitor') {
+    return [
+      compactQuery([country, competitorTerms, competitorCategoryQuery(category), year]),
+      compactQuery([country, competitorTerms, category, subcategoryTerms, 'competitor business update', year])
+    ].filter(Boolean);
+  }
+
+  if (topic === 'evergreen') {
+    return [
+      compactQuery([country, evergreenCategoryQuery(category), evergreenAnchorTerms(), year]),
+      compactQuery([country, category, subcategoryTerms, keywordTerms, 'guide checklist requirements', year])
     ].filter(Boolean);
   }
 
   return [
-    compactQuery([authorityHints, base, serviceAnchorTerms(), year]),
-    compactQuery([country, authorityHints, category, subcategoryTerms, serviceAnchorTerms(), year])
+    compactQuery([country, base, year]),
+    compactQuery([country, category, subcategoryTerms, keywordTerms, year])
   ].filter(Boolean);
-}
-
-function buildTopicQueries(profile = {}) {
-  const variants = buildTopicQueryVariants(profile);
-  return Object.fromEntries(
-    Object.entries(variants).map(([topic, items]) => [topic, items[0] || ''])
-  );
 }
 
 function buildTopicQueryVariants(profile = {}) {
@@ -456,41 +718,7 @@ function buildTopicQueryCategories(profile = {}) {
   );
 }
 
-function recencyTerms(profile = {}) {
-  return `${currentIntelYear(profile)} latest recent newly announced updated current`;
-}
-
-function buildOpportunityQuery(profile = {}) {
-  const existing = cleanText(profile.query);
-  const recency = recencyTerms(profile);
-  if (existing) return compactQuery([existing, recency]);
-
-  const country = cleanText(profile.country) || defaultCountry();
-  const region = cleanText(profile.region);
-  const sector = cleanText(profile.sector) || 'professional services';
-  const userType = cleanText(profile.userType) || 'company';
-  const companyName = cleanText(profile.companyName || profile.comanyName || profile.company);
-  const scope = categoryScope(profile);
-  const subcategoryFocus = scope.isAllSubcategories
-    ? scope.selectedSubcategories.join(' OR ')
-    : scope.selectedSubcategories.join(' OR ');
-  const keywordFocus = scope.selectedKeywords.slice(0, 12).join(' OR ');
-  const location = buildLocation({ country, region });
-
-  return compactQuery([
-    location,
-    companyName,
-    sector,
-    scope.category,
-    subcategoryFocus ? `(${subcategoryFocus})` : '',
-    keywordFocus ? `(${keywordFocus})` : '',
-    userType,
-    recency,
-    'law regulation compliance business update'
-  ]);
-}
-
-function buildN8nPayload(profile = {}, extra = {}) {
+function buildProfileSearchPayload(profile = {}, extra = {}) {
   const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
   const timezone = cleanText(profile.fetchSchedule?.timezone || profile.schedule?.timezone || profile.timezone) || defaultTimezone();
   const topics = normalizeTopics(profile.topics);
@@ -605,10 +833,8 @@ function buildN8nPayload(profile = {}, extra = {}) {
 }
 
 module.exports = {
-  buildOpportunityQuery,
-  buildTopicQueries,
   buildTopicQueryVariants,
-  buildN8nPayload,
+  buildProfileSearchPayload,
   cleanList,
   cleanSourceDomains
 };

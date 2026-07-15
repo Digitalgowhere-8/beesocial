@@ -21,7 +21,7 @@ const { CATEGORIES, matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; BeeSocialBot/1.0)';
 
 // Reasonable, generic link extractor.  We collect every <a> whose visible
 // text looks like a headline (>= 20 chars) and whose href lives on the

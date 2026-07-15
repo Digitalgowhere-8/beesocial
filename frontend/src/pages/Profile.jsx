@@ -218,7 +218,7 @@ export default function Profile() {
           </button>
         </div>
         <div className="hidden min-w-0 flex-1 gap-2 sm:flex sm:flex-row sm:items-center">
-          <div data-tour="profile-tabs" className={`grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div data-tour="profile-tabs" className={`profile-tab-switcher grid min-w-0 flex-1 gap-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm ${canSeeFetchSection ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {PROFILE_TABS.filter((tab) => tab.key !== 'fetch' || canSeeFetchSection).map((tab) => {
               const active = activeTab === tab.key;
               return (
@@ -226,8 +226,8 @@ export default function Profile() {
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5 ${
-                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                  className={`profile-tab-button flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5 ${
+                    active ? 'profile-tab-button-active bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
                   }`}
                 >
                   <span className="truncate">{tab.label}</span>
@@ -240,7 +240,7 @@ export default function Profile() {
               type="button"
               onClick={() => navigate('/admin')}
               data-tour="profile-admin-controls"
-              className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
+              className="profile-secondary-action inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
             >
               Admin Controls
             </button>
@@ -307,10 +307,10 @@ export default function Profile() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="-m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
+      <div className="profile-page -m-3 min-h-[calc(100vh-64px)] p-3 mesh-bg sm:-m-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="w-full">
           {err && (
-            <div className="mb-6 rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
+            <div className="profile-error mb-6 rounded-xl bg-red-50/80 backdrop-blur-md px-5 py-4 text-sm font-semibold text-red-700 border border-red-200/50 shadow-sm animate-fade-in-up stagger-2">
               {err}
             </div>
           )}
@@ -319,17 +319,17 @@ export default function Profile() {
           <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-[320px_minmax(0,1fr)_340px] 2xl:items-stretch">
           <aside className="animate-fade-in-up stagger-2 md:order-1 2xl:order-none">
-            <section className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm 2xl:min-h-[420px]">
+            <section className="profile-card profile-overview-card flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm 2xl:min-h-[420px]">
               <div className="flex flex-1 flex-col items-center justify-center text-center">
                 <div className="relative mb-4 h-24 w-24 shrink-0">
                   {avatar ? (
-                    <img src={avatar} className="h-24 w-24 rounded-3xl object-cover shadow-sm ring-4 ring-gray-50" alt="Profile" />
+                    <img src={avatar} className="profile-avatar h-24 w-24 rounded-3xl object-cover shadow-sm ring-4 ring-gray-50" alt="Profile" />
                   ) : (
-                    <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-crimson to-brand-hoverred text-3xl font-black text-white shadow-sm ring-4 ring-gray-50">
+                    <div className="profile-avatar flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-crimson to-brand-hoverred text-3xl font-black text-white shadow-sm ring-4 ring-gray-50">
                       {initials}
                     </div>
                   )}
-                  <label htmlFor="avatar-file" className="absolute -bottom-2 -right-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-brand-crimson shadow-md ring-1 ring-gray-100 transition hover:bg-brand-pink">
+                  <label htmlFor="avatar-file" className="profile-avatar-action absolute -bottom-2 -right-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-brand-crimson shadow-md ring-1 ring-gray-100 transition hover:bg-brand-pink">
                     <Camera size={15} />
                   </label>
                   <input type="file" id="avatar-file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -347,7 +347,7 @@ export default function Profile() {
               </div>
 
               {avatar ? (
-                <button type="button" onClick={handleRemoveImage} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100">
+                <button type="button" onClick={handleRemoveImage} className="profile-danger-button mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100">
                   <Trash2 size={14} />
                   Remove avatar
                 </button>
@@ -380,7 +380,7 @@ export default function Profile() {
                     'Save your latest profile details.'
                   )}
                 </div>
-                <button className="btn-primary rounded-xl px-6 py-2.5 text-base" disabled={loadingProfile}>
+                <button className="profile-primary-button btn-primary rounded-xl px-6 py-2.5 text-base" disabled={loadingProfile}>
                   {loadingProfile ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                   Save Changes
                 </button>
@@ -419,7 +419,7 @@ export default function Profile() {
                 </Field>
               </div>
               <div className="mt-6">
-                <button className="btn-secondary mt-2 w-full rounded-xl bg-white py-2.5" disabled={loadingPwd}>
+                <button className="profile-outline-button btn-secondary mt-2 w-full rounded-xl py-2.5" disabled={loadingPwd}>
                   {loadingPwd ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
                   Update Password
                 </button>
@@ -432,7 +432,7 @@ export default function Profile() {
           ) : null}
 
         {activeTab === 'fetch' && canSeeFetchSection ? (
-          <section data-tour="profile-personalization" className="mt-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-in-up stagger-3">
+          <section data-tour="profile-personalization" className="profile-card profile-personalization-section mt-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-in-up stagger-3">
             <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-brand-pink/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
@@ -456,9 +456,9 @@ export default function Profile() {
 
 function Section({ icon: Icon, eyebrow, title, children, compact = false, className = '', bodyClassName = '' }) {
   return (
-    <section className={`rounded-2xl border border-gray-100 bg-white shadow-sm ${compact ? 'p-4' : 'p-5'} ${className}`}>
-      <div className="mb-4 flex items-center gap-3 border-b border-gray-200/50 pb-4">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
+    <section className={`profile-card rounded-2xl border border-gray-100 bg-white shadow-sm ${compact ? 'p-4' : 'p-5'} ${className}`}>
+      <div className="profile-section-header mb-4 flex items-center gap-3 border-b border-gray-200/50 pb-4">
+        <span className="profile-section-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-crimson text-white shadow-sm">
           <Icon size={18} />
         </span>
         <div className="min-w-0">
@@ -474,7 +474,7 @@ function Section({ icon: Icon, eyebrow, title, children, compact = false, classN
 function Field({ label, children, tight = false }) {
   return (
     <div className={tight ? '' : 'min-w-0'}>
-      <label className="label text-gray-500 font-bold tracking-wider">{label}</label>
+      <label className="profile-field-label label text-gray-500 font-bold tracking-wider">{label}</label>
       {children}
     </div>
   );
@@ -486,7 +486,7 @@ function PasswordInput({ value, onChange, visible, onToggle, minLength }) {
       <input
         type={visible ? 'text' : 'password'}
         minLength={minLength}
-        className="input min-h-[44px] rounded-xl pr-11"
+        className="profile-control input min-h-[44px] rounded-xl pr-11"
         value={value}
         onChange={onChange}
         required
@@ -494,7 +494,7 @@ function PasswordInput({ value, onChange, visible, onToggle, minLength }) {
       <button
         type="button"
         onClick={onToggle}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-brand-crimson"
+        className="profile-password-toggle absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-brand-crimson"
         aria-label={visible ? 'Hide password' : 'Show password'}
         title={visible ? 'Hide password' : 'Show password'}
       >
@@ -506,7 +506,7 @@ function PasswordInput({ value, onChange, visible, onToggle, minLength }) {
 
 function ReadOnly({ icon: Icon, value }) {
   return (
-    <div className="flex min-h-[44px] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/70 px-4 text-sm font-semibold text-gray-600">
+    <div className="profile-readonly flex min-h-[44px] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/70 px-4 text-sm font-semibold text-gray-600">
       <Icon size={16} className="shrink-0 text-gray-400" />
       <span className="truncate">{value}</span>
     </div>
@@ -515,8 +515,8 @@ function ReadOnly({ icon: Icon, value }) {
 
 function InfoTile({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 transition-colors hover:bg-white">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm">
+    <div className="profile-info-tile flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 transition-colors hover:bg-white">
+      <div className="profile-info-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm">
         <Icon size={14} />
       </div>
       <div className="min-w-0">

@@ -16,7 +16,7 @@ const { hashUrl } = require('../utils/hash');
 const tavilyService = require('../services/tavilyService');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; BeeSocialBot/1.0)';
 
 async function ddgSearch(query) {
   // DuckDuckGo HTML endpoint (no API key required, light-weight fallback).

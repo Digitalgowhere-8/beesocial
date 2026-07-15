@@ -1,6 +1,6 @@
-# Setup Guide — Ascentium Intelligence Dashboard
+# Setup Guide — BeeSocial
 
-This guide walks through installing and running the Ascentium Dashboard from a clean machine. Follow each step in order.
+This guide walks through installing and running BeeSocial from a clean machine. Follow each step in order.
 
 **Total time:** ~15 minutes (excluding MongoDB install).
 
@@ -71,7 +71,7 @@ Verify: `mongosh --eval "db.runCommand({ping:1})"`
 
 Your MongoDB URI for the `.env` is then:
 ```
-MONGO_URI=mongodb://127.0.0.1:27017/ascentium
+MONGO_URI=mongodb://127.0.0.1:27017/beesocial
 ```
 
 The database **does not need to be created in advance** — Mongoose will create it on first write.
@@ -86,9 +86,9 @@ The database **does not need to be created in advance** — Mongoose will create
    ```
    mongodb+srv://USERNAME:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
    ```
-6. Append the database name `/ascentium` before the `?`:
+6. Append the database name `/beesocial` before the `?`:
    ```
-   mongodb+srv://USERNAME:PASSWORD@cluster0.xxxxx.mongodb.net/ascentium?retryWrites=true&w=majority
+   mongodb+srv://USERNAME:PASSWORD@cluster0.xxxxx.mongodb.net/beesocial?retryWrites=true&w=majority
    ```
 7. This goes into `backend/.env` as `MONGO_URI`.
 
@@ -104,9 +104,9 @@ cp .env.example .env
 Open `backend/.env` in your editor and **set at minimum**:
 
 ```env
-MONGO_URI=mongodb://127.0.0.1:27017/ascentium     # or your Atlas URI
+MONGO_URI=mongodb://127.0.0.1:27017/beesocial     # or your Atlas URI
 JWT_SECRET=<a long random string — run the command below>
-SEED_ADMIN_EMAIL=admin@yourcompany.com
+SEED_ADMIN_EMAIL=admin@digitalgowhere.com
 SEED_ADMIN_PASSWORD=AStrongPassword!123
 ```
 
@@ -123,7 +123,7 @@ npm install
 **Seed the first super admin** (one-time):
 ```bash
 npm run seed
-# [seed] Created super_admin -> admin@yourcompany.com
+# [seed] Created super_admin -> admin@digitalgowhere.com
 ```
 
 Start the server:
@@ -134,7 +134,7 @@ npm run dev
 You should see:
 ```
 ╔══════════════════════════════════════════════╗
-║  Ascentium Intelligence API                   ║
+║  BeeSocial API                                ║
 ║  Listening on http://localhost:5000           ║
 ╚══════════════════════════════════════════════╝
 [cron] scheduled "0 7 * * *" (Asia/Kolkata)
@@ -260,7 +260,7 @@ For higher-quality evergreen content (semantic search instead of plain HTML scra
   ```bash
   npm install -g pm2
   cd backend
-  pm2 start src/server.js --name ascentium-api
+  pm2 start src/server.js --name beesocial-api
   pm2 save
   pm2 startup
   ```

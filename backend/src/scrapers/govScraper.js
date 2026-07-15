@@ -17,7 +17,7 @@ const { matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
-const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; OpportunityOSBot/1.0)';
+const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; BeeSocialBot/1.0)';
 
 function extractGovLinks(html, source) {
   const $ = cheerio.load(html);
@@ -64,8 +64,8 @@ async function scrapeSource(source) {
       source: source.name,
       sourceId: source.id,
       sourceType: source.origin,
-      category: m.category !== 'General' ? m.category : 'Government Update',
-      subcategory: m.subcategory || '',
+      category: m.category !== 'General' ? m.category : 'Economy & Trade',
+      subcategory: m.subcategory || (m.category !== 'General' ? '' : 'Policy'),
       summary: `Latest announcement from ${source.name}.`,
       country: 'Singapore',
       fetchedAt: new Date(),

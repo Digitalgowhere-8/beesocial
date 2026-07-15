@@ -57,6 +57,21 @@ function finishRun(runId, update = {}) {
   });
 }
 
+function cancelRun(runId, message = 'Fetch cancellation requested') {
+  return updateRun(runId, {
+    cancelled: true,
+    status: 'cancelled',
+    step: 'cancelled',
+    percent: 100,
+    finishedAt: new Date().toISOString(),
+    message
+  });
+}
+
+function isCancelled(runId) {
+  return runs.get(String(runId))?.cancelled === true;
+}
+
 function getRun(runId) {
   return runs.get(String(runId)) || null;
 }
@@ -65,5 +80,7 @@ module.exports = {
   startRun,
   updateRun,
   finishRun,
+  cancelRun,
+  isCancelled,
   getRun
 };

@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import GuidedOnboarding from './GuidedOnboarding';
+import ThemeToggle from './ThemeToggle';
 import {
-  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
+  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, PenLine, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
 const CRIMSON = '#D11243';
@@ -50,8 +52,8 @@ function SideNavItem({
         onNavigate?.();
       }}
       className={({ isActive }) =>
-        `grid h-11 w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${
-          isActive ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'
+        `side-nav-item grid h-11 w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${
+          isActive ? 'side-nav-item-active bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'side-nav-item-idle text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'
         }`
       }
       style={({ isActive }) => ({
@@ -281,8 +283,8 @@ const normalizeSuperAdminNotificationFeed = ({ admins = [], overview = {}, fetch
 
 function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAllRead, onClearAll, onClose, mobile = false }) {
   return (
-    <div className={`${mobile ? 'fixed right-3 top-[76px] z-50 w-[min(340px,calc(100vw-24px))] rounded-[24px] shadow-[0_24px_48px_rgba(15,23,42,0.18)]' : 'absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl shadow-xl'} overflow-hidden border border-gray-100 bg-white`}>
-      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-brand-pink/20 to-white">
+    <div className={`notifications-menu ${mobile ? 'fixed right-3 top-[76px] z-50 w-[min(340px,calc(100vw-24px))] rounded-[24px] shadow-[0_24px_48px_rgba(15,23,42,0.18)]' : 'absolute right-0 top-12 z-50 w-[min(360px,calc(100vw-24px))] rounded-2xl shadow-xl'} overflow-hidden border border-gray-100 bg-white`}>
+      <div className="notifications-menu-header px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-brand-pink/20 to-white">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-bold text-gray-800">Notifications</div>
@@ -312,7 +314,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="text-[12px] font-bold text-gray-600">Recent updates</div>
-          <div className="rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-crimson">
+          <div className="notifications-menu-status rounded-full bg-brand-pink px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-crimson">
             {unreadCount > 0 ? `${unreadCount} new` : 'Up to date'}
           </div>
         </div>
@@ -326,7 +328,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
           </button>
         </div>
       </div>
-      <div className={`${mobile ? 'max-h-[min(60vh,480px)]' : 'max-h-[420px]'} overflow-y-auto p-2`}>
+      <div className={`notifications-menu-body ${mobile ? 'max-h-[min(60vh,480px)]' : 'max-h-[420px]'} overflow-y-auto p-2`}>
         {items.length ? items.map((item) => {
           const unread = item.unread === true;
           return (
@@ -334,7 +336,7 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
               key={item.key}
               type="button"
               onClick={() => onItemClick?.(item)}
-              className={`w-full px-3 py-3 rounded-xl transition-all text-left border ${unread ? 'border-brand-crimson/10 bg-brand-pink/10 hover:bg-brand-pink/20' : 'border-transparent hover:bg-gray-50'}`}
+              className={`notifications-menu-item w-full px-3 py-3 rounded-xl transition-all text-left border ${unread ? 'border-brand-crimson/10 bg-brand-pink/10 hover:bg-brand-pink/20' : 'border-transparent hover:bg-gray-50'}`}
             >
               <div className="flex items-start gap-2">
                 <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${unread ? 'bg-brand-crimson' : 'bg-gray-300'}`} />
@@ -361,14 +363,14 @@ function NotificationsMenu({ items = [], unreadCount = 0, onItemClick, onMarkAll
 
 function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className = '' }) {
   return (
-    <div className={`absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,250,0.97))] shadow-[0_24px_48px_rgba(15,23,42,0.16)] ${className}`}>
+    <div className={`profile-menu-surface absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-gray-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.16)] ${className}`}>
       <div className="border-b border-gray-100 px-4 py-4">
         <div className="text-sm font-black text-gray-900 truncate">{user?.name || 'User'}</div>
         <div className="mt-1 text-[12px] font-medium text-gray-400 truncate">{user?.email || ''}</div>
         <div className="mt-2 text-[10px] uppercase tracking-[0.16em] font-black text-brand-crimson">{role}</div>
       </div>
       <div className="space-y-2 p-3">
-        <button onClick={onLogout} className="w-full flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50/80 px-4 py-3 text-left text-sm font-black text-red-600 transition-all hover:bg-red-100">
+        <button onClick={onLogout} className="profile-menu-signout w-full flex items-center gap-3 rounded-2xl border border-red-200 bg-white px-4 py-3 text-left text-sm font-black text-red-600 transition-all hover:bg-red-50">
           <LogOut size={14} />
           Sign out
         </button>
@@ -379,8 +381,10 @@ function ProfileMenu({ user, role, onProfile, onLogout, onStartTour, className =
 
 export default function Layout({ children, headerActions = null }) {
   const { user, isAdmin, isSuperAdmin, logout, runProgress, setRunProgress, genProgress, setGenProgress } = useAuth();
+  const { isDark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -400,6 +404,7 @@ export default function Layout({ children, headerActions = null }) {
   const mobileNotificationsRef = useRef(null);
   const mobileProfileMenuRef = useRef(null);
   const desktopProfileMenuRef = useRef(null);
+  const mainScrollRef = useRef(null);
   const canUseContentRepository = isSuperAdmin || user?.access?.canUseContentRepository !== false;
   const canUseBlogStudio = isSuperAdmin || user?.access?.canUseBlogStudio === true || (isAdmin && user?.access?.canUseBlogStudio !== false);
   const currentAdminSection = new URLSearchParams(location.search).get('section') || 'platform';
@@ -417,6 +422,22 @@ export default function Layout({ children, headerActions = null }) {
   const showGenerationLockMessage = useCallback(() => {
     window.alert(GENERATION_NAV_LOCK_MESSAGE);
   }, []);
+  const cancelActiveFetch = useCallback(async () => {
+    const logId = runProgress?.runId || runProgress?.logId;
+    try {
+      if (isSuperAdmin) {
+        await api.post('/admin/super/fetch/cancel');
+      }
+      if (logId) {
+        await api.post(`/profile-search/runs/${logId}/cancel`);
+      }
+    } catch (_e) {
+      // The run may have finished before the cancellation request arrived.
+    } finally {
+      setRunProgress(null);
+      localStorage.removeItem('beesocial_run_progress');
+    }
+  }, [isSuperAdmin, runProgress?.logId, runProgress?.runId, setRunProgress]);
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', collapsed);
@@ -494,12 +515,6 @@ export default function Layout({ children, headerActions = null }) {
       navigate(item.href);
     }
   }, [generationLocked, markAllNotificationsRead, navigate, showGenerationLockMessage]);
-
-  useEffect(() => {
-    if (location.pathname.startsWith('/blogs') && contentRepositoryUnreadCount > 0) {
-      markContentRepositoryNotificationsRead();
-    }
-  }, [contentRepositoryUnreadCount, location.pathname, markContentRepositoryNotificationsRead]);
 
   const pollNotifications = useCallback(async () => {
     if (!user?._id) return;
@@ -652,6 +667,15 @@ export default function Layout({ children, headerActions = null }) {
     return () => window.removeEventListener('app:start-tour', handleStartTour);
   }, [user?._id]);
 
+  useEffect(() => {
+    if (!user?._id) return;
+    const params = new URLSearchParams(location.search);
+    if (!['1', 'true', 'yes'].includes(String(params.get('tour') || '').toLowerCase())) return;
+    setTourStepIndex(0);
+    writeOnboardingSession(user?._id, { active: true, stepIndex: 0 });
+    setTourOpen(true);
+  }, [location.search, user?._id]);
+
   const closeTour = useCallback(() => {
     setTourOpen(false);
     setTourStepIndex(0);
@@ -711,6 +735,9 @@ export default function Layout({ children, headerActions = null }) {
   }, [generationLocked, location.pathname, navigate, showGenerationLockMessage]);
 
   const navigateIfNeeded = useCallback((path) => {
+    if (path.startsWith('/blogs')) {
+      markContentRepositoryNotificationsRead();
+    }
     const currentPath = `${location.pathname}${location.search || ''}`;
     const isSameTarget = path.includes('?')
       ? currentPath === path
@@ -722,7 +749,7 @@ export default function Layout({ children, headerActions = null }) {
     }
     navigate(path);
     return true;
-  }, [generationLocked, location.pathname, location.search, navigate, showGenerationLockMessage]);
+  }, [generationLocked, location.pathname, location.search, markContentRepositoryNotificationsRead, navigate, showGenerationLockMessage]);
 
   const navigateAndCollapseSidebar = useCallback((path) => {
     if (navigateIfNeeded(path)) setCollapsed(true);
@@ -735,7 +762,10 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     setShowNotifications(false);
     setShowProfileMenu(false);
-  }, [location.pathname]);
+    if (location.pathname.startsWith('/blogs')) {
+      markContentRepositoryNotificationsRead();
+    }
+  }, [location.pathname, markContentRepositoryNotificationsRead]);
 
   useEffect(() => {
     if (!user?._id) return undefined;
@@ -851,27 +881,28 @@ export default function Layout({ children, headerActions = null }) {
         { key: 'dashboard', label: 'The Hive', icon: LayoutDashboard, onClick: () => navigateIfNeeded('/dashboard'), active: location.pathname.startsWith('/dashboard'), dataTour: 'nav-dashboard' },
         { key: 'intel', label: 'Intel', icon: Newspaper, onClick: () => navigateIfNeeded('/intel-desk'), active: location.pathname.startsWith('/intel-desk'), dataTour: 'nav-intel' },
         ...(canUseContentRepository ? [
-          { key: 'posts', label: 'Posts', icon: BookOpenText, onClick: () => navigateIfNeeded('/blogs'), active: location.pathname.startsWith('/blogs') }
+          { key: 'posts', label: 'Posts', icon: BookOpenText, badge: contentRepositoryBadge, onClick: () => navigateIfNeeded('/blogs'), active: location.pathname.startsWith('/blogs') }
         ] : []),
         { key: 'profile', label: 'Profile', icon: UserIcon, onClick: () => navigateIfNeeded('/profile'), active: location.pathname.startsWith('/profile'), dataTour: 'nav-profile' }
       ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 overflow-hidden xl:h-screen xl:flex-row" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="sticky top-0 z-40 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-3 pb-2 pt-3 backdrop-blur xl:hidden">
-        <div className="overflow-visible rounded-[24px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
-        <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden xl:h-screen xl:flex-row xl:overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
+      <header className="mobile-app-header fixed inset-x-0 top-0 z-50 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-0 pb-0 pt-0 backdrop-blur xl:hidden">
+        <div className="mobile-app-header-card overflow-visible rounded-none border-x-0 border-t-0 border-b border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+        <div className="mobile-app-header-glow pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(253,242,246,0.98)_100%)] shadow-[0_8px_18px_rgba(209,18,67,0.10)] ring-1 ring-gray-200">
+            <div className="mobile-app-logo-tile relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(253,242,246,0.98)_100%)] shadow-[0_8px_18px_rgba(209,18,67,0.10)] ring-1 ring-gray-200">
               <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.14),transparent_55%)]" />
-              <img src="/logo.png" className="relative h-6 object-contain" alt="OpportunityOS AI Logo" />
+              <img src={logoSrc} className="relative h-6 object-contain" alt="BeeSocial Logo" />
             </div>
             <div className="min-w-0">
               <span className="block truncate text-[14px] font-black leading-tight text-gray-900">{getPageTitle()}</span>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle compact iconOnly className="mobile-top-theme-toggle inline-flex" />
             <div className="relative" ref={mobileNotificationsRef}>
             <button
               onClick={() => {
@@ -882,7 +913,7 @@ export default function Layout({ children, headerActions = null }) {
                 });
                 setShowProfileMenu(false);
               }}
-              className="relative flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-brand-crimson/10 hover:bg-gray-50 hover:text-gray-600"
+              className="mobile-header-icon-button relative flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white/95 text-gray-400 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:border-brand-crimson/10 hover:bg-gray-50 hover:text-gray-600"
             >
               <Bell size={15} />
               {unreadCount > 0 ? (
@@ -918,7 +949,7 @@ export default function Layout({ children, headerActions = null }) {
                   setShowProfileMenu((v) => !v);
                   setShowNotifications(false);
                 }}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:opacity-90"
+                className="mobile-header-avatar-button flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-gray-100 transition-all hover:opacity-90"
               >
                 {avatar ? (
                   <img src={avatar} className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
@@ -942,10 +973,13 @@ export default function Layout({ children, headerActions = null }) {
           </div>
         </div>
         {headerActions ? (
-          <div className="mt-3 min-w-0 overflow-visible border-t border-gray-100/80 pt-3">
+          <div className="mobile-header-actions mt-3 min-w-0 overflow-visible border-t border-gray-100/80 pt-3">
             {headerActions}
           </div>
         ) : null}
+        <div className="mobile-theme-row mt-3 hidden justify-end">
+          <ThemeToggle compact iconOnly />
+        </div>
         </div>
       </header>
 
@@ -960,10 +994,10 @@ export default function Layout({ children, headerActions = null }) {
           {!collapsed ? (
             <div className="flex-1 flex justify-start pl-2">
               <img 
-                src="/logo.png" 
+                src={logoSrc} 
                 className="h-10 cursor-pointer object-contain" 
                 onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/dashboard')} 
-                alt="OpportunityOS AI Logo" 
+                alt="BeeSocial Logo" 
               />
             </div>
           ) : (
@@ -973,7 +1007,7 @@ export default function Layout({ children, headerActions = null }) {
               className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-crimson/10 bg-white shadow-[0_10px_24px_rgba(209,18,67,0.14)] ring-4 ring-brand-pink/40 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-[0_14px_28px_rgba(209,18,67,0.18)]"
               onClick={() => setCollapsed(false)}
             >
-              <img src="/favicon.png" className="h-8 w-8 object-contain" alt="OpportunityOS AI Logo" />
+              <img src="/favicon.png" className="h-8 w-8 object-contain" alt="BeeSocial Logo" />
             </button>
           )}
           {!collapsed ? (
@@ -997,7 +1031,7 @@ export default function Layout({ children, headerActions = null }) {
                     key={key}
                     onClick={() => navigateIfNeeded(`/admin?section=${key}`)}
                     title={label}
-                    className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') && currentAdminSection === key ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}
+                    className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/admin') && currentAdminSection === key ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}
                   >
                     <Icon size={16} />
                   </button>
@@ -1012,7 +1046,7 @@ export default function Layout({ children, headerActions = null }) {
                       key={key}
                       type="button"
                       onClick={() => navigateAndCollapseSidebar(`/admin?section=${key}`)}
-                      className={`grid h-11 w-full grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${active ? 'bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
+                      className={`side-nav-item grid h-11 w-full grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${active ? 'side-nav-item-active bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'side-nav-item-idle text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
                       style={{
                         background: active ? 'rgba(209,18,67,0.06)' : undefined,
                         color: active ? CRIMSON : undefined,
@@ -1034,16 +1068,22 @@ export default function Layout({ children, headerActions = null }) {
           {collapsed ? (
             <>
               <button onClick={() => navigateIfNeeded('/dashboard')} title="The Hive" data-tour="nav-dashboard"
-                className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/dashboard') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                 <LayoutDashboard size={16} />
               </button>
               <button onClick={() => navigateIfNeeded('/intel-desk')} title="Intel Desk" data-tour="nav-intel"
-                className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/intel-desk') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                 <Newspaper size={16} />
               </button>
+              {canUseBlogStudio && (
+                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
+                  className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
+                  <PenLine size={16} />
+                </button>
+              )}
               {canUseContentRepository && (
                 <button onClick={() => navigateIfNeeded('/blogs')} title="Content Repository" data-tour="nav-content-repository"
-                  className={`relative w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  className={`collapsed-nav-icon-button relative w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/blogs') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                   <BookOpenText size={16} />
                   {contentRepositoryBadge ? (
                     <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-brand-crimson px-1.5 py-0.5 text-[9px] font-black leading-none text-white shadow-sm ring-2 ring-white">
@@ -1052,14 +1092,8 @@ export default function Layout({ children, headerActions = null }) {
                   ) : null}
                 </button>
               )}
-              {canUseBlogStudio && (
-                <button onClick={() => navigateIfNeeded('/social-media-studio')} title="Content Studio Beta" data-tour="nav-content-studio"
-                  className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/social-media-studio') || location.pathname.startsWith('/content-studio') || location.pathname.startsWith('/blog-studio') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  <BookOpenText size={16} />
-                </button>
-              )}
               <button onClick={() => navigateIfNeeded('/profile')} title="My Hive Profile" data-tour="nav-profile"
-                className={`w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
+                className={`collapsed-nav-icon-button w-10 h-10 flex justify-center items-center rounded-lg transition-all mx-auto ${location.pathname.startsWith('/profile') ? 'collapsed-nav-icon-button-active bg-brand-pink/30 text-brand-crimson font-bold' : 'text-gray-500 hover:bg-brand-pink/20 hover:text-brand-crimson'}`}>
                 <UserIcon size={16} />
               </button>
             </>
@@ -1067,10 +1101,10 @@ export default function Layout({ children, headerActions = null }) {
             <>
               <SideNavItem icon={LayoutDashboard} label="The Hive" to="/dashboard" dataTour="nav-dashboard" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               <SideNavItem icon={Newspaper} label="Intel Desk" to="/intel-desk" dataTour="nav-intel" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
-              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" badge={contentRepositoryBadge} dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               {canUseBlogStudio && (
-                <SideNavItem icon={BookOpenText} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
+                <SideNavItem icon={PenLine} label="Content Studio" to="/social-media-studio" badge="Beta" dataTour="nav-content-studio" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
               )}
+              {canUseContentRepository && <SideNavItem icon={BookOpenText} label="Content Repository" to="/blogs" badge={contentRepositoryBadge} dataTour="nav-content-repository" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />}
               <SideNavItem icon={UserIcon} label="My Hive Profile" to="/profile" dataTour="nav-profile" navigationLocked={generationLocked} onNavigationBlocked={showGenerationLockMessage} onNavigate={collapseSidebarPanel} />
             </>
           )}
@@ -1082,12 +1116,12 @@ export default function Layout({ children, headerActions = null }) {
         <div className="shrink-0 border-t border-gray-100 px-2 pb-5 pt-3">
           {collapsed ? (
             <button onClick={handleLogout} title="Sign out"
-              className="w-10 h-10 flex justify-center items-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all mx-auto">
+              className="sidebar-signout-button w-10 h-10 flex justify-center items-center rounded-lg text-gray-400 hover:bg-brand-pink/20 hover:text-brand-crimson transition-all mx-auto">
               <LogOut size={15} />
             </button>
           ) : (
             <button onClick={handleLogout}
-              className="flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-gray-400 transition-all hover:bg-red-50 hover:text-red-600">
+              className="sidebar-signout-button flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-gray-400 transition-all hover:bg-brand-pink/20 hover:text-brand-crimson">
               <LogOut size={15} />
               <span>Sign out</span>
             </button>
@@ -1096,7 +1130,7 @@ export default function Layout({ children, headerActions = null }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden pt-[132px] xl:pt-0">
         {/* Top Header */}
         <header className="hidden h-[72px] shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 xl:flex xl:px-6"
           style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
@@ -1106,6 +1140,7 @@ export default function Layout({ children, headerActions = null }) {
 
           <div className="flex min-w-0 items-center gap-2">
             {headerActions ? <div className="mr-2 flex min-w-0 max-w-[min(62vw,920px)] items-center overflow-visible">{headerActions}</div> : null}
+            <ThemeToggle compact className="mr-1" />
             <div className="relative" ref={notificationsRef}>
               <button
                 data-tour="header-notifications"
@@ -1168,7 +1203,10 @@ export default function Layout({ children, headerActions = null }) {
         </header>
 
         {/* Content Body: added padding so it doesn't touch the screen edges */}
-        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 xl:px-6 xl:pt-4 xl:pb-5 transition-all duration-300 relative">
+        <main
+          ref={mainScrollRef}
+          className="flex-1 min-h-0 overflow-y-auto bg-canvas px-3 pt-3 pb-20 sm:px-5 sm:pt-4 xl:px-6 xl:pt-4 xl:pb-5 transition-all duration-300 relative"
+        >
           <div className="w-full h-full relative">
             {children}
             
@@ -1185,10 +1223,7 @@ export default function Layout({ children, headerActions = null }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setRunProgress(null);
-                      localStorage.removeItem('ascentium_run_progress');
-                    }}
+                    onClick={cancelActiveFetch}
                     className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
                     title="Stop"
                   >
@@ -1231,7 +1266,7 @@ export default function Layout({ children, headerActions = null }) {
       </div>
 
       <nav
-        className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
+        className="mobile-bottom-nav xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 px-2 py-2 gap-1 grid"
         style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}
       >
         {mobileNavItems.map((item) => {
@@ -1241,9 +1276,16 @@ export default function Layout({ children, headerActions = null }) {
               key={item.key}
               onClick={item.onClick}
               {...(item.dataTour ? { 'data-tour': item.dataTour } : {})}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-lg px-0.5 py-2 text-[9px] font-bold leading-tight sm:text-[10px] ${item.active ? 'text-brand-crimson bg-brand-pink/30' : 'text-gray-500'}`}
+              className={`mobile-bottom-nav-item flex min-w-0 flex-col items-center gap-1 rounded-lg px-0.5 py-2 text-[9px] font-bold leading-tight sm:text-[10px] ${item.active ? 'mobile-bottom-nav-item-active text-brand-crimson bg-brand-pink/30' : 'mobile-bottom-nav-item-idle text-gray-500'}`}
             >
-              <Icon size={16} />
+              <span className="relative inline-flex">
+                <Icon size={16} />
+                {item.badge ? (
+                  <span className="absolute -right-2.5 -top-2 flex min-w-[16px] items-center justify-center rounded-full bg-brand-crimson px-1 text-[9px] font-black leading-[16px] text-white">
+                    {item.badge}
+                  </span>
+                ) : null}
+              </span>
               <span className="max-w-full truncate">{item.label}</span>
             </button>
           );

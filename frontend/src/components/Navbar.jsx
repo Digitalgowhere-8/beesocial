@@ -10,8 +10,8 @@ function Logo() {
         <span className="font-display text-brass-400 text-lg sm:text-xl font-semibold leading-none">O</span>
       </div>
       <div>
-        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">OpportunityOS AI</div>
-        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Opportunity Radar</div>
+        <div className="font-display text-[16px] sm:text-[18px] leading-none text-ink-800 tracking-tightest">BeeSocial</div>
+        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-brass-600 mt-0.5">Business Intelligence</div>
       </div>
     </div>
   );
@@ -66,7 +66,7 @@ export default function Navbar() {
             <NavItem to="/admin" icon={Shield}>Owner Console</NavItem>
           ) : (
             <>
-              <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
+              <NavItem to="/dashboard" icon={LayoutDashboard}>The Hive</NavItem>
               <NavItem to="/intel-desk" icon={Newspaper}>Intel Desk</NavItem>
               {canUseContentRepository && <NavItem to="/blogs" icon={BookOpenText}>Content Repository</NavItem>}
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText}>Content Studio</NavItem>}
@@ -111,7 +111,7 @@ export default function Navbar() {
             <NavItem to="/admin" icon={Shield} onClick={() => setMobileOpen(false)}>Owner Console</NavItem>
           ) : (
             <>
-              <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>Dashboard</NavItem>
+              <NavItem to="/dashboard" icon={LayoutDashboard} onClick={() => setMobileOpen(false)}>The Hive</NavItem>
               <NavItem to="/intel-desk" icon={Newspaper} onClick={() => setMobileOpen(false)}>Intel Desk</NavItem>
               {canUseContentRepository && <NavItem to="/blogs" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Content Repository</NavItem>}
               {canUseBlogStudio && <NavItem to="/social-media-studio" icon={BookOpenText} onClick={() => setMobileOpen(false)}>Content Studio</NavItem>}

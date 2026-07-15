@@ -186,12 +186,14 @@ function inferResultDate(row = {}) {
 }
 
 function resultArticleDate(row = {}) {
-  return inferResultDate(row) || new Date();
+  return inferResultDate(row);
 }
 
 function resultMatchesDayWindow(row, maxAgeDays = 30) {
   const publishedAt = resultArticleDate(row);
+  if (!publishedAt) return false;
   const ageMs = Date.now() - publishedAt.getTime();
+  if (ageMs < 0) return true;
   return ageMs <= Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
 }
 
@@ -244,6 +246,50 @@ function isAllowedSourceResult(url, includeDomains = []) {
   const allowedDomains = list(includeDomains).map(cleanDomain).filter(Boolean);
   if (!allowedDomains.length) return false;
   return allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function sourceTypeForTopic(topic) {
+  if (topic === 'govt') return 'govt';
+  if (topic === 'competitor') return 'competitor';
+  return 'news';
+}
+
+function domainsForSourceType(profile, type) {
+  const selectedCountry = canonicalCountry(profile.country || defaultCountry());
+  const topicsForType = ALLOWED_TOPICS.filter((topic) => sourceTypeForTopic(topic) === type);
+  const configured = unique(
+    topicsForType.flatMap((topic) => list(profile.sourceDomainsByTopic?.[topic]))
+  );
+  const defaults = unique(
+    topicsForType.flatMap((topic) => list(profile.defaultDomainsByTopic?.[topic]))
+  );
+  const fallback = unique(defaultSourceDomainsForCountry(selectedCountry, type).map(cleanDomain).filter(Boolean));
+  return unique([...configured, ...defaults, ...fallback].map(cleanDomain).filter(Boolean));
+}
+
+function excludeDomainsForTopic(profile, topic) {
+  const sourceType = sourceTypeForTopic(topic);
+  const excludedTypes = ['news', 'govt', 'competitor'].filter((type) => type !== sourceType);
+  const domains = unique(excludedTypes.flatMap((type) => domainsForSourceType(profile, type)));
+  if (topic === 'govt') {
+    return domains.filter((domain) => !isGovernmentHost(domain));
+  }
+  return domains;
+}
+
+function resultMatchesTopicSourceType(url, topic, profile = {}) {
+  const host = hostFromUrl(url);
+  if (!host) return false;
+  if (topic === 'govt') {
+    return isGovernmentHost(host) || isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
+  }
+  if (topic === 'news' || topic === 'evergreen') {
+    return !isGovernmentHost(host) && !isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
+  }
+  if (topic === 'competitor') {
+    return !isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
+  }
+  return true;
 }
 
 function shouldEnforcePostSourceFilter(topic) {
@@ -436,8 +482,6 @@ function normalizeProfileInput(incoming = {}) {
     minStoreScore: incoming.minStoreScore,
     language: text(incoming.language || defaultLanguage()),
     timezone: text(incoming.timezone || defaultTimezone()),
-    callbackUrl: text(incoming.callbackUrl),
-    callbackSecret: text(incoming.callbackSecret || incoming.secret),
     startedAt: incoming.startedAt || now
   };
 
@@ -456,10 +500,13 @@ function domainsForTopic(profile, topic) {
     ).map(cleanDomain).filter(Boolean)
   );
   const defaultDomains = configuredDefaults.length ? configuredDefaults : fallbackDefaults;
+  const excludedDomains = new Set(excludeDomainsForTopic(profile, topic));
+  const filteredDefaults = defaultDomains.filter((domain) => !excludedDomains.has(cleanDomain(domain)));
+  const filteredTopicDomains = topicDomains.filter((domain) => !excludedDomains.has(cleanDomain(domain)));
   // Keep fetches locked to the configured source lists so results stay inside
   // the known domain set for the selected country/topic.
-  if (defaultDomains.length) return defaultDomains;
-  return topicDomains;
+  if (filteredDefaults.length) return filteredDefaults;
+  return filteredTopicDomains;
 }
 
 function tavilyTopicForProfileTopic(topic) {
@@ -565,7 +612,8 @@ function buildTopicQueries(profile, topic) {
       timeRange: daysToTimeRange(profile.days),
       includeRawContent: true,
       timeoutMs: 30000,
-      includeDomains: includeDomainsOverride || []
+      includeDomains: includeDomainsOverride || [],
+      excludeDomains: excludeDomainsForTopic(profile, topic)
     }
   });
 
@@ -596,7 +644,8 @@ function buildTopicQueries(profile, topic) {
           timeRange: daysToTimeRange(profile.days),
           includeRawContent: true,
           timeoutMs: 30000,
-          includeDomains
+          includeDomains,
+          excludeDomains: excludeDomainsForTopic(profile, topic)
         }
       }]
     : [];
@@ -630,6 +679,7 @@ function articleFromResult(row, request, stats) {
   const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
   const articleDate = resultArticleDate(row);
   if (!title || !url) return rejectCandidate(stats, 'missing');
+  if (!articleDate) return rejectCandidate(stats, 'date');
   if (!resultMatchesDayWindow(row, request.profile?.days || 30)) {
     return rejectCandidate(stats, 'date');
   }
@@ -638,6 +688,9 @@ function articleFromResult(row, request, stats) {
     !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])
   ) {
     return rejectCandidate(stats, 'source');
+  }
+  if (!resultMatchesTopicSourceType(url, request.topic, request.profile || {})) {
+    return rejectCandidate(stats, 'type');
   }
   if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
     return rejectCandidate(stats, 'source');
@@ -749,8 +802,6 @@ function workflowProfile(profile = {}) {
     userId: profile.userId || '',
     savedSearchId: profile.savedSearchId || '',
     logId: profile.logId || '',
-    callbackUrl: profile.callbackUrl || '',
-    callbackSecret: profile.callbackSecret || '',
     country: profile.country || '',
     region: profile.region || '',
     category: profile.category || '',
@@ -1038,10 +1089,9 @@ function buildBackendCallback(profile, topicItems) {
     userId: profile.userId || '',
     savedSearchId: profile.savedSearchId || '',
     logId: profile.logId || '',
-    callbackUrl: profile.callbackUrl || '',
-    callbackSecret: profile.callbackSecret || '',
     country: profile.country || '',
     region: profile.region || '',
+    days: profile.days || 30,
     startedAt: profile.startedAt || new Date().toISOString(),
     finishedAt: new Date().toISOString(),
     resultCount: results.length,
@@ -1057,25 +1107,36 @@ function buildBackendCallback(profile, topicItems) {
 
 async function runProfileSearch(incoming = {}, options = {}) {
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const isCancelled = typeof options.isCancelled === 'function' ? options.isCancelled : () => false;
+  const throwIfCancelled = () => {
+    if (!isCancelled()) return;
+    const error = new Error('Fetch cancelled by user');
+    error.code = 'FETCH_CANCELLED';
+    throw error;
+  };
   if (!tavilyService.isEnabled()) throw new Error('TAVILY_API_KEY is required for code-based profile search');
+  throwIfCancelled();
   onProgress?.({ step: 'normalize', message: 'Normalizing profile input and selected topics' });
   const profile = normalizeProfileInput(incoming.body || incoming);
   const selectedTopics = ALLOWED_TOPICS.filter((topic) => profile.topicEnabled?.[topic]);
   onProgress?.({ step: 'search', message: `Starting ${selectedTopics.length} selected topic${selectedTopics.length === 1 ? '' : 's'} one by one` });
   const topicResults = [];
   for (let i = 0; i < selectedTopics.length; i += 1) {
+    throwIfCancelled();
     const topic = selectedTopics[i];
     onProgress?.({
       step: `topic:${topic}:start`,
       message: `Starting ${topic} topic (${i + 1}/${selectedTopics.length})`
     });
     const results = await runTopic(profile, topic, onProgress);
+    throwIfCancelled();
     topicResults.push(results);
     onProgress?.({
       step: `topic:${topic}:complete`,
       message: `Completed ${topic} topic (${i + 1}/${selectedTopics.length})`
     });
   }
+  throwIfCancelled();
   onProgress?.({ step: 'merge', message: 'Merging, deduplicating and applying per-topic limits' });
   const payload = buildBackendCallback(profile, topicResults.flat());
   onProgress?.({

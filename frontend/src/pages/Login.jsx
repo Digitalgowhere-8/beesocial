@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { isValidEmail, getEmailValidationError } from '../utils/emailValidator';
 
 export default function Login() {
   const { login } = useAuth();
+  const { isDark } = useTheme();
   const navigate = useNavigate();
   const { state } = useLocation();
   const robotoFont = '"Roboto", system-ui, sans-serif';
@@ -51,16 +53,44 @@ export default function Login() {
 
   const inputFocus = (e) => {
     e.target.style.borderColor = '#D11243';
-    e.target.style.boxShadow = '0 0 0 4px rgba(209,18,67,0.1)';
+    e.target.style.boxShadow = isDark
+      ? 'none'
+      : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const inputBlur = (e) => {
-    e.target.style.borderColor = '#e5e7eb';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
     e.target.style.boxShadow = 'none';
   };
 
+  const shellStyle = {
+    fontFamily: robotoFont,
+    background: isDark ? '#070d17' : '#FAF0F2',
+    color: isDark ? '#f8fafc' : '#111827'
+  };
+  const formPanelStyle = {
+    background: isDark
+      ? '#070d17'
+      : '#FAF0F2'
+  };
+  const cardStyle = {
+    background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
+    boxShadow: isDark
+      ? 'none'
+      : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
+  };
+  const inputStyle = {
+    background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
+    color: isDark ? '#f8fafc' : '#1f2937',
+    borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb',
+    boxShadow: 'none',
+    fontFamily: robotoFont
+  };
+  const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
+
   return (
-    <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={{ fontFamily: robotoFont }}>
+    <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={shellStyle}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-12 pt-12 pb-0"
         style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
@@ -102,24 +132,21 @@ export default function Login() {
         </div>
 
         <div className="absolute z-10 left-0 right-0 bottom-0 w-full overflow-hidden flex items-end justify-center pointer-events-none" style={{ animationDelay: '0.2s' }}>
-          <img src="/skyline.png" className="w-full h-auto opacity-100 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="Opportunity skyline" />
+          <img src="/skyline.png" className="w-full h-auto opacity-100 object-cover" style={{ minHeight: '126px', maxHeight: '150px' }} alt="BeeSocial skyline" />
         </div>
       </div>
 
-      <div className="flex-1 min-h-screen lg:h-screen flex items-center justify-center px-4 py-14 sm:p-10 lg:px-10 xl:px-14 relative overflow-hidden" style={{ background: '#FAF0F2' }}>
+      <div className="flex-1 min-h-screen lg:h-screen flex items-center justify-center px-4 py-14 sm:p-10 lg:px-10 xl:px-14 relative overflow-hidden transition-colors duration-300" style={formPanelStyle}>
         <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
-          <img src="/logo.png" style={{ height: '75px', width: 'auto' }} alt="OpportunityOS AI Logo" />
+          <img src={logoSrc} style={{ height: '75px', width: 'auto' }} alt="BeeSocial Logo" />
         </div>
 
         <div className="relative z-10 w-full max-w-[460px] fade-in lg:-mt-4" style={{ animationDelay: '0.05s' }}>
           <div
-            className="bg-white rounded-2xl p-5 sm:p-8 lg:p-9"
-            style={{
-              boxShadow: '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
-              border: '1px solid rgba(209,18,67,0.05)'
-            }}
+            className="rounded-2xl p-5 transition-colors duration-300 sm:p-8 lg:p-9"
+            style={cardStyle}
           >
-            <h1 className="text-[1.4rem] xl:text-[1.55rem] font-black text-gray-900 mb-5 tracking-tight leading-[1.2]" style={{ fontFamily: robotoFont }}>
+            <h1 className={`mb-5 text-[1.4rem] font-black leading-[1.2] tracking-tight xl:text-[1.55rem] ${isDark ? 'text-white' : 'text-gray-900'}`} style={{ fontFamily: robotoFont }}>
               Secure sign-in to your
               <br />
               content intelligence dashboard.
@@ -127,14 +154,14 @@ export default function Login() {
 
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Email</label>
+                <label className={`mb-2 block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Email</label>
                 <input
                   type="email"
                   required
                   autoFocus
                   placeholder="name@company.com"
-                  className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 border border-gray-200 placeholder:text-gray-300 outline-none transition-all duration-200 shadow-sm"
-                  style={{ background: '#FAFAFA', fontFamily: robotoFont }}
+                  className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-gray-300"
+                  style={inputStyle}
                   onFocus={inputFocus}
                   onBlur={inputBlur}
                   value={form.email}
@@ -144,7 +171,7 @@ export default function Login() {
 
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">Password</label>
+                  <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Password</label>
                   <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                     Forgot Password?
                   </Link>
@@ -154,27 +181,27 @@ export default function Login() {
                     type={showPass ? 'text' : 'password'}
                     required
                     placeholder="Enter your password"
-                    className="w-full px-4 py-3 pr-10 rounded-xl text-sm text-gray-800 border border-gray-200 placeholder:text-gray-300 outline-none transition-all duration-200 shadow-sm"
-                    style={{ background: '#FAFAFA', fontFamily: robotoFont }}
+                    className="w-full rounded-xl border px-4 py-3 pr-10 text-sm outline-none transition-all duration-200 placeholder:text-gray-300"
+                    style={inputStyle}
                     onFocus={inputFocus}
                     onBlur={inputBlur}
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                   />
-                  <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" style={{ fontFamily: robotoFont }}>
+                  <button type="button" onClick={() => setShowPass((v) => !v)} className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`} style={{ fontFamily: robotoFont }}>
                     {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
               </div>
 
               {notice && (
-                <div className="text-xs rounded-lg px-3 py-2 font-medium" style={{ background: '#F0FDF4', color: '#047857', border: '1px solid rgba(4,120,87,0.15)' }}>
+                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(6,78,59,0.32)' : '#F0FDF4', color: isDark ? '#a7f3d0' : '#047857', border: isDark ? '1px solid rgba(16,185,129,0.24)' : '1px solid rgba(4,120,87,0.15)' }}>
                   {notice}
                 </div>
               )}
 
               {error && (
-                <div className="text-xs rounded-lg px-3 py-2 font-medium" style={{ background: '#FFF0F3', color: '#D11243', border: '1px solid rgba(209,18,67,0.15)' }}>
+                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#D11243', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(209,18,67,0.15)' }}>
                   {error}
                 </div>
               )}
@@ -186,25 +213,25 @@ export default function Login() {
                 className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 mt-4"
                 style={{
                   background: loading ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
-                  boxShadow: '0 4px 14px rgba(209,18,67,0.3)',
+                  boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
                   fontFamily: robotoFont
                 }}
                 onMouseOver={(e) => {
                   if (!loading) {
                     e.currentTarget.style.transform = 'translateY(-1.5px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(209,18,67,0.4)';
+                    e.currentTarget.style.boxShadow = isDark ? 'none' : '0 6px 20px rgba(209,18,67,0.4)';
                   }
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(209,18,67,0.3)';
+                  e.currentTarget.style.boxShadow = isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)';
                 }}
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <>Sign In <ArrowRight size={14} /></>}
               </button>
             </form>
 
-            <p className="text-center text-xs text-gray-400 mt-5">
+            <p className={`mt-5 text-center text-xs ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Need access?{' '}
               <Link to="/register" className="font-bold hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                 Request an account

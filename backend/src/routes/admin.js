@@ -1,5 +1,4 @@
 const express = require('express');
-const axios = require('axios');
 const mongoose = require('mongoose');
 const Article = require('../models/Article');
 const FetchLog = require('../models/FetchLog');
@@ -11,7 +10,6 @@ const SocialPost = require('../models/SocialPost');
 const AnalyticsEvent = require('../models/AnalyticsEvent');
 const { protect, requireRole } = require('../middleware/auth');
 const orchestrator = require('../services/orchestrator');
-const { buildN8nPayload } = require('../services/queryBuilder');
 const { getSystemSettings, saveSystemSettings } = require('../services/systemSettings');
 const { buildSourceTrustRegistry, groupRegistryByCredibility } = require('../services/sourceTrust');
 const { fetchSourceCatalog } = require('../config/fetchSources');
@@ -19,6 +17,7 @@ const {
   getPlatformFetchConfig,
   savePlatformFetchConfig,
   triggerPlatformFetch,
+  cancelPlatformFetch,
   getPlatformFetchStatus
 } = require('../services/platformFetchService');
 const { cleanupAnalyticsRetention, getDatabaseHealthSummary } = require('../services/storageMaintenance');
@@ -453,124 +452,6 @@ router.patch('/articles/:id', asyncHandler(async (req, res) => {
 // ============== FETCH (manual trigger) ==============
 
 let isFetching = false;
-const N8N_TYPES = ['profile'];
-const n8nRunning = new Set();
-
-function n8nEnvKey(type) {
-  return type === 'profile' ? 'N8N_WEBHOOK_URL' : `N8N_WEBHOOK_URL_${String(type || '').toUpperCase()}`;
-}
-
-function getN8nWebhookUrl(type) {
-  const normalized = N8N_TYPES.includes(type) ? type : 'profile';
-  return process.env[n8nEnvKey(normalized)] || '';
-}
-
-function getN8nStatus() {
-  const configured = Object.fromEntries(N8N_TYPES.map((type) => [type, Boolean(getN8nWebhookUrl(type))]));
-  const running = Object.fromEntries(N8N_TYPES.map((type) => [type, n8nRunning.has(type)]));
-  return {
-    isFetching: n8nRunning.size > 0,
-    configured,
-    running
-  };
-}
-
-async function runN8nWorkflow({ triggeredByUser, user, type = 'profile' }) {
-  const webhookUrl = getN8nWebhookUrl(type);
-  if (!webhookUrl) {
-    throw new Error(`${n8nEnvKey(type)} is not configured`);
-  }
-
-  const startedAt = new Date();
-  const callbackUrl = process.env.N8N_CALLBACK_URL || '';
-  const callbackSecret = process.env.N8N_CALLBACK_SECRET || '';
-  const payload = buildN8nPayload(user || {}, {
-    userId: String(triggeredByUser || user?._id || ''),
-    trigger: 'admin_manual',
-    callbackUrl,
-    callbackSecret,
-    startedAt: startedAt.toISOString()
-  });
-
-  const log = await FetchLog.create({
-    triggeredBy: 'n8n',
-    triggeredByUser,
-    userId: triggeredByUser,
-    status: 'running',
-    startedAt,
-    country: payload.country,
-    region: payload.region,
-    sector: payload.sector,
-    query: payload.query,
-    notes: 'Dynamic profile pipeline started from Admin Panel'
-  });
-
-  payload.logId = String(log._id);
-
-  try {
-    const response = await axios.post(
-      webhookUrl,
-      payload,
-      {
-        timeout: parseInt(process.env.N8N_WEBHOOK_TIMEOUT_MS, 10) || 1000 * 60 * 20,
-        headers: {
-          ...(process.env.N8N_WEBHOOK_SECRET ? { 'x-n8n-secret': process.env.N8N_WEBHOOK_SECRET } : {})
-        }
-      }
-    );
-
-    const body = response.data || {};
-    const finishedLog = await FetchLog.findById(log._id);
-    if (!finishedLog || finishedLog.status !== 'running') return;
-
-    const finishedAt = new Date();
-    const totalErrors = Number(body.totalErrors || body.errors || 0);
-    finishedLog.status = body.status || (totalErrors > 0 ? 'partial' : 'success');
-    finishedLog.finishedAt = finishedAt;
-    finishedLog.durationMs = finishedAt.getTime() - startedAt.getTime();
-    finishedLog.totalFetched = Number(body.totalFetched || body.fetched || 0);
-    finishedLog.totalInserted = Number(body.totalInserted || body.inserted || 0);
-    finishedLog.totalDuplicates = Number(body.totalDuplicates || body.duplicates || 0);
-    finishedLog.totalErrors = totalErrors;
-    finishedLog.perSource = Array.isArray(body.perSource)
-      ? body.perSource
-      : [{
-          sourceId: 'n8n',
-          sourceName: 'n8n profile pipeline',
-          type: 'profile_intelligence',
-          attempted: Number(body.totalFetched || body.fetched || 0),
-          fetched: Number(body.totalFetched || body.fetched || 0),
-          inserted: Number(body.totalInserted || body.inserted || 0),
-          duplicates: Number(body.totalDuplicates || body.duplicates || 0),
-          errors: totalErrors,
-          errorMessages: body.errorMessage ? [body.errorMessage] : []
-        }];
-    finishedLog.notes = body.notes || 'Dynamic profile pipeline completed';
-    await finishedLog.save();
-  } catch (err) {
-    await FetchLog.findByIdAndUpdate(log._id, {
-      $set: {
-        status: 'failed',
-        finishedAt: new Date(),
-        durationMs: Date.now() - startedAt.getTime(),
-        totalErrors: 1,
-        perSource: [{
-          sourceId: 'n8n',
-          sourceName: 'n8n profile pipeline',
-          type: 'profile_intelligence',
-          attempted: 1,
-          fetched: 0,
-          inserted: 0,
-          duplicates: 0,
-          errors: 1,
-          errorMessages: [err.message]
-        }],
-        notes: 'Dynamic profile pipeline trigger failed'
-      }
-    });
-    throw err;
-  }
-}
 
 // POST /api/admin/fetch    body: { types?: ['news','govt','competitor','evergreen'] }
 router.post('/fetch', requireFetchCapacity, asyncHandler(async (req, res) => {
@@ -599,32 +480,6 @@ router.get('/fetch/status', (_req, res) => {
   res.json({ isFetching });
 });
 
-// POST /api/admin/n8n/run
-router.post('/n8n/run', requireFetchCapacity, asyncHandler(async (req, res) => {
-  const type = N8N_TYPES.includes(req.body?.type) ? req.body.type : 'profile';
-  if (n8nRunning.has(type)) {
-    return res.status(409).json({ message: 'The dynamic profile pipeline is already in progress' });
-  }
-  if (!getN8nWebhookUrl(type)) {
-    return res.status(400).json({ message: `${n8nEnvKey(type)} is not configured` });
-  }
-
-  n8nRunning.add(type);
-  res.json({ message: 'Dynamic profile pipeline started', triggeredBy: 'manual', type, startedAt: new Date() });
-
-  try {
-    await runN8nWorkflow({ triggeredByUser: req.user._id, user: req.user, type });
-  } catch (err) {
-    console.error('[admin] dynamic profile pipeline failed:', err);
-  } finally {
-    n8nRunning.delete(type);
-  }
-}));
-
-// GET /api/admin/n8n/status
-router.get('/n8n/status', (_req, res) => {
-  res.json(getN8nStatus());
-});
 
 // ============== STATS ==============
 
@@ -1142,6 +997,15 @@ router.post('/super/fetch/run', requireRole('super_admin'), asyncHandler(async (
     message: 'Platform fetch queued',
     logId: result.logId,
     config: result.config
+  });
+}));
+
+router.post('/super/fetch/cancel', requireRole('super_admin'), asyncHandler(async (_req, res) => {
+  const result = await cancelPlatformFetch();
+  res.json({
+    ok: true,
+    message: result.cancelled ? 'Platform fetch cancellation requested.' : 'No platform fetch is running.',
+    ...result
   });
 }));
 

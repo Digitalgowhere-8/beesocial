@@ -1,16 +1,15 @@
 import axios from 'axios';
 
+const AUTH_REDIRECT_NOTICE_KEY = 'auth_redirect_notice';
+
 const api = axios.create({
-  // All backend routes are mounted under /api (e.g. /api/auth, /api/articles).
-  // Appending /api here means every call like api.post('/auth/login') resolves
-  // correctly in both dev (via Vite proxy) and production (direct to backend).
-  baseURL: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api`,
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 120000
 });
 
 // Attach token from localStorage on each request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('opportunityos_token');
+  const token = localStorage.getItem('beesocial_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -53,9 +52,9 @@ api.interceptors.response.use(
       } catch {
         // Ignore storage failures; redirect is still important.
       }
-      localStorage.removeItem('opportunityos_token');
-      localStorage.removeItem('opportunityos_user');
-      localStorage.removeItem('opportunityos_session');
+      localStorage.removeItem('beesocial_token');
+      localStorage.removeItem('beesocial_user');
+      localStorage.removeItem('beesocial_session');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

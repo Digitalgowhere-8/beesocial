@@ -22,7 +22,7 @@ const cronRunner = require('./jobs/cron');
 const authRoutes = require('./routes/auth');
 const articleRoutes = require('./routes/articles');
 const adminRoutes = require('./routes/admin');
-const n8nRoutes = require('./routes/n8n');
+const profileSearchRoutes = require('./routes/profileSearch');
 const blogRoutes = require('./routes/blogs');
 const analyticsRoutes = require('./routes/analytics');
 const realtimeRoutes = require('./routes/realtime');
@@ -32,8 +32,11 @@ const AUTH_RATE_LIMIT_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS
 const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 200;
 const EXPENSIVE_RATE_LIMIT_WINDOW_MS = parseInt(process.env.EXPENSIVE_RATE_LIMIT_WINDOW_MS, 10) || 60 * 1000;
 const EXPENSIVE_RATE_LIMIT_MAX = parseInt(process.env.EXPENSIVE_RATE_LIMIT_MAX, 10) || 30;
+const ANALYTICS_RATE_LIMIT_WINDOW_MS = parseInt(process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS, 10) || 60 * 1000;
+const ANALYTICS_RATE_LIMIT_MAX = parseInt(process.env.ANALYTICS_RATE_LIMIT_MAX, 10) || 300;
 
 const app = express();
+app.disable('x-powered-by');
 
 // Enable 'trust proxy' to support correct IP rate-limiting behind proxies like Render
 app.set('trust proxy', 1);
@@ -42,32 +45,28 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 
-// Parse multiple origins from environment variables if present
-const origins = (process.env.CORS_ORIGINS || '')
+const configuredOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-
-// Core allowed whitelist array
-const allowedOrigins = [
+const defaultDevOrigins = [
   'http://localhost:5173',
-  'https://beesocial-frontend.beautifulmoss-11cf811e.centralindia.azurecontainerapps.io',
-  ...origins
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
 ];
+const allowedOrigins = configuredOrigins.length
+  ? configuredOrigins
+  : (process.env.NODE_ENV === 'production' ? [] : defaultDevOrigins);
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
+    origin(origin, callback) {
       if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        return callback(new Error('Not allowed by CORS'));
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('CORS origin not allowed'));
     },
-    credentials: true
+    credentials: false
   })
 );
 
@@ -105,17 +104,16 @@ const expensiveLimit = rateLimit({
   legacyHeaders: false,
   message: { message: 'Too many requests on this endpoint. Please wait a moment and try again.' }
 });
-app.use('/api/n8n/trigger', expensiveLimit);
+app.use('/api/profile-search/trigger', expensiveLimit);
 app.use('/api/blogs/generate', expensiveLimit);
 app.use('/api/blogs/linkedin/generate', expensiveLimit);
 app.use('/api/admin/fetch', expensiveLimit);
-app.use('/api/admin/n8n/run', expensiveLimit);
 app.use('/api/admin/super/fetch/run', expensiveLimit);
 app.use(
   '/api/analytics/events',
   rateLimit({
-   windowMs: parseInt(process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS, 10) || 900000,
-    max: parseInt(process.env.ANALYTICS_RATE_LIMIT_MAX, 10) || 100,
+    windowMs: ANALYTICS_RATE_LIMIT_WINDOW_MS,
+    max: ANALYTICS_RATE_LIMIT_MAX,
     keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
@@ -139,7 +137,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/n8n', n8nRoutes);
+app.use('/api/profile-search', profileSearchRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
@@ -156,11 +154,10 @@ app.use((err, _req, res, _next) => {
 // --------- Boot ---------
 async function start() {
   await connectDB();
-  const HOST = '0.0.0.0';
-  app.listen(PORT, HOST, () => {
+  app.listen(PORT, () => {
     console.log('----------------------------------------------');
-    console.log('  Ascentium Intelligence API');
-    console.log(`  Listening on http://${HOST}:${PORT}`);
+    console.log('  BeeSocial API');
+    console.log(`  Listening on http://localhost:${PORT}`);
     console.log(`  ENV: ${process.env.NODE_ENV || 'development'}`);
     console.log('----------------------------------------------');
     cronRunner.start();
@@ -168,6 +165,10 @@ async function start() {
 }
 
 start().catch((err) => {
-  console.error('[boot] failed:', err);
+  console.error('[boot] failed:', err.message || err);
+  if (process.env.DEBUG_BOOT === 'true' && err.stack) {
+    console.error(err.stack);
+    if (err.cause) console.error('[boot] cause:', err.cause);
+  }
   process.exit(1);
 });

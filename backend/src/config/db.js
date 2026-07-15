@@ -82,6 +82,28 @@ async function seedDefaultPlans() {
 
 let isConnected = false;
 
+function isAtlasUri(uri = '') {
+  return /mongodb\+srv:\/\/|\.mongodb\.net/i.test(uri);
+}
+
+function buildMongoConnectionError(err, uri) {
+  if (!isAtlasUri(uri)) return err;
+
+  const message = String(err?.message || '');
+  const looksLikeAtlasNetworkIssue =
+    err?.name === 'MongooseServerSelectionError' ||
+    /could not connect to any servers|replicasetnoprimary|server selection/i.test(message);
+
+  if (!looksLikeAtlasNetworkIssue) return err;
+
+  const wrapped = new Error(
+    'MongoDB Atlas refused the connection. Add this machine/server IP to Atlas Network Access, or set MONGO_URI to a reachable local MongoDB URI for development.'
+  );
+  wrapped.cause = err;
+  wrapped.name = err.name || 'MongoConnectionError';
+  return wrapped;
+}
+
 async function connectDB() {
   if (isConnected) return mongoose.connection;
 
@@ -102,8 +124,9 @@ async function connectDB() {
     await seedDefaultPlans();
     return mongoose.connection;
   } catch (err) {
-    console.error('[db] MongoDB connection failed:', err.message);
-    throw err;
+    const connectionError = buildMongoConnectionError(err, uri);
+    console.error('[db] MongoDB connection failed:', connectionError.message);
+    throw connectionError;
   }
 }
 

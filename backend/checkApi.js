@@ -4,11 +4,17 @@ require('dotenv').config();
 async function run() {
   const port = process.env.PORT || 5000;
   const url = `http://localhost:${port}/api`;
+  const email = process.env.CHECK_API_EMAIL;
+  const password = process.env.CHECK_API_PASSWORD;
+  if (!email || !password) {
+    console.error('Set CHECK_API_EMAIL and CHECK_API_PASSWORD in the environment before running this script.');
+    process.exit(1);
+  }
   console.log('Target API URL:', url);
   try {
     const loginRes = await axios.post(`${url}/auth/login`, {
-      email: 'admin@opportunityos.ai',
-      password: 'Admin@12345'
+      email,
+      password
     });
     const token = loginRes.data.token;
     console.log('Logged in successfully, token retrieved.');
