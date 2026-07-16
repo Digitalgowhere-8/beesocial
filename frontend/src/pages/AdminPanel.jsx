@@ -108,7 +108,7 @@ const SOURCE_TYPE_OPTIONS = [
   { key: 'news', label: 'News sources', help: 'Business, market and publisher domains', icon: Globe2, accent: 'from-sky-500/15 via-blue-500/10 to-cyan-500/10', ring: 'ring-sky-100', tint: 'text-sky-700' },
   { key: 'govt', label: 'Government sources', help: 'Regulatory, ministry and official domains', icon: ShieldCheck, accent: 'from-emerald-500/15 via-green-500/10 to-teal-500/10', ring: 'ring-emerald-100', tint: 'text-emerald-700' },
   { key: 'competitor', label: 'Competitor sources', help: 'Firm websites and competitor intelligence domains', icon: Building2, accent: 'from-amber-500/15 via-orange-500/10 to-yellow-500/10', ring: 'ring-amber-100', tint: 'text-amber-700' },
-  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-violet-500/15 via-fuchsia-500/10 to-pink-500/10', ring: 'ring-violet-100', tint: 'text-violet-700' }
+  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-brand-pink/80 via-[#F9C416]/10 to-white', ring: 'ring-brand-crimson/10', tint: 'text-brand-crimson' }
 ];
 
 const COUNTRY_TIMEZONES = {
@@ -257,7 +257,7 @@ export default function AdminPanel() {
               })()}
             </div>
           ) : (
-            <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(78px,1fr)] gap-1.5 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+            <div className="content-header-segmented hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(78px,1fr)] gap-1.5 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
               {tabs.map((item) => {
                 const active = item.key === tab;
                 return (
@@ -267,7 +267,7 @@ export default function AdminPanel() {
                     onClick={() => setTab(item.key)}
                     className={[
                       'flex min-h-[36px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[11px] font-black transition-all',
-                      active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                      active ? 'content-header-tab-active bg-brand-crimson text-white shadow-sm' : 'content-header-tab-idle text-gray-500 hover:bg-gray-50'
                     ].join(' ')}
                   >
                     {item.icon ? <item.icon size={13} /> : null}
@@ -299,7 +299,7 @@ export default function AdminPanel() {
           </div>
         </div>
         <div className="hidden min-w-0 flex-1 gap-2 xl:flex xl:flex-row xl:items-center">
-          <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
+          <div className="content-header-segmented hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
             {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
               const active = isSuperAdmin ? item.key === subTab : item.key === tab;
               return (
@@ -315,7 +315,7 @@ export default function AdminPanel() {
                   }}
                   className={[
                     'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
-                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                    active ? 'content-header-tab-active bg-brand-crimson text-white shadow-sm' : 'content-header-tab-idle text-gray-500 hover:bg-gray-50'
                   ].join(' ')}
                 >
                   {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
@@ -632,7 +632,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-sm font-black text-white shadow-sm">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-[#0E2618] text-sm font-black text-white shadow-sm">
                           {(row.user?.name || 'U')[0].toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -760,7 +760,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
           <AnalyticsKpi icon={MonitorUp} label="Page views" value={traffic.pageViews || 0} detail={`${traffic.engagementRate || 0}% engaged`} color="text-emerald-600" bg="bg-emerald-50" />
           <AnalyticsKpi icon={MousePointerClick} label="Clicks" value={traffic.clicks || 0} detail={`${traffic.clickThroughRate || 0}% CTR`} color="text-amber-600" bg="bg-amber-50" />
           <AnalyticsKpi icon={Timer} label="Avg time" value={formatDuration(traffic.avgEngagedMsPerSession)} detail="Per session" color="text-violet-600" bg="bg-violet-50" />
-          <AnalyticsKpi icon={Eye} label="Section views" value={traffic.sectionViews || 0} detail="Tracked panels" color="text-rose-600" bg="bg-rose-50" />
+          <AnalyticsKpi icon={Eye} label="Section views" value={traffic.sectionViews || 0} detail="Tracked panels" color="text-brand-crimson" bg="bg-brand-pink" />
           <AnalyticsKpi icon={TrendingUp} label="Bounce rate" value={`${traffic.bounceRate || 0}%`} detail="Low is better" color="text-gray-700" bg="bg-gray-50" />
         </div>
 
@@ -879,7 +879,7 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   return (
     <div className="premium-glass p-5 relative overflow-hidden">
       <div className="relative z-10 flex items-start gap-4">
-        <span className={`admin-content-icon-tile flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
+        <span className={`admin-content-icon-tile flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-[#F9C416]/15 text-brand-crimson border border-[#F9C416]/25'}`}>
           <Icon size={20} />
         </span>
         <div className="min-w-0 flex-1">
@@ -952,7 +952,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
           </span>
         </div>
         <div className="mt-3 h-2 rounded-full bg-white ring-1 ring-gray-100">
-          <div className="h-full rounded-full bg-gradient-to-r from-brand-crimson to-rose-500" style={{ width: `${Math.max(8, storageLevel)}%` }} />
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-crimson to-[#F9C416]" style={{ width: `${Math.max(8, storageLevel)}%` }} />
         </div>
       </div>
     </div>
@@ -1816,7 +1816,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                             key={item.key}
                             type="button"
                             onClick={() => setSourceType(item.key)}
-                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
+                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(22,58,36,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
                           >
                             <div className="text-sm font-black">{item.label}</div>
                             <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{total} sources</div>
@@ -2514,7 +2514,7 @@ export function FetchTab({ embedded = false }) {
     <div className={embedded ? 'grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_280px]' : 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]'}>
       {/* Trigger card */}
       <div className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
-        <div className={embedded ? 'mb-4 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(209,18,67,0.12),_transparent_42%),linear-gradient(135deg,#fff7f8_0%,#ffffff_55%,#f8fafc_100%)] p-5' : 'mb-5'}>
+        <div className={embedded ? 'mb-4 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(22,58,36,0.12),_transparent_42%),linear-gradient(135deg,#F3FFE5_0%,#ffffff_55%,#f8fafc_100%)] p-5' : 'mb-5'}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <span className={`flex shrink-0 items-center justify-center text-white shadow-sm ${embedded ? 'h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-crimson to-brand-hoverred' : 'h-11 w-11 rounded-xl bg-brand-crimson'}`}>
@@ -2634,7 +2634,7 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(180deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(209,18,67,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(209,18,67,0.05)]'}`}>
+        <div className={`mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(180deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(22,58,36,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(22,58,36,0.05)]'}`}>
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {TOPIC_OPTIONS.map((topic) => (
@@ -2656,7 +2656,7 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
+        <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(22,58,36,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
               <Play size={17} />
@@ -4640,7 +4640,7 @@ const PLAN_ACCENT = {
   free:       { ring: 'ring-emerald-200', bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', grad: 'from-emerald-500 to-teal-600' },
   growth:     { ring: 'ring-blue-200',    bg: 'bg-blue-50',    text: 'text-blue-700',    badge: 'bg-blue-100 text-blue-800',    grad: 'from-blue-500 to-indigo-600' },
   scale:      { ring: 'ring-purple-200',  bg: 'bg-purple-50',  text: 'text-purple-700',  badge: 'bg-purple-100 text-purple-800', grad: 'from-purple-500 to-fuchsia-600' },
-  premium:    { ring: 'ring-rose-200',    bg: 'bg-rose-50',    text: 'text-rose-700',    badge: 'bg-rose-100 text-rose-800',    grad: 'from-rose-500 to-pink-600' },
+  premium:    { ring: 'ring-[#F9C416]/40',    bg: 'bg-[#F3FFE5]',    text: 'text-brand-crimson',    badge: 'bg-[#F9C416]/20 text-brand-crimson',    grad: 'from-[#F9C416] to-brand-crimson' },
   enterprise: { ring: 'ring-amber-200',   bg: 'bg-amber-50',   text: 'text-amber-700',   badge: 'bg-amber-100 text-amber-800',  grad: 'from-amber-500 to-orange-600' },
 };
 
@@ -5318,7 +5318,7 @@ function SuperAdminMailCenter() {
                 <MailPreviewBody message={previewMessage} />
                 {form.ctaUrl.trim() ? (
                   <div>
-                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]">
+                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(22,58,36,0.18)]">
                       {form.ctaLabel.trim() || 'Open link'}
                     </span>
                   </div>
@@ -5802,7 +5802,7 @@ function SystemSettingsTab() {
                   key={section.key}
                   type="button"
                   onClick={() => setActiveSection(section.key)}
-                  className={`inline-flex min-h-[38px] min-w-[132px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[148px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                  className={`inline-flex min-h-[38px] min-w-[132px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[148px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(22,58,36,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                 >
                   <Icon size={15} />
                   <span className="truncate">{section.label}</span>
@@ -5841,7 +5841,7 @@ function SystemSettingsTab() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveAiTab(tab.key)}
-                    className={`inline-flex min-h-[38px] min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[170px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                    className={`inline-flex min-h-[38px] min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[170px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(22,58,36,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                   >
                     <Icon size={15} />
                     <span className="truncate">{tab.label}</span>

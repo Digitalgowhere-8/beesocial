@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import api from '../api/axios';
 import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 
-const CRIMSON = '#D11243';
+const CRIMSON = '#163A24';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
 
@@ -172,14 +172,14 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
       style={{
         background: 'white',
         borderRadius: '12px',
-        border: '1px solid rgba(209,18,67,0.1)',
-        boxShadow: '0 1px 8px rgba(209,18,67,0.05)',
+        border: '1px solid rgba(22,58,36,0.1)',
+        boxShadow: '0 1px 8px rgba(22,58,36,0.05)',
       }}
     >
       {/* Header toggle */}
       <header
         className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none"
-        style={{ borderBottom: open ? '1px solid rgba(209,18,67,0.08)' : 'none' }}
+        style={{ borderBottom: open ? '1px solid rgba(22,58,36,0.08)' : 'none' }}
         onClick={() => setOpen((v) => !v)}
       >
         <div className="flex items-center gap-2.5">

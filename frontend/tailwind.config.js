@@ -40,13 +40,13 @@ export default {
           800: '#4A3B1B'
         },
         brand: {
-          crimson: '#D11243',
-          darkred: '#8F0B2F',
-          pink: '#FAF0F2',
-          lightpink: '#FFF5F6',
-          hoverred: '#BE0F3C'
+          crimson: '#103414',
+          darkred: '#10290D',
+          pink: '#F2F6E7',
+          lightpink: '#F7F9F1',
+          hoverred: '#173614'
         },
-        canvas: '#FAF9F6'   // page background
+        canvas: '#F7F8F3'   // page background
       },
       fontFamily: {
         display: ['"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif'],

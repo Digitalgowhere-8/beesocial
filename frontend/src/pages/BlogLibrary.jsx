@@ -638,13 +638,13 @@ export default function BlogLibrary() {
           h2 { color: #111827; font-size: 22px; margin: 30px 0 12px; }
           h3 { color: #111827; font-size: 18px; margin: 24px 0 10px; }
           p { margin: 12px 0; }
-          blockquote { border-left: 4px solid #D11243; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
+          blockquote { border-left: 4px solid #163A24; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
           ul, ol { margin: 12px 0 18px 24px; padding: 0; }
           li { margin: 6px 0; }
           table { border-collapse: collapse; margin: 18px 0; width: 100%; }
           th, td { border: 1px solid #d1d5db; padding: 9px 12px; text-align: left; vertical-align: top; }
           th { background: #f3f4f6; color: #374151; font-weight: 700; }
-          a { color: #D11243; }
+          a { color: #163A24; }
         </style>
         ${selected.title ? `<h1>${escapeHtml(selected.title)}</h1>` : ''}
         ${selected.excerpt ? `<blockquote>${renderInlineMarkdownHtml(selected.excerpt)}</blockquote>` : ''}
@@ -732,12 +732,12 @@ export default function BlogLibrary() {
           />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="content-header-segmented grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
             {LIBRARY_MODES.map((item) => {
               const Icon = item.icon;
               const active = mode === item.key;
               return (
-                <button type="button" key={item.key} onClick={() => { setMode(item.key); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                <button type="button" key={item.key} onClick={() => { setMode(item.key); setQuery(''); setMobileReaderOpen(false); }} className={`content-header-tab ${active ? 'content-header-tab-active' : 'content-header-tab-idle'} flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
                   <Icon size={14} />
                   <span className="sm:hidden">{item.label}</span>
                   <span className="hidden sm:inline">{item.desktopLabel}</span>
@@ -900,7 +900,7 @@ export default function BlogLibrary() {
                     <div
                       key={post._id}
                       className={`content-repo-list-card w-full rounded-[22px] border p-4 text-left transition-all duration-300 relative overflow-hidden ${
-                        isSelected ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
+                        isSelected ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(22,58,36,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
                       {isSelected && (
@@ -952,7 +952,7 @@ export default function BlogLibrary() {
                       key={blog._id}
                       className={`content-repo-list-card w-full text-left transition-all duration-300 rounded-[22px] p-4 border relative overflow-hidden group ${
                         isSelected 
-                          ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' 
+                          ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(22,58,36,0.12)]' 
                           : 'border-white/50 bg-white/72 hover:bg-white hover:border-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
@@ -1110,7 +1110,7 @@ function Pill({ icon: Icon, children, highlight = false }) {
   return (
     <span className={`content-repo-pill ${highlight ? 'content-repo-pill-highlight' : ''} inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border shadow-sm transition-all ${
       highlight 
-        ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(209,18,67,0.18)]' 
+        ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(22,58,36,0.18)]' 
         : 'border-gray-200 bg-white text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]'
     }`}>
       <Icon size={12} />

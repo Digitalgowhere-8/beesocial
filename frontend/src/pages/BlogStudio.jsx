@@ -1040,7 +1040,7 @@ export default function BlogStudio() {
         </button>
       </div>
       <div className="hidden w-full xl:flex xl:flex-row xl:items-center xl:gap-2">
-        <div className="grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm xl:w-auto xl:min-w-[360px]">
+        <div className="content-header-segmented grid w-full grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm xl:w-auto xl:min-w-[360px]">
           {CONTENT_TYPE_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = contentType === tab.key;
@@ -1050,7 +1050,7 @@ export default function BlogStudio() {
                 type="button"
                 onClick={() => switchContentType(tab.key)}
                 aria-disabled={generationLocked && !active}
-                className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
+                className={`content-header-tab ${active ? 'content-header-tab-active' : 'content-header-tab-idle'} flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all xl:min-h-[40px] xl:px-5 ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'} ${generationLocked && !active ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 <Icon size={14} />
                 <span className="xl:hidden">{tab.label}</span>
@@ -1447,7 +1447,7 @@ export default function BlogStudio() {
               {/* Ultra-soft ambient pink glow */}
               <div className="content-studio-generation-glow absolute -inset-10 rounded-[50px] bg-brand-pink/20 blur-3xl pointer-events-none" />
 
-              <div className="content-studio-generation-card relative overflow-hidden rounded-[24px] border border-gray-100 bg-white p-7 text-center shadow-[0_24px_50px_rgba(209,18,67,0.06)]">
+              <div className="content-studio-generation-card relative overflow-hidden rounded-[24px] border border-gray-100 bg-white p-7 text-center shadow-[0_24px_50px_rgba(22,58,36,0.06)]">
                 
                 {/* Single premium custom spinner */}
                 <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center">
@@ -1455,7 +1455,7 @@ export default function BlogStudio() {
                   <div className="content-studio-generation-track absolute inset-0 rounded-full border-[2px] border-gray-100" />
                   <div className="absolute inset-0 rounded-full border-[2px] border-transparent border-t-brand-crimson animate-spin" />
                   {/* Central soft logo indicator */}
-                  <div className="content-studio-generation-icon flex h-10 w-10 items-center justify-center rounded-full bg-brand-pink/30 text-brand-crimson shadow-[inset_0_1px_2px_rgba(209,18,67,0.05)] animate-pulse">
+                  <div className="content-studio-generation-icon flex h-10 w-10 items-center justify-center rounded-full bg-brand-pink/30 text-brand-crimson shadow-[inset_0_1px_2px_rgba(22,58,36,0.05)] animate-pulse">
                     {isGeneratingLinkedin ? (
                       <MessageSquareText size={18} />
                     ) : (
@@ -1492,8 +1492,8 @@ export default function BlogStudio() {
 function UpcomingStudioOverlay() {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-8">
-      <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(209,18,67,0.16),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.42),rgba(255,255,255,0.76))]" />
-      <div className="relative flex min-h-[220px] w-full max-w-xl items-center justify-center overflow-hidden rounded-[28px] border border-white/70 bg-white/82 p-8 text-center shadow-[0_28px_80px_rgba(209,18,67,0.18)] backdrop-blur-xl sm:p-10">
+      <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(22,58,36,0.16),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.42),rgba(255,255,255,0.76))]" />
+      <div className="relative flex min-h-[220px] w-full max-w-xl items-center justify-center overflow-hidden rounded-[28px] border border-white/70 bg-white/82 p-8 text-center shadow-[0_28px_80px_rgba(22,58,36,0.18)] backdrop-blur-xl sm:p-10">
         <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-brand-crimson via-rose-400 to-brand-crimson" />
         <h2 className="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">
           Upcoming
@@ -2004,7 +2004,7 @@ function TopicFilterBar({ filters, onChange, categoryOptions, subcategoryOptions
   };
 
   return (
-    <div className="content-studio-topic-filters overflow-hidden rounded-[16px] border border-brand-crimson/10 bg-white shadow-[0_1px_8px_rgba(209,18,67,0.05)]">
+    <div className="content-studio-topic-filters overflow-hidden rounded-[16px] border border-brand-crimson/10 bg-white shadow-[0_1px_8px_rgba(22,58,36,0.05)]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -2109,12 +2109,12 @@ function TopicSelectionFooter({ isSelected, idleHint, selectedHint }) {
         'content-studio-topic-footer',
         'relative flex items-center justify-between gap-3 rounded-[20px] border px-3.5 py-3.5 text-xs transition-all',
         isSelected
-          ? 'content-studio-topic-footer-selected border-brand-crimson/70 bg-[linear-gradient(135deg,#d11243_0%,#b40f39_100%)] text-white shadow-[0_16px_32px_rgba(180,15,57,0.26)]'
-          : 'content-studio-topic-footer-idle border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,244,247,0.98)_100%)] text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-hover/topic:border-brand-crimson/30 group-hover/topic:shadow-[0_12px_24px_rgba(209,18,67,0.10)]'
+          ? 'content-studio-topic-footer-selected border-brand-crimson/70 bg-[linear-gradient(135deg,#163A24_0%,#0E2618_100%)] text-white shadow-[0_16px_32px_rgba(22,58,36,0.26)]'
+          : 'content-studio-topic-footer-idle border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(243,255,229,0.98)_100%)] text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-hover/topic:border-brand-crimson/30 group-hover/topic:shadow-[0_12px_24px_rgba(22,58,36,0.10)]'
       ].join(' ')}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_10px_20px_rgba(209,18,67,0.10)]'}`}>
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'border border-brand-crimson/15 bg-white text-brand-crimson shadow-[0_10px_20px_rgba(22,58,36,0.10)]'}`}>
           {isSelected ? <Check size={14} /> : <MousePointer2 size={14} />}
         </span>
         <div className="min-w-0">
@@ -2201,7 +2201,7 @@ function LinkedInStudio({
   return (
     <>
     <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 xl:grid-cols-2">
-      <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]`}>
+      <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} content-studio-panel min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]`}>
         <PanelHeader icon={Layers} title="Intelligence Topics" />
         <TopicFilterBar
           filters={topicFilters}
@@ -2669,7 +2669,7 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
 function PanelHeader({ icon: Icon, title, subtitle }) {
   return (
     <div className="flex items-center gap-3 border-b border-gray-200/50 px-5 py-4 bg-white/60 backdrop-blur">
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-crimson to-brand-hoverred text-white shadow-sm">
+      <span className="content-studio-panel-header-icon flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-crimson to-brand-hoverred text-white shadow-sm">
         <Icon size={16} />
       </span>
       <div className="min-w-0">

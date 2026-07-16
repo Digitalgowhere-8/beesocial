@@ -52,10 +52,10 @@ export default function Login() {
   };
 
   const inputFocus = (e) => {
-    e.target.style.borderColor = '#D11243';
+    e.target.style.borderColor = isDark ? '#D11243' : '#163A24';
     e.target.style.boxShadow = isDark
       ? 'none'
-      : '0 0 0 4px rgba(209,18,67,0.1)';
+      : '0 0 0 4px rgba(22,58,36,0.1)';
   };
 
   const inputBlur = (e) => {
@@ -65,20 +65,20 @@ export default function Login() {
 
   const shellStyle = {
     fontFamily: robotoFont,
-    background: isDark ? '#070d17' : '#FAF0F2',
+    background: isDark ? '#070d17' : '#F3FFE5',
     color: isDark ? '#f8fafc' : '#111827'
   };
   const formPanelStyle = {
     background: isDark
       ? '#070d17'
-      : '#FAF0F2'
+      : '#F3FFE5'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
       ? 'none'
-      : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
-    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
+      : '0 12px 40px rgba(22,58,36,0.10), 0 1px 3px rgba(0,0,0,0.04)',
+    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(22,58,36,0.08)'
   };
   const inputStyle = {
     background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
@@ -93,7 +93,7 @@ export default function Login() {
     <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={shellStyle}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-12 pt-12 pb-0"
-        style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
+        style={{ background: isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : 'linear-gradient(135deg, #163A24 0%, #07180E 100%)' }}
       >
         <div
           className="absolute inset-0 opacity-10 pointer-events-none"
@@ -172,7 +172,7 @@ export default function Login() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Password</label>
-                  <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
+                  <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
                     Forgot Password?
                   </Link>
                 </div>
@@ -201,7 +201,7 @@ export default function Login() {
               )}
 
               {error && (
-                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#D11243', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(209,18,67,0.15)' }}>
+                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#b91c1c', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(185,28,28,0.15)' }}>
                   {error}
                 </div>
               )}
@@ -212,19 +212,20 @@ export default function Login() {
                 disabled={loading}
                 className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 mt-4"
                 style={{
-                  background: loading ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
-                  boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
+                  background: loading ? (isDark ? '#e88' : '#d8c15a') : (isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : 'linear-gradient(135deg, #F9C416 0%, #E7AE0F 100%)'),
+                  color: isDark ? '#ffffff' : '#163A24',
+                  boxShadow: isDark ? 'none' : '0 4px 14px rgba(249,196,22,0.34)',
                   fontFamily: robotoFont
                 }}
                 onMouseOver={(e) => {
                   if (!loading) {
                     e.currentTarget.style.transform = 'translateY(-1.5px)';
-                    e.currentTarget.style.boxShadow = isDark ? 'none' : '0 6px 20px rgba(209,18,67,0.4)';
+                    e.currentTarget.style.boxShadow = isDark ? 'none' : '0 6px 20px rgba(249,196,22,0.44)';
                   }
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)';
+                  e.currentTarget.style.boxShadow = isDark ? 'none' : '0 4px 14px rgba(249,196,22,0.34)';
                 }}
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <>Sign In <ArrowRight size={14} /></>}
@@ -233,7 +234,7 @@ export default function Login() {
 
             <p className={`mt-5 text-center text-xs ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Need access?{' '}
-              <Link to="/register" className="font-bold hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
+              <Link to="/register" className="font-bold hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
                 Request an account
               </Link>
             </p>

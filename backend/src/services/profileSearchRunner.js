@@ -505,8 +505,7 @@ function domainsForTopic(profile, topic) {
   const filteredTopicDomains = topicDomains.filter((domain) => !excludedDomains.has(cleanDomain(domain)));
   // Keep fetches locked to the configured source lists so results stay inside
   // the known domain set for the selected country/topic.
-  if (filteredDefaults.length) return filteredDefaults;
-  return filteredTopicDomains;
+  return unique([...filteredTopicDomains, ...filteredDefaults].map(cleanDomain).filter(Boolean));
 }
 
 function tavilyTopicForProfileTopic(topic) {

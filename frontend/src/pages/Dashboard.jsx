@@ -183,7 +183,7 @@ const FeedColumn = memo(function FeedColumn({ column, items, loading, totalCount
   return (
     <section
       data-analytics-section={`Intel feed: ${column.label}`}
-      className="intel-feed-column relative min-h-0 overflow-hidden rounded-[26px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,248,250,0.95)_0%,rgba(255,255,255,0.98)_42%,rgba(255,247,249,0.92)_100%)] shadow-card flex flex-col"
+      className="intel-feed-column relative min-h-0 overflow-hidden rounded-[26px] border border-gray-200 bg-[linear-gradient(180deg,rgba(255,248,250,0.95)_0%,rgba(255,255,255,0.98)_42%,rgba(243,255,229,0.92)_100%)] shadow-card flex flex-col"
     >
       <div
         className="border-b border-brand-crimson/10 bg-brand-pink/70 px-5 py-4"
@@ -1056,7 +1056,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 <Sparkles size={14} />
                 <span className="truncate">{analyticsViewMode === 'today' ? 'Today' : 'Full Hive'}</span>
               </div>
-              <div className="mobile-live-buzz-pill inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[linear-gradient(180deg,#fff8fa_0%,#fff3f6_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+              <div className="mobile-live-buzz-pill inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#F9C416]/35 bg-[linear-gradient(180deg,#F3FFE5_0%,#ffffff_100%)] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72] shadow-[0_0_0_4px_rgba(109,223,114,0.14)]" />
                 <span className="truncate">{Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}</span>
               </div>
@@ -1092,7 +1092,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
                 onClick={() => setAnalyticsViewMode(mode.key)}
                 className={`dashboard-pill-option min-h-[40px] rounded-xl px-5 text-[13px] font-black uppercase tracking-wider transition-all ${
                   analyticsViewMode === mode.key
-                    ? 'dashboard-pill-option-active bg-brand-crimson text-white shadow-[0_6px_14px_rgba(209,18,67,0.18)]'
+                    ? 'dashboard-pill-option-active bg-brand-crimson text-white shadow-[0_6px_14px_rgba(22,58,36,0.18)]'
                     : 'dashboard-pill-option-idle text-[#98a0b3] hover:bg-white'
                 }`}
               >
@@ -1100,7 +1100,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               </button>
             ))}
           </div>
-          <div className="live-buzz-chip hidden sm:inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#ffd8e1] bg-[#fff7f9] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
+          <div className="live-buzz-chip hidden sm:inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-[#F9C416]/35 bg-[#F3FFE5] px-4 text-[13px] font-black text-brand-crimson shadow-sm">
             <span className="h-2.5 w-2.5 rounded-full bg-[#6ddf72]" />
             {Object.values(analyticsData || {}).flat().length > 0 ? 'Live Buzz' : 'No Buzz'}
           </div>
@@ -1396,7 +1396,7 @@ function ComposerDropTray({ open, article, onDropMode }) {
       title: 'Blog Generator',
       subtitle: 'Create review-ready long-form content',
       icon: BookOpenText,
-      tint: 'from-rose-500 to-pink-500',
+      tint: 'from-brand-crimson to-[#F9C416]',
     },
     {
       mode: 'social',
@@ -1422,7 +1422,7 @@ function ComposerDropTray({ open, article, onDropMode }) {
         ].join(' ')}
       >
         <div className={`pointer-events-auto mx-auto max-w-5xl overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_-22px_70px_rgba(15,23,42,0.22)] backdrop-blur-2xl ${open ? 'composer-pop' : ''}`}>
-          <div className="h-1.5 bg-[linear-gradient(90deg,#D11243,#38bdf8,#8b5cf6,#D11243)] bg-[length:220%_100%] composer-gradient" />
+          <div className="h-1.5 bg-[linear-gradient(90deg,#163A24,#F9C416,#8fbf3f,#163A24)] bg-[length:220%_100%] composer-gradient" />
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(260px,0.85fr)_minmax(0,1.35fr)] lg:p-5">
             <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50/80 p-4">
               <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-brand-crimson shadow-sm">
@@ -1473,7 +1473,7 @@ function ComposerDropTray({ open, article, onDropMode }) {
                     className={[
                       'group relative flex min-h-[148px] overflow-hidden rounded-xl border-2 border-dashed px-4 py-4 text-left transition-all duration-300 sm:px-5',
                       active
-                        ? 'scale-[1.025] border-brand-crimson bg-brand-pink/50 shadow-[0_18px_45px_rgba(209,18,67,0.18)]'
+                        ? 'scale-[1.025] border-brand-crimson bg-brand-pink/50 shadow-[0_18px_45px_rgba(22,58,36,0.18)]'
                         : 'border-gray-200 bg-white hover:-translate-y-1 hover:border-brand-crimson/40 hover:shadow-lg',
                     ].join(' ')}
                   >
