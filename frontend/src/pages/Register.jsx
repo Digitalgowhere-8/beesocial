@@ -44,8 +44,8 @@ export default function Register() {
   const update = (k, v) => setForm({ ...form, [k]: v });
 
   const inputStyle = {
-    background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
-    border: isDark ? '1px solid rgba(148,163,184,0.18)' : '1px solid #e5e7eb',
+    background: isDark ? 'rgba(7,14,25,0.96)' : '#ffffff',
+    border: isDark ? '1px solid rgba(148,163,184,0.18)' : '1px solid #D8DED2',
     borderRadius: '12px',
     padding: '12px 14px',
     fontSize: '14px',
@@ -53,44 +53,44 @@ export default function Register() {
     width: '100%',
     outline: 'none',
     transition: 'all 0.2s',
-    boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.02)',
+    boxShadow: 'none',
     fontFamily: robotoFont
   };
 
   const handleFocus = (e) => {
-    e.target.style.borderColor = isDark ? '#D11243' : '#163A24';
+    e.target.style.borderColor = isDark ? '#D11243' : '#CBD5E1';
     e.target.style.boxShadow = isDark
       ? 'none'
-      : '0 0 0 4px rgba(22,58,36,0.1)';
+      : '0 0 0 3px rgba(148,163,184,0.18)';
   };
 
   const handleBlur = (e) => {
-    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2';
     e.target.style.boxShadow = 'none';
   };
 
   const shellStyle = {
     fontFamily: robotoFont,
-    background: isDark ? '#070d17' : '#F3FFE5',
+    background: isDark ? '#070d17' : '#FAFBF7',
     color: isDark ? '#f8fafc' : '#111827'
   };
   const formPanelStyle = {
     background: isDark
       ? '#070d17'
-      : '#F3FFE5'
+      : '#FAFBF7'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
       ? 'none'
-      : '0 12px 40px rgba(22,58,36,0.10), 0 1px 3px rgba(0,0,0,0.04)',
-    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(22,58,36,0.08)'
+      : '0 1px 2px rgba(15,23,42,0.04)',
+    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid #D8DED2'
   };
   const optionButtonClass = [
     'group flex w-full items-start gap-4 rounded-2xl border p-5 text-left transition-all duration-300',
     isDark
       ? 'border-slate-700/40 bg-slate-950/45 hover:border-[#D11243] hover:bg-[#D11243]/10'
-      : 'border-gray-100 bg-gray-50/50 hover:border-[#163A24]/45 hover:bg-[#F3FFE5]'
+      : 'border-[#D8DED2] bg-white hover:border-[#B7D89D] hover:bg-[#FAFBF7]'
   ].join(' ');
   const titleColor = isDark ? 'text-white' : 'text-gray-900';
   const bodyTextColor = isDark ? 'text-slate-400' : 'text-gray-400';

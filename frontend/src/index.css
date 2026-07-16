@@ -3299,15 +3299,21 @@ body.theme-dark .admin-theme-page .admin-plan-card .admin-plan-toggle.admin-plan
 }
 
 .auth-primary-button {
-  background: #F9C416 !important;
-  color: #163A24 !important;
-  box-shadow: 0 10px 22px rgba(249, 196, 22, 0.30) !important;
+  background: #163A24 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .auth-primary-button:hover:not(:disabled) {
-  background: #E7AE0F !important;
-  color: #163A24 !important;
-  box-shadow: 0 14px 28px rgba(249, 196, 22, 0.40) !important;
+  background: #0E2618 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.auth-primary-button:disabled {
+  background: #CBD5C5 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .app-refresh-button {
@@ -4582,6 +4588,9 @@ body:not(.theme-dark) .profile-tab-button-active {
   border-color: var(--bee-green-900) !important;
   color: #ffffff !important;
   box-shadow: none !important;
+  outline: 0 !important;
+  --tw-ring-color: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
 }
 
 body:not(.theme-dark) .content-header-tab-active svg,

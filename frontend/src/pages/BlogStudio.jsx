@@ -1203,7 +1203,7 @@ export default function BlogStudio() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                         }}
-                        className={`group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
+                        className={`content-studio-topic-card-frame group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                       >
                         <ArticleCard
                           item={item}
@@ -2233,7 +2233,7 @@ function LinkedInStudio({
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') setSelectedArticle(item);
                     }}
-                    className={`group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
+                    className={`content-studio-topic-card-frame group/topic relative h-full w-full cursor-grab rounded-[26px] text-left active:cursor-grabbing transition-all duration-300 ${draggingArticleId === item._id ? 'scale-[0.985] opacity-50' : 'hover:-translate-y-1'}`}
                   >
                     <ArticleCard
                       item={item}

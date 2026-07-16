@@ -597,7 +597,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   };
 
   return (
-    <div className="space-y-6" data-analytics-section="Super admin platform overview">
+    <div className="super-admin-overview space-y-6" data-analytics-section="Super admin platform overview">
       {activeSubTab === 'overview' ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" data-analytics-section="Platform KPI cards">
@@ -632,9 +632,13 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-[#0E2618] text-sm font-black text-white shadow-sm">
-                          {(row.user?.name || 'U')[0].toUpperCase()}
-                        </div>
+                        {row.user?.avatar ? (
+                          <img src={row.user.avatar} className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover shadow-sm" alt={row.user?.name || 'User avatar'} />
+                        ) : (
+                          <div className="super-admin-user-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-sm font-black text-white shadow-sm">
+                            {(row.user?.name || row.user?.email || 'U')[0].toUpperCase()}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <div className="truncate text-sm font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
                           <div className="truncate text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
@@ -675,9 +679,13 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                       <tr key={row.user?._id || index} className="premium-table-row">
                         <td className="rounded-l-2xl px-3 py-4">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white shadow-sm ring-4 ring-brand-pink/40">
-                              {(row.user?.name || 'U')[0].toUpperCase()}
-                            </div>
+                            {row.user?.avatar ? (
+                              <img src={row.user.avatar} className="h-9 w-9 shrink-0 rounded-full border border-gray-200 object-cover shadow-sm" alt={row.user?.name || 'User avatar'} />
+                            ) : (
+                              <div className="super-admin-user-avatar flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white shadow-sm">
+                                {(row.user?.name || row.user?.email || 'U')[0].toUpperCase()}
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <div className="truncate font-black leading-tight text-gray-900">{row.user?.name || 'Unknown user'}</div>
                               <div className="mt-0.5 truncate text-xs font-semibold text-gray-500">{row.user?.email || '-'}</div>
@@ -1284,7 +1292,7 @@ function ArticlesTab({ ownerOnly = false }) {
   };
 
   return (
-    <div className="admin-logs-page space-y-5">
+    <div className="admin-articles-page space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
         <Filters
           initial={filters}
@@ -3132,7 +3140,7 @@ function LogsTab() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="admin-logs-page space-y-5">
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3146,7 +3154,7 @@ function LogsTab() {
                 <p className="mt-1 text-sm font-medium text-gray-500">{items.length} latest fetch logs</p>
               </div>
             </div>
-            <button onClick={load} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50">
+            <button onClick={load} className="admin-logs-refresh-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50">
               <RefreshCw size={14} /> Refresh
             </button>
           </div>
@@ -3169,14 +3177,14 @@ function LogsTab() {
             </div>
           </div>
           <div className="flex gap-2">
-            <select className="select min-h-[44px] rounded-xl" value={cleanupDays} onChange={(e) => setCleanupDays(Number(e.target.value))}>
+            <select className="select min-h-[44px] min-w-0 flex-1 rounded-xl" value={cleanupDays} onChange={(e) => setCleanupDays(Number(e.target.value))}>
               <option value={7}>Older than 7 days</option>
               <option value={15}>Older than 15 days</option>
               <option value={30}>Older than 30 days</option>
               <option value={60}>Older than 60 days</option>
               <option value={90}>Older than 90 days</option>
             </select>
-            <button type="button" onClick={cleanupLogs} disabled={deleting} className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50">
+            <button type="button" onClick={cleanupLogs} disabled={deleting} className="admin-logs-delete-button inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50">
               {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Delete
             </button>
@@ -4779,8 +4787,8 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           if (!cfg) return null;
           const ac = PLAN_ACCENT[pk];
           return (
-            <div key={pk} className={`admin-plan-card bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
-              <div className={`bg-gradient-to-br ${ac.grad} p-5`}>
+            <div key={pk} className={`admin-plan-card admin-plan-card-${pk} bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
+              <div className={`admin-plan-card-header bg-gradient-to-br ${ac.grad} p-5`}>
                 <div className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{pk} plan</div>
                 <div className="flex items-end gap-2">
                   <input
@@ -4825,7 +4833,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                           </div>
                         );
                       })}
-                      <div className={`text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
+                      <div className={`admin-plan-hard-cap text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
                         Hard cap: {(cfg.limits?.blogGenerationsMonthly ?? 0).toLocaleString()} blogs &middot; {(cfg.limits?.socialPostsMonthly ?? 0).toLocaleString()} posts
                       </div>
                     </div>
@@ -4842,14 +4850,14 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                             key={key}
                             type="button"
                             onClick={() => toggleFeature(pk, key)}
-                            className={`admin-plan-feature-row w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border ${on ? `${ac.bg} ${ac.ring} ${ac.text}` : 'bg-gray-50 border-gray-100'}`}
+                            className={`admin-plan-feature-row ${on ? 'admin-plan-feature-on' : 'admin-plan-feature-off'} w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border`}
                           >
                             <div className="min-w-0">
-                              <div className={`text-xs font-black truncate ${on ? ac.text : 'text-gray-500'}`}>{label}</div>
+                              <div className={`text-xs font-black truncate ${on ? 'text-[#163A24]' : 'text-gray-500'}`}>{label}</div>
                               <div className="text-[9px] text-gray-400 truncate">{help}</div>
                             </div>
                             <div
-                              className={`admin-plan-toggle ${on ? `admin-plan-toggle-on bg-gradient-to-r ${ac.grad}` : 'admin-plan-toggle-off bg-gray-200'} h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all`}
+                              className={`admin-plan-toggle ${on ? 'admin-plan-toggle-on' : 'admin-plan-toggle-off'} h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all`}
                               style={isDark ? {
                                 background: on ? '#10b981' : '#111827',
                                 backgroundImage: 'none',
@@ -5140,7 +5148,7 @@ function SuperAdminMailCenter() {
   if (loadingAudience) return <Loader />;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-mail-center-page space-y-6">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-start justify-between gap-4">
@@ -5203,7 +5211,7 @@ function SuperAdminMailCenter() {
                     key={option.key}
                     type="button"
                     onClick={() => handleAudienceChange(option.key)}
-                    className={`rounded-2xl border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson bg-brand-pink/30 shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-brand-crimson/20 hover:bg-white'}`}
+                    className={`admin-mail-audience-card ${active ? 'admin-mail-audience-card-active' : 'admin-mail-audience-card-idle'} rounded-2xl border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson bg-brand-pink/30 shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-brand-crimson/20 hover:bg-white'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-800'}`}>{option.label}</div>
@@ -5232,7 +5240,7 @@ function SuperAdminMailCenter() {
                         key={item._id}
                         type="button"
                         onClick={() => toggleRecipient(item._id)}
-                        className={`rounded-xl border px-3 py-3 text-left transition-all ${checked ? 'border-brand-crimson bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-brand-crimson/20'}`}
+                        className={`admin-mail-recipient-card ${checked ? 'admin-mail-recipient-card-active' : 'admin-mail-recipient-card-idle'} rounded-xl border px-3 py-3 text-left transition-all ${checked ? 'border-brand-crimson bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-brand-crimson/20'}`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -5767,7 +5775,7 @@ function SystemSettingsTab() {
     }));
   }, []);
   return (
-    <div className="space-y-5 font-sans">
+    <div className="admin-system-settings-page space-y-5 font-sans">
       <div className="overflow-hidden rounded-2xl border border-ink-100/70 bg-white shadow-card">
         <div className="border-b border-ink-100/70 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -5938,7 +5946,8 @@ function SystemSettingsTab() {
                           step="0.05"
                           value={config.temperature ?? 0}
                           onChange={(e) => updateStudioAi(section.key, 'temperature', Number(e.target.value))}
-                          className="w-full accent-brand-crimson"
+                          className="admin-temperature-range w-full accent-brand-crimson"
+                          style={{ '--range-progress': `${Math.max(0, Math.min(100, Number(config.temperature ?? 0) * 100))}%` }}
                         />
                       </label>
                       <label className="block">

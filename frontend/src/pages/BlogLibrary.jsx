@@ -871,8 +871,8 @@ export default function BlogLibrary() {
           </div>
         )}
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
-          <section className={`content-repo-list-panel ${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]">
+          <section className={`content-repo-list-panel ${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:py-4 sm:pl-4 sm:pr-5 xl:h-[calc(100vh-96px)]`}>
             {loading && ((mode === 'blogs' && !items.length) || (mode === 'linkedin' && !socialItems.length)) ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
@@ -1003,7 +1003,7 @@ export default function BlogLibrary() {
             )}
           </section>
 
-          <article className={`content-repo-reader ${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:p-10`}>
+          <article className={`content-repo-reader ${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:h-[calc(100vh-96px)] xl:p-10`}>
             <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-gray-100 bg-white/96 px-4 py-3 backdrop-blur xl:hidden">
               <button
                 type="button"
