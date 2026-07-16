@@ -1706,7 +1706,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   if (!config || !profileMeta) return <Loader />;
 
   return (
-    <div className={showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}>
+    <div className={`super-admin-fetch-page ${showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}`}>
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -1968,7 +1968,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </div>
           </FetchField>
           <FetchField label="Data age">
-            <select className="select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
+            <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
               <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={14}>Last 14 days</option>
@@ -1978,7 +1978,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </select>
           </FetchField>
           <FetchField label="Minimum score">
-            <input type="number" min="0" max="100" className="input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
+            <input type="number" min="0" max="100" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
           </FetchField>
         </div>
 
@@ -1996,16 +1996,16 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               Enable schedule
             </label>
             <FetchField label="Frequency">
-              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
+              <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
               </select>
             </FetchField>
             <FetchField label="Time">
-              <input type="time" className="input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
+              <input type="time" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
             </FetchField>
             <FetchField label="Timezone">
-              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
+              <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
                 {browserTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
               </select>
             </FetchField>
@@ -2059,7 +2059,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
+            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="admin-super-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Save
             </button>
@@ -2521,11 +2521,11 @@ export function FetchTab({ embedded = false }) {
   return (
     <div className={embedded ? 'grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_280px]' : 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]'}>
       {/* Trigger card */}
-      <div className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
-        <div className={embedded ? 'mb-4 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(22,58,36,0.12),_transparent_42%),linear-gradient(135deg,#F3FFE5_0%,#ffffff_55%,#f8fafc_100%)] p-5' : 'mb-5'}>
+      <div className={`admin-fetch-control-surface rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
+        <div className={embedded ? 'admin-fetch-hero-panel mb-5 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(22,58,36,0.08),_transparent_38%),linear-gradient(135deg,#F3FFE5_0%,#ffffff_55%,#f8fafc_100%)] px-5 pb-7 pt-5' : 'mb-5'}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <span className={`flex shrink-0 items-center justify-center text-white shadow-sm ${embedded ? 'h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-crimson to-brand-hoverred' : 'h-11 w-11 rounded-xl bg-brand-crimson'}`}>
+              <span className={`flex shrink-0 items-center justify-center border text-white ${embedded ? 'h-12 w-12 rounded-2xl border-brand-crimson/20 bg-brand-crimson' : 'h-11 w-11 rounded-xl border-brand-crimson/20 bg-brand-crimson'}`}>
                 <RefreshCw size={18} />
               </span>
               <div className="min-w-0">
@@ -2546,16 +2546,16 @@ export function FetchTab({ embedded = false }) {
           </div>
 
           {embedded ? (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Selected categories</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{selectedCategories.length || 0}</div>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Topics enabled</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{selectedTopics.length || 0}</div>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Schedule</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{canUseScheduler ? (form.scheduleEnabled ? 'Enabled' : 'Available') : 'Locked'}</div>
               </div>
@@ -2577,7 +2577,7 @@ export function FetchTab({ embedded = false }) {
           <div className={embedded ? 'xl:col-span-5' : 'md:col-span-2 2xl:col-span-1'}>
           <FetchField label="Category">
             <details className="group relative">
-              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-brand-crimson/30 hover:bg-brand-pink/10 [&::-webkit-details-marker]:hidden">
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-gray-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-gray-200/70 [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 truncate">
                   {selectedCategories.length
                     ? selectedCategories.length === 1
@@ -2595,7 +2595,7 @@ export function FetchTab({ embedded = false }) {
                       <label
                         key={category}
                         className={`admin-fetch-choice flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-bold transition-all ${
-                          checked ? 'admin-fetch-choice-selected bg-white text-gray-900 ring-1 ring-brand-crimson/30' : 'text-gray-600 hover:bg-gray-50'
+                          checked ? 'admin-fetch-choice-selected bg-white text-gray-900' : 'text-gray-600 hover:bg-gray-50'
                         }`}
                       >
                         <input
@@ -2642,11 +2642,11 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(180deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(22,58,36,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(22,58,36,0.05)]'}`}>
+        <div className={`admin-fetch-topics-panel mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/20 bg-[linear-gradient(180deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(22,58,36,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(22,58,36,0.05)]'}`}>
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {TOPIC_OPTIONS.map((topic) => (
-                <label key={topic.key} className={`admin-fetch-choice group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-choice-selected border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm'}`}>
+                <label key={topic.key} className={`admin-fetch-topic-choice admin-fetch-choice group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-topic-choice-selected admin-fetch-choice-selected border-brand-crimson/30 bg-brand-pink/25 text-gray-900 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:bg-brand-pink/10 hover:shadow-sm'}`}>
                   <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
                   <span className="min-w-0">
                     <span className="block truncate font-black text-gray-900">{topic.label}</span>
@@ -2666,7 +2666,7 @@ export function FetchTab({ embedded = false }) {
 
         <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(22,58,36,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
+            <span className="admin-fetch-summary-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
               <Play size={17} />
             </span>
             <div className="min-w-0">
@@ -2683,7 +2683,7 @@ export function FetchTab({ embedded = false }) {
               type="button"
               disabled={savingDetails || !selectedCategories.length}
               onClick={saveSearchDetails}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+              className={`admin-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 ${savingDetails ? 'admin-fetch-save-button-saving' : ''}`}
               title={selectedCategories.length ? 'Save as default fetch details' : 'Select a category first'}
             >
               {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -2693,7 +2693,7 @@ export function FetchTab({ embedded = false }) {
               type="button"
               disabled={!canUseFetch || pipelineRunning || !selectedCategories.length}
               onClick={runFetch}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              className="admin-fetch-run-button inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
               title={!canUseFetch ? 'Manual fetch access is disabled for this profile' : selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
             >
               {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -2793,11 +2793,11 @@ export function FetchTab({ embedded = false }) {
                 type="button"
                 onClick={saveSchedule}
                 disabled={savingSchedule || !selectedCategories.length}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+                className={`admin-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 ${savingSchedule ? 'admin-fetch-save-button-saving' : ''}`}
                 title={selectedCategories.length ? 'Save schedule settings' : 'Select a category before saving schedule'}
               >
                 {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save schedule
+                {savingSchedule ? 'Saving' : 'Save schedule'}
               </button>
             </div>
           </div>
