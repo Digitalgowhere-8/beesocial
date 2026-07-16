@@ -49,21 +49,42 @@ const configuredOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+const frontendOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const configuredOriginPatterns = (process.env.CORS_ORIGIN_PATTERNS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((pattern) => {
+    try {
+      return new RegExp(pattern);
+    } catch (err) {
+      console.warn(`[boot] Ignoring invalid CORS_ORIGIN_PATTERNS entry "${pattern}": ${err.message}`);
+      return null;
+    }
+  })
+  .filter(Boolean);
 const defaultDevOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:3000',
   'http://127.0.0.1:3000'
 ];
-const allowedOrigins = configuredOrigins.length
-  ? configuredOrigins
+const configuredAllowedOrigins = [...new Set([...configuredOrigins, ...frontendOrigins])];
+const allowedOrigins = configuredAllowedOrigins.length
+  ? configuredAllowedOrigins
   : (process.env.NODE_ENV === 'production' ? [] : defaultDevOrigins);
+function isAllowedCorsOrigin(origin) {
+  return allowedOrigins.includes(origin) || configuredOriginPatterns.some((pattern) => pattern.test(origin));
+}
 
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (isAllowedCorsOrigin(origin)) return callback(null, true);
       return callback(new Error('CORS origin not allowed'));
     },
     credentials: false
@@ -140,6 +161,16 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/profile-search', profileSearchRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/realtime', realtimeRoutes);
+
+// Compatibility for deployments/proxies that route the API host directly
+// without preserving the /api prefix.
+app.use('/auth', authRoutes);
+app.use('/analytics', analyticsRoutes);
+app.use('/articles', articleRoutes);
+app.use('/admin', adminRoutes);
+app.use('/profile-search', profileSearchRoutes);
+app.use('/blogs', blogRoutes);
+app.use('/realtime', realtimeRoutes);
 
 // --------- 404 + Error ---------
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.method} ${req.path}` }));
