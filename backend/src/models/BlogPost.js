@@ -53,7 +53,6 @@ const blogPostSchema = new mongoose.Schema(
     keywords: [{ type: String, trim: true }],
     language: { type: String, default: 'en' },
     model: { type: String, default: '' },
-    generationPrompt: { type: String, default: '' },
     publishedAt: { type: Date }
   },
   { timestamps: true }

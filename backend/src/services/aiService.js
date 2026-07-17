@@ -59,64 +59,86 @@ function wordsToMaxTokens(words, fallbackTokens) {
 }
 
 const BEESOCIAL_BRAND_GUIDELINES = [
-  'BeeSocial brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
+  'Client brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
   'Voice: clear, practical, commercially aware, credible, calm, and advisory. The content should feel premium and expert, not casual, hype-led, or generic.',
   'Audience: founders, CFOs, finance leaders, boards, investors, regional expansion teams, and business owners who need actionable guidance, not academic explanation.',
   'Point of view: translate policy, tax, regulatory, market, or operational updates into business implications, decision points, risks, and next steps.',
   'Style: use plain English, short-to-medium paragraphs, concrete examples, structured lists, and careful advisory caveats where law, tax, employment, immigration, or compliance is involved.',
   'Do not overpromise outcomes, guarantee ease/speed, or make unsupported claims. Prefer wording such as "may", "can", "should review", "subject to facts", and "businesses should assess".',
-  'CTA style: consultative and useful. Explain briefly how BeeSocial can help with the relevant service area without turning the conclusion into a sales pitch.'
+  'CTA style: consultative and useful. Explain briefly how the client company or advisory team can help with the relevant service area without turning the conclusion into a sales pitch.'
 ].join('\n');
 
 const BLOG_WRITING_SOP = [
   'Follow this SOP for every blog:',
-  '1. Base the blog on the approved/selected topic and reference material. Use reliable sources first, especially official or government sources when the topic is regulatory, tax, employment, compliance, or market-entry related.',
-  '2. Produce a long-form, structured blog with: Introduction, Table of Contents, body sections, conclusion, CTA, FAQ, SEO/meta fields, social media copy, and resources.',
-  '3. Headings must be keyword-aware and use proper Markdown hierarchy. Use one H1 only, then H2/H3 headings. H2 headings should include relevant seed or long-tail keywords naturally.',
-  '4. Include tables where they genuinely improve readability, such as comparison tables, requirement summaries, checklist tables, timeline tables, or decision frameworks.',
-  '5. Include practical examples from a B2B/business-services perspective when supported by the source material. If a specific example is not supported, use cautious scenario wording instead of inventing facts.',
-  '6. Use bullet points and numbered lists to break up dense sections. Avoid walls of text.',
-  '7. Use seed and long-tail keywords wisely. Do not stuff keywords.',
-  '8. The introduction must be specific and engaging enough to hook the reader into the business issue.',
-  '9. The conclusion must summarise the blog, include 2-3 lines on how BeeSocial can help with the relevant problem or service area, and nudge the reader toward the desired CTA.',
-  '10. FAQs must be search-friendly, informative, and answer real questions a buyer might ask.',
-  '11. SEO title should be catchy, keyword-aware, and around 50-60 characters where possible. Meta description should summarise the page and be around 145-155 characters.',
-  '12. Include a Resources section listing the selected source URL and any reference/competitor URLs provided by the user. Do not fabricate resource links.',
-  '13. Humanise the copy: remove robotic transitions, filler, repeated phrasing, and generic AI language. Grammar must be publication-ready.'
+  '1. Start from the approved/selected topic. If the user provided a topic, write only on that topic. If the topic came from research/intelligence, treat the selected item as the approved topic.',
+  '2. Understand the client/company before writing: company name, service area, audience, industry perspective, tone, and CTA must shape the article.',
+  '3. Base the blog on approved reference material. Use reliable sources first, especially official/government sources for regulatory, tax, employment, compliance, market-entry, or legal topics.',
+  '4. Use competitor/reference URLs only as research context. Do not copy them, do not plagiarize, and do not fabricate competitor findings.',
+  '5. Produce a long-form, structured blog using this SOP template: Banner, Title, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, FAQ, CTA, Social media copy, Resources.',
+  '6. Body of Content must include an engaging introduction, Table of Contents, structured body sections, conclusion, and CTA.',
+  '7. Headings must be keyword-aware and use proper Markdown hierarchy. Use one H1 only, then H2/H3 headings. H2 headings should include relevant seed or long-tail keywords naturally.',
+  '8. Include tables where they genuinely improve readability, such as comparison tables, requirement summaries, checklist tables, timeline tables, or decision frameworks.',
+  '9. Include practical examples from the requested B2B/B2C/industry perspective when supported by the source material. If a specific example is not supported, use cautious scenario wording instead of inventing facts.',
+  '10. Use bullet points and numbered lists to break up dense sections. Avoid walls of text.',
+  '11. Use seed and long-tail keywords wisely. Do not stuff keywords.',
+  '12. The introduction must be specific and engaging enough to hook the reader into the business issue.',
+  '13. Use data, image/banner ideas, infographic ideas, and relevant source context only when supported by the provided material.',
+  '14. The conclusion must summarise the blog, include 2-3 lines on how the client company or advisory team can help with the relevant problem or service area, and nudge the reader toward the desired CTA.',
+  '15. FAQs must be search-friendly, informative, and answer real questions a buyer might ask.',
+  '16. SEO title should be catchy, keyword-aware, and around 50-60 characters where possible. Meta description should summarise the page and be around 145-155 characters.',
+  '17. Include a Resources section listing the selected source URL and any reference/competitor URLs provided by the user. Do not fabricate resource links.',
+  '18. Humanise the copy: remove robotic transitions, filler, repeated phrasing, and generic AI language. Grammar must be publication-ready and polished.'
 ].join('\n');
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
-  const title = article?.title || 'Market intelligence update';
+  const rawTitle = article?.title || 'Market intelligence update';
+  const title = String(rawTitle)
+    .replace(/^\d+\.\s*/, '')
+    .replace(/\s*\|\s*[^|]{2,40}$/g, '')
+    .trim() || 'Market intelligence update';
   const audience = style.audience || 'business decision-makers';
   const cta = style.cta || 'Speak with our team to understand how this update may affect your plans.';
-  const keywordLine = keywords.length ? `\n\nFocus keywords: ${keywords.join(', ')}` : '';
-  const context = blogSourceContext(article);
+  const summary = article?.summary || article?.aiSummary || 'This update may create a new planning, compliance, market-entry, or advisory signal for businesses.';
+  const metaDescription = String(summary || `A practical update for ${audience}.`).replace(/\s+/g, ' ').trim().slice(0, 155);
   return {
     title,
-    excerpt: article?.summary || `A practical update for ${audience}.`,
+    excerpt: summary,
     bodyMarkdown: [
+      `## Banner`,
+      '',
+      `Use a clean professional banner with business documentation, market-entry, and compliance visual cues. Keep the headline focused on "${title}" and the practical decision businesses need to review.`,
+      '',
       `# ${title}`,
+      '',
+      `## Table of Contents`,
+      '',
+      '- Introduction',
+      '- Why this matters',
+      '- What companies should review',
+      '- Practical checklist',
+      '- FAQ',
+      '- Conclusion',
+      '',
+      `## Introduction`,
+      '',
+      summary,
+      '',
+      `For ${audience}, the practical question is how this update may affect timing, eligibility, documentation, tax/compliance review, and operational planning.`,
       '',
       `## Why this matters`,
       '',
-      article?.summary || 'This update may create a new planning, compliance, market-entry, or advisory signal for businesses.',
-      context ? `\nAdditional source context: ${context.slice(0, 900)}` : '',
+      'This topic should be treated as a planning signal rather than standalone advice. Businesses should verify the details against official guidance and assess how the update applies to their facts before making commitments.',
       '',
-      `## What companies should watch`,
+      `## What companies should review`,
       '',
       '| Area | Practical question |',
       '| --- | --- |',
-      '| Market relevance | Does this change the timing or attractiveness of an expansion, investment, or client conversation? |',
-      '| Tax and compliance | Are there filing, reporting, licensing, governance, payroll, or tax points to confirm before acting? |',
-      '| Operations | Would banking, entity setup, hiring, contracts, or local vendor requirements affect execution? |',
+      '| Eligibility | Does the business, activity, location, or transaction fall within the relevant scope? |',
+      '| Tax and compliance | Are there filings, reporting duties, approvals, licences, or documentation points to confirm? |',
+      '| Operations | Could the update affect setup, hiring, contracts, local substance, banking, or timelines? |',
+      '| Decision timing | Should the company pause, accelerate, or re-check a planned market-entry or expansion step? |',
       '',
-      `## Practical takeaways`,
-      '',
-      `For ${audience}, the useful question is not whether the headline is positive or negative. It is whether the update changes a business decision, a compliance checklist, or the timing of market entry.`,
-      '',
-      'Treat this as a planning signal, then verify the details against official guidance and professional advice before making commitments.',
-      '',
-      `## Quick checklist`,
+      `## Practical checklist`,
       '',
       '1. Confirm whether the update applies to your entity, sector, employees, customers, or planned market activity.',
       '2. Check whether official guidance, filings, licences, payroll, tax, or governance processes need to change.',
@@ -133,18 +155,37 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
       '',
       'No. It is a general planning note based on the available source material. Businesses should verify the details against official guidance and professional advice.',
       '',
-      `## Recommended next step`,
+      `## Conclusion`,
+      '',
+      `For ${audience}, this update is most useful when translated into a concrete review of eligibility, obligations, documentation, and next steps. Treat it as a prompt for structured assessment, not as a final decision by itself.`,
+      '',
+      `## CTA`,
       '',
       cta,
       '',
+      `## Keywords/Tags`,
+      '',
+      keywords.length ? keywords.map((keyword) => `- ${keyword}`).join('\n') : '- Market intelligence\n- Business advisory\n- Compliance',
+      '',
+      `## SEO / Meta Title`,
+      '',
+      title.slice(0, 60),
+      '',
+      `## Meta Description`,
+      '',
+      metaDescription,
+      '',
+      `## Social Media Copy`,
+      '',
+      `${title}: a practical planning signal for ${audience}. Review the key implications, checklist points, and questions to confirm before acting.`,
+      '',
       `## Resources`,
       '',
-      article?.url ? `- ${article.url}` : '- Source URL not provided.',
-      keywordLine
+      article?.url ? `- ${article.url}` : '- Source URL not provided.'
     ].filter(Boolean).join('\n'),
     suggestedKeywords: keywords,
-    metaTitle: title.slice(0, 70),
-    metaDescription: (article?.summary || '').slice(0, 155)
+    metaTitle: title.slice(0, 60),
+    metaDescription
   };
 }
 
@@ -261,6 +302,48 @@ function normalizeLineBreaks(value) {
   return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+function normalizeLooseTables(value) {
+  const lines = normalizeLineBreaks(value).split('\n');
+  const output = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.includes('\t')) {
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    const tableLines = [];
+    while (i < lines.length && lines[i].includes('\t')) {
+      tableLines.push(lines[i]);
+      i += 1;
+    }
+
+    const rows = tableLines
+      .map((row) => row.split('\t').map((cell) => cell.trim()))
+      .filter((row) => row.length > 1 && row.some(Boolean));
+    const columnCount = Math.max(...rows.map((row) => row.length), 0);
+
+    if (rows.length >= 2 && columnCount > 1) {
+      const paddedRows = rows.map((row) => [
+        ...row,
+        ...Array(Math.max(0, columnCount - row.length)).fill('')
+      ]);
+      output.push(
+        `| ${paddedRows[0].join(' | ')} |`,
+        `| ${Array(columnCount).fill('---').join(' | ')} |`,
+        ...paddedRows.slice(1).map((row) => `| ${row.join(' | ')} |`)
+      );
+    } else {
+      output.push(...tableLines);
+    }
+  }
+
+  return output.join('\n');
+}
+
 function stripTrailingHashtags(value) {
   const lines = normalizeLineBreaks(value).trim().split('\n');
   while (lines.length) {
@@ -276,13 +359,28 @@ function stripTrailingHashtags(value) {
 
 function buildPlainToc(lines = []) {
   const headings = [];
+  const excludedHeadings = new Set([
+    'banner',
+    'cta',
+    'keywords/tags',
+    'keywords',
+    'tags',
+    'seo / meta title',
+    'seo/meta title',
+    'seo meta title',
+    'meta title',
+    'meta description',
+    'social media copy',
+    'resources'
+  ]);
   for (const line of lines) {
     const match = String(line || '').match(/^##\s+(.+)$/);
     if (!match) continue;
     const heading = match[1].trim();
+    const headingKey = heading.toLowerCase();
     if (/^table of contents$/i.test(heading)) continue;
     if (/^need help\b/i.test(heading)) continue;
-    if (/^cta\b/i.test(heading)) continue;
+    if (excludedHeadings.has(headingKey)) continue;
     headings.push(heading);
   }
   const uniqueHeadings = uniqueStrings(headings);
@@ -296,7 +394,7 @@ function buildPlainToc(lines = []) {
 }
 
 function formatBlogMarkdown(bodyMarkdown, title) {
-  const normalized = normalizeLineBreaks(bodyMarkdown)
+  const normalized = normalizeLooseTables(bodyMarkdown)
     .replace(/\u2019/g, "'")
     .replace(/\u2018/g, "'")
     .replace(/\u201c/g, '"')
@@ -1020,6 +1118,176 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   }
 }
 
+function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
+  const title = String(style.topic || article.title || 'Market intelligence update').replace(/\s+/g, ' ').trim();
+  const summary = String(article.summary || article.aiSummary || research[0]?.snippet || '').replace(/\s+/g, ' ').trim();
+  const baseKeyword = title
+    .replace(/\s*[-|:]\s*[^-|:]{2,80}$/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 5)
+    .join(' ');
+  const primaryKeyword = style.primaryKeyword || baseKeyword || title.slice(0, 80);
+  const secondaryKeywords = [
+    primaryKeyword,
+    article.category,
+    article.subcategory,
+    article.type,
+    'business compliance',
+    'market intelligence'
+  ].filter(Boolean).slice(0, 6);
+  const metaTitle = (style.metaTitle || title).slice(0, 60);
+  const metaDescription = (style.metaDescription || summary || `Practical business guidance on ${primaryKeyword}.`).slice(0, 158);
+  return {
+    metaTitle,
+    metaDescription,
+    primaryKeyword,
+    secondaryKeywords,
+    searchIntent: style.searchIntent || 'informational',
+    audience: style.audience || 'business decision-makers',
+    keyPoints: [
+      summary || `Explain why ${primaryKeyword} matters for business decision-makers.`,
+      'Translate the update into practical compliance, tax, operational, or market-entry considerations.',
+      'Include a concise checklist and FAQs.'
+    ].filter(Boolean).join('\n'),
+    focusPage: style.focusPage || '',
+    internalLinkPages: style.internalLinkPages || '',
+    ctaTitle: style.ctaTitle || 'Need help assessing this update?',
+    ctaButtonText: style.ctaButtonText || 'Speak with an advisor',
+    ctaDescription: style.ctaDescription || style.cta || 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
+    referenceUrls: research.map((item) => item.url).filter(Boolean).slice(0, 5).join(', '),
+    suggestedOutline: [
+      'Introduction',
+      'Why this matters',
+      'What businesses should review',
+      'Practical checklist',
+      'FAQs',
+      'Conclusion'
+    ].join('\n'),
+    questions: [
+      `What does ${primaryKeyword} mean for businesses?`,
+      `Who should review ${primaryKeyword}?`,
+      `What steps should companies take next?`
+    ],
+    sources: research.map((item) => ({ title: item.title || '', url: item.url || '' })).filter((item) => item.url)
+  };
+}
+
+async function suggestBlogSettings({ article = {}, style = {}, research = [], company = {}, aiConfig = {} }) {
+  const cli = getClient();
+  if (!cli) return fallbackBlogSeoSettings({ article, style, research });
+
+  const researchContext = research.slice(0, 6).map((item, index) => [
+    `Result ${index + 1}: ${item.title || ''}`,
+    `URL: ${item.url || ''}`,
+    `Snippet: ${String(item.snippet || '').replace(/\s+/g, ' ').trim().slice(0, 700)}`
+  ].join('\n')).join('\n\n').slice(0, 5000);
+
+  const articleSummary = String(article.summary || article.aiSummary || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 900);
+  const articleMeta = {
+    title: article.title || '',
+    url: article.url || '',
+    type: article.type || '',
+    category: article.category || '',
+    subcategory: article.subcategory || '',
+    country: article.country || '',
+    region: article.region || '',
+    language: article.language || '',
+    opportunityType: article.opportunityType || '',
+    source: article.source || '',
+    sourceType: article.sourceType || '',
+    sourceQuery: article.sourceQuery || '',
+    relevanceScore: article.relevanceScore || 0,
+    relevanceReason: String(article.relevanceReason || '').slice(0, 300),
+    matchedInterests: Array.isArray(article.matchedInterests) ? article.matchedInterests.slice(0, 8) : [],
+    tags: Array.isArray(article.tags) ? article.tags.slice(0, 8) : []
+  };
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: runtimeAiModel(aiConfig),
+      temperature: 0.2,
+      max_tokens: 900,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are an SEO strategist for a professional-services content studio.',
+            'Use the selected article and Tavily research context to suggest practical blog settings.',
+            'Do not invent search volume, keyword difficulty, CPC, or rankings.',
+            'Return valid JSON only.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            BEESOCIAL_BRAND_GUIDELINES,
+            '',
+            'Return JSON shape:',
+            '{"metaTitle":"50-60 char title","metaDescription":"145-160 char description","primaryKeyword":"keyword","secondaryKeywords":["keyword"],"searchIntent":"informational|commercial|transactional|navigational","audience":"target audience","keyPoints":"newline separated key points","focusPage":"optional service/page","internalLinkPages":"comma separated internal page ideas","ctaTitle":"CTA title","ctaButtonText":"CTA button","ctaDescription":"CTA description","referenceUrls":"comma separated source/reference URLs","suggestedOutline":"newline separated outline","questions":["FAQ question"],"sources":[{"title":"source title","url":"https://..."}]}',
+            '',
+            `Company/client: ${company.name || ''}`,
+            `Selected topic: ${style.topic || article.title || ''}`,
+            'Compact article context:',
+            JSON.stringify(articleMeta),
+            `Summary: ${articleSummary}`,
+            '',
+            'Existing user settings, preserve if clearly better:',
+            JSON.stringify({
+              audience: style.audience,
+              tone: style.tone,
+              primaryKeyword: style.primaryKeyword,
+              searchIntent: style.searchIntent,
+              ctaTitle: style.ctaTitle,
+              ctaButtonText: style.ctaButtonText,
+              ctaDescription: style.ctaDescription || style.cta
+            }),
+            '',
+            'TAVILY RESEARCH CONTEXT',
+            researchContext || 'No Tavily results available.'
+          ].join('\n')
+        }
+      ]
+    });
+
+    const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    const fallback = fallbackBlogSeoSettings({ article, style, research });
+    const secondaryKeywords = Array.isArray(parsed.secondaryKeywords)
+      ? parsed.secondaryKeywords.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 10)
+      : fallback.secondaryKeywords;
+    const searchIntent = ['informational', 'commercial', 'transactional', 'navigational'].includes(parsed.searchIntent)
+      ? parsed.searchIntent
+      : fallback.searchIntent;
+    return {
+      ...fallback,
+      ...parsed,
+      metaTitle: String(parsed.metaTitle || fallback.metaTitle).slice(0, 90),
+      metaDescription: String(parsed.metaDescription || fallback.metaDescription).slice(0, 180),
+      primaryKeyword: String(parsed.primaryKeyword || fallback.primaryKeyword).slice(0, 120),
+      secondaryKeywords,
+      searchIntent,
+      audience: String(parsed.audience || fallback.audience).slice(0, 160),
+      keyPoints: String(parsed.keyPoints || fallback.keyPoints).slice(0, 3000),
+      ctaTitle: String(parsed.ctaTitle || fallback.ctaTitle).slice(0, 160),
+      ctaButtonText: String(parsed.ctaButtonText || fallback.ctaButtonText).slice(0, 80),
+      ctaDescription: String(parsed.ctaDescription || fallback.ctaDescription).slice(0, 500),
+      referenceUrls: String(parsed.referenceUrls || fallback.referenceUrls).slice(0, 1200),
+      suggestedOutline: String(parsed.suggestedOutline || fallback.suggestedOutline).slice(0, 3000),
+      questions: Array.isArray(parsed.questions) ? parsed.questions.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 8) : fallback.questions,
+      sources: Array.isArray(parsed.sources) ? parsed.sources.filter((item) => item?.url).slice(0, 8) : fallback.sources
+    };
+  } catch (err) {
+    console.warn('[ai] blog settings suggestion failed:', err.message);
+    return fallbackBlogSeoSettings({ article, style, research });
+  }
+}
+
 async function generateBlogPost({ article, style = {}, company = {}, keywords = [], aiConfig = {} }) {
   const cli = getClient();
   const runtimeConfig = generationConfig(aiConfig, {
@@ -1082,7 +1350,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '',
             'The finished blog should read like it was written by an experienced advisor for business owners, CFOs, investors, founders, boards, and regional expansion teams. It must not read like generic AI content.',
             '',
-            'BEESOCIAL BRAND GUIDELINES',
+            'CLIENT BRAND GUIDELINES',
             BEESOCIAL_BRAND_GUIDELINES,
             '',
             'BLOG DRAFTING SOP',
@@ -1107,19 +1375,31 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- If FAQ is requested, include useful search-friendly FAQs.',
             '- Use proper heading hierarchy.',
             '- Write clean publication-ready Markdown.',
+            '- Follow this visible blog template order in bodyMarkdown unless the user explicitly requested a custom outline that conflicts: Banner, H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, FAQ, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources.',
+            '- Banner should be a short visual design brief section, not an image file and not a summary of the blog. It should describe the intended banner visual, mood, and text focus in 1-2 sentences.',
+            '- Do not mention statistics, data points, charts, or infographics in the banner brief unless the source/reference material provides them.',
             '- Include exactly one H1 at the top of the article body and do not repeat the title again in the introduction.',
             '- Do not output placeholder text, editorial notes, drafting comments, or AI-style scene-setting language.',
             '- Do not use anchor-link Table of Contents formats such as [Heading](#heading).',
             '- If a Table of Contents is included, format it as a clean plain list in Markdown only.',
+            '- The Table of Contents should list only reader-facing article sections. Do not include Banner, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, or Resources in the Table of Contents.',
             '- Include a Table of Contents unless the requested length is short and the topic is too narrow.',
             '- Include at least one useful table or decision framework when the topic has steps, comparisons, requirements, risks, timelines, documents, tax/compliance implications, or business decisions.',
+            '- If the topic involves incentives, eligibility, benefits, steps, compliance, or comparisons, include a valid Markdown table with a header separator row.',
             '- Include at least one bullet list and one numbered list in the body when useful. Do not make the blog a single uninterrupted essay.',
             '- Include practical examples or scenarios where they clarify the topic. Keep them cautious and source-grounded.',
+            '- Include Keywords/Tags as a short Markdown list near the end of bodyMarkdown.',
+            '- Include SEO / Meta Title and Meta Description as visible sections near the end of bodyMarkdown, matching the JSON meta fields.',
+            '- Include Social Media Copy as a short promotional post section near the end of bodyMarkdown.',
+            '- Include a standalone CTA section after the Conclusion and before Keywords/Tags. The CTA must have the heading "## CTA".',
             '- Include a Resources section at the end with the source URL and any provided reference material / competitor URLs.',
+            '- Never use placeholder links such as "#", "javascript:void(0)", or "example.com". If no CTA URL is provided, write the CTA as plain text without a link.',
             '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
             '',
             'ANTI-GENERIC WRITING RULES',
             '- Avoid empty promotional phrases such as "vibrant market", "remarkable achievement", "unparalleled opportunities", "robust business environment", "game changer", "dynamic landscape", "in today\'s fast-paced world", and similar filler.',
+            '- Avoid hype-led CTA or social copy such as "unlock your potential", "maximize your success", "save costs today", "read now", or similar marketing filler.',
+            '- Avoid urgency or FOMO phrases such as "don\'t miss out", "limited time", "act now", or "must-read".',
             '- Avoid repeating the title in the first sentence unless it is needed for clarity.',
             '- Avoid paragraphs that only restate the heading.',
             '- Avoid generic advice like "stay informed" unless paired with a concrete action.',
@@ -1195,20 +1475,22 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Matched interests: ${Array.isArray(article.matchedInterests) ? article.matchedInterests.join(', ') : ''}`,
             '',
             'BLOG WRITING INSTRUCTIONS',
-            '1. Start with a specific editorial introduction that explains the real business signal behind the headline.',
+            '1. Start bodyMarkdown with a "## Banner" section containing a concise banner/design brief, then the single H1 title.',
             '2. Write the body as a publish-ready article, not as notes, prompts, or a content brief.',
-            '3. Include a clean Table of Contents in plain Markdown list format only. Do not use anchor links.',
+            '3. Include a clean Table of Contents in plain Markdown list format only. Do not use anchor links, and list only main article sections, not Banner/CTA/SEO/meta/social/resources sections.',
             '4. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
             '5. Explain why the topic matters to the target audience in practical business terms.',
             '6. Use examples where helpful, but do not invent unsupported examples.',
-            '7. Include a practical checklist plus a table or decision framework when useful.',
+            '7. Include a practical checklist plus a valid Markdown table or decision framework. For incentives/compliance topics, a table is required.',
             '8. Include internal linking suggestions naturally if focus page or internal pages are provided.',
             '9. Include practical takeaways that a reader can act on or discuss internally.',
             '10. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
-            '11. Add a Resources section containing only real source/reference URLs provided in this request.',
-            '12. End with a concise conclusion and CTA that includes 2-3 lines explaining how BeeSocial can help with the relevant service/problem.',
-            '13. Keep the blog coherent, flowing, and professionally written.',
-            `14. Keep the final article at or below approximately ${runtimeConfig.maxWords} words unless essential source context requires a short overage.`,
+            '11. Add Keywords/Tags, SEO / Meta Title, Meta Description, and Social Media Copy sections after the CTA/FAQ area so the saved blog follows the SOP template.',
+            '12. Add a Resources section containing only real source/reference URLs provided in this request.',
+            '13. End with a concise conclusion and CTA that includes 2-3 lines explaining how the client company or advisory team can help with the relevant service/problem. Use the provided company name when available; otherwise use neutral wording such as "our team".',
+            '14. The CTA must be a standalone "## CTA" section after the conclusion. Do not bury the CTA only inside the conclusion.',
+            '15. Keep the blog coherent, flowing, and professionally written.',
+            `16. Keep the final article at or below approximately ${runtimeConfig.maxWords} words unless essential source context requires a short overage.`,
             '',
             'QUALITY BAR BEFORE RETURNING',
             '- Rewrite any generic paragraph before final output.',
@@ -1216,8 +1498,14 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure each major section answers "so what?" for the target audience.',
             '- Ensure the blog is useful even to a reader who already knows the headline.',
             '- Ensure the CTA is connected to the topic, not a generic sales line.',
+            '- Ensure the CTA does not contain placeholder links. If no CTA URL is provided, do not create a markdown link.',
+            '- Ensure the banner brief does not promise statistics, charts, or data visuals unless source-backed data is available.',
+            '- Ensure any table is valid Markdown with a separator row, for example "| Column | Column |" followed by "| --- | --- |".',
+            '- Ensure Social Media Copy is calm, advisory, and non-hype-led.',
             '- Ensure the output includes practical formatting: tables where relevant, examples where useful, bullets, and numbered lists.',
             '- Ensure the final article looks ready to publish in a CMS without cleanup.',
+            '- Ensure the final article includes every SOP deliverable: Banner, Title, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, FAQ when requested, CTA, Social Media Copy, and Resources.',
+            '- Proofread internally before returning. Grammar, punctuation, heading hierarchy, and flow must be publication-ready.',
             '- Ensure the opening paragraph does not merely define the topic or repeat the title.',
             '- Ensure the Markdown has one H1, clean H2/H3 structure, no duplicate headings, and no broken link syntax.',
             '',
@@ -1228,7 +1516,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '{',
             '  "title": "<SEO-friendly blog title>",',
             '  "excerpt": "<short blog summary, 2-3 sentences>",',
-            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown with one H1, plain-list TOC, H2/H3 headings, tables where relevant, examples, bullets, numbered lists, FAQ if requested, conclusion, CTA and Resources>",',
+            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown following the SOP template: Banner, one H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, FAQ if requested, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources>",',
             '  "suggestedKeywords": ["<keyword 1>", "<keyword 2>", "<keyword 3>"],',
             '  "metaTitle": "<SEO title, 50-60 characters, ideally question-style if suitable>",',
             '  "metaDescription": "<SEO meta description, ideally 145-155 characters>",',
@@ -1279,6 +1567,135 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
     console.warn('[ai] blog generation failed:', err.message);
     return {
       ...fallbackBlog({ article, style, keywords }),
+      model: runtimeConfig.model
+    };
+  }
+}
+
+async function reviseBlogPost({ blog = {}, sourceArticle = null, feedback = '', company = {}, aiConfig = {} }) {
+  const cli = getClient();
+  const runtimeConfig = generationConfig(aiConfig, {
+    model: MODEL,
+    temperature: 0.3,
+    maxWords: 1800,
+    minWords: 300,
+    maxAllowedWords: 3000
+  });
+
+  const article = {
+    title: sourceArticle?.title || blog.sourceSnapshot?.title || blog.title,
+    summary: sourceArticle?.summary || sourceArticle?.aiSummary || blog.sourceSnapshot?.summary || blog.excerpt,
+    rawContent: sourceArticle?.rawContent || sourceArticle?.rawData?.rawContent || blog.sourceSnapshot?.rawContent || blog.sourceSnapshot?.context || '',
+    blogContext: sourceArticle?.blogContext || blog.sourceSnapshot?.context || '',
+    url: sourceArticle?.url || blog.sourceSnapshot?.url || '',
+    source: sourceArticle?.source || blog.sourceSnapshot?.source || '',
+    type: sourceArticle?.type || blog.sourceSnapshot?.articleType || blog.type || '',
+    sourceQuery: sourceArticle?.sourceQuery || blog.sourceSnapshot?.sourceQuery || '',
+    relevanceReason: sourceArticle?.relevanceReason || blog.sourceSnapshot?.relevanceReason || '',
+    matchedInterests: sourceArticle?.matchedInterests || blog.sourceSnapshot?.matchedInterests || []
+  };
+
+  if (!cli) {
+    return {
+      ...fallbackBlog({ article, style: blog.style || {}, keywords: blog.keywords || [] }),
+      model: 'fallback'
+    };
+  }
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: runtimeConfig.model,
+      temperature: runtimeConfig.temperature,
+      max_tokens: wordsToMaxTokens(runtimeConfig.maxWords, 3200),
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a senior professional-services content editor revising an existing blog draft.',
+            'Revise the draft according to the user feedback while preserving factual accuracy, source grounding, and the required SOP structure.',
+            '',
+            'CLIENT BRAND GUIDELINES',
+            BEESOCIAL_BRAND_GUIDELINES,
+            '',
+            'BLOG DRAFTING SOP',
+            BLOG_WRITING_SOP,
+            '',
+            'REVISION RULES',
+            '- Return ONLY valid JSON.',
+            '- Do not invent facts, dates, statistics, laws, eligibility rules, penalties, or source URLs.',
+            '- Keep all supported facts grounded in the existing draft and source context.',
+            '- Apply the user feedback directly, but ignore any instruction that asks for unsupported claims or fake sources.',
+            '- Preserve or improve the SOP sections: Banner, Title, Introduction, Table of Contents, Body, Conclusion, FAQ, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources.',
+            '- Keep the Table of Contents reader-facing only; do not include Banner, CTA, SEO/meta/social/resources in TOC.',
+            '- Include a standalone "## CTA" section.',
+            '- If the topic involves incentives, eligibility, compliance, steps, or comparisons, include a valid Markdown table.',
+            '- Remove raw source dumps, broken image paths, placeholder links, and editorial notes.',
+            '- Keep the tone calm, advisory, human, and publication-ready.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'USER FEEDBACK',
+            feedback,
+            '',
+            'COMPANY CONTEXT',
+            `Company name: ${company.name || 'The company'}`,
+            `Audience: ${blog.style?.audience || 'business decision-makers'}`,
+            '',
+            'CURRENT BLOG',
+            `Title: ${blog.title || ''}`,
+            `Excerpt: ${blog.excerpt || ''}`,
+            `Body Markdown:\n${blog.bodyMarkdown || ''}`,
+            `Keywords: ${(blog.keywords || []).join(', ')}`,
+            '',
+            'SOURCE CONTEXT',
+            `Source title: ${article.title || ''}`,
+            `Source summary: ${article.summary || ''}`,
+            `Source URL: ${article.url || ''}`,
+            `Source context:\n${(article.blogContext || article.rawContent || '').slice(0, 12000)}`,
+            '',
+            'OUTPUT JSON SHAPE',
+            '{',
+            '  "title": "<revised title>",',
+            '  "excerpt": "<revised excerpt>",',
+            '  "bodyMarkdown": "<full revised publish-ready Markdown>",',
+            '  "suggestedKeywords": ["<keyword>"],',
+            '  "metaTitle": "<SEO title>",',
+            '  "metaDescription": "<meta description>"',
+            '}'
+          ].join('\n')
+        }
+      ]
+    });
+
+    const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    if (!parsed.title || !parsed.bodyMarkdown) {
+      return {
+        ...fallbackBlog({ article, style: blog.style || {}, keywords: blog.keywords || [] }),
+        model: runtimeConfig.model
+      };
+    }
+
+    const finalTitle = String(parsed.title).trim();
+    return {
+      title: finalTitle,
+      excerpt: formatExcerpt(parsed.excerpt, blog.excerpt || article.summary || ''),
+      bodyMarkdown: formatBlogMarkdown(parsed.bodyMarkdown, finalTitle),
+      suggestedKeywords: uniqueStrings(
+        Array.isArray(parsed.suggestedKeywords)
+          ? parsed.suggestedKeywords.map((item) => String(item || '').trim())
+          : blog.keywords || []
+      ).slice(0, 8),
+      metaTitle: String(parsed.metaTitle || finalTitle || '').trim(),
+      metaDescription: formatExcerpt(parsed.metaDescription, parsed.excerpt || blog.excerpt || '').slice(0, 160),
+      model: runtimeConfig.model
+    };
+  } catch (err) {
+    console.warn('[ai] blog revision failed:', err.message);
+    return {
+      ...fallbackBlog({ article, style: blog.style || {}, keywords: blog.keywords || [] }),
       model: runtimeConfig.model
     };
   }
@@ -1552,4 +1969,106 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   }
 }
 
-module.exports = { isEnabled, summarizeArticle, classifyCategory, classifyProfileRelevance, generateBlogPost, generateLinkedInPost };
+async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = '', company = {}, aiConfig = {} }) {
+  const cli = getClient();
+  const runtimeConfig = generationConfig(aiConfig, {
+    model: MODEL,
+    temperature: 0.5,
+    maxWords: 300,
+    minWords: 80,
+    maxAllowedWords: 800
+  });
+
+  if (!cli) {
+    return {
+      selectedTopic: post.selectedTopic || post.sourceSnapshot?.title || 'LinkedIn post',
+      postText: post.postText || '',
+      hashtags: normalizeHashtags(post.hashtags || [], ['#BusinessStrategy', '#Compliance', '#Advisory']),
+      framework: post.framework || 'PAS',
+      topicTier: post.topicTier || 'Practical',
+      emotionalJob: post.emotionalJob || 'Educate',
+      model: 'fallback'
+    };
+  }
+
+  try {
+    const sourceContext = sourceArticle ? {
+      title: sourceArticle.title || '',
+      summary: sourceArticle.summary || sourceArticle.aiSummary || '',
+      url: sourceArticle.url || '',
+      source: sourceArticle.source || '',
+      type: sourceArticle.type || '',
+      category: sourceArticle.category || '',
+      subcategory: sourceArticle.subcategory || '',
+      country: sourceArticle.country || '',
+      sourceQuery: sourceArticle.sourceQuery || '',
+      relevanceReason: sourceArticle.relevanceReason || ''
+    } : post.sourceSnapshot || {};
+    const resp = await cli.chat.completions.create({
+      model: runtimeConfig.model,
+      temperature: runtimeConfig.temperature,
+      max_tokens: wordsToMaxTokens(runtimeConfig.maxWords, 950),
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a senior LinkedIn content editor for professional-services advisory posts.',
+            'Revise the current LinkedIn post using the user feedback.',
+            'Return ONLY valid JSON.',
+            'Keep it human, calm, specific, and non-hype-led.',
+            'Do not invent facts, statistics, laws, dates, or claims.',
+            'Preserve source grounding and advisory caveats for tax, legal, compliance, employment, or regulatory topics.',
+            'Avoid clickbait, excessive emojis, exaggerated urgency, and generic endings.',
+            'Return JSON shape: { "selectedTopic": "...", "postText": "...", "hashtags": ["#..."], "framework": "...", "topicTier": "...", "emotionalJob": "..." }'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'USER FEEDBACK',
+            feedback,
+            '',
+            'COMPANY CONTEXT',
+            `Company name: ${company.name || 'The company'}`,
+            '',
+            'CURRENT POST',
+            `Topic: ${post.selectedTopic || ''}`,
+            `Post text:\n${post.postText || ''}`,
+            `Hashtags: ${(post.hashtags || []).join(' ')}`,
+            `Framework: ${post.framework || ''}`,
+            `Topic tier: ${post.topicTier || ''}`,
+            `Emotional job: ${post.emotionalJob || ''}`,
+            '',
+            'SOURCE CONTEXT',
+            JSON.stringify(sourceContext).slice(0, 3000)
+          ].join('\n')
+        }
+      ]
+    });
+
+    const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    return {
+      selectedTopic: String(parsed.selectedTopic || post.selectedTopic || '').trim(),
+      postText: stripTrailingHashtags(String(parsed.postText || post.postText || '').trim()),
+      hashtags: normalizeHashtags(Array.isArray(parsed.hashtags) ? parsed.hashtags : post.hashtags || []),
+      framework: String(parsed.framework || post.framework || '').trim(),
+      topicTier: String(parsed.topicTier || post.topicTier || '').trim(),
+      emotionalJob: String(parsed.emotionalJob || post.emotionalJob || '').trim(),
+      model: runtimeConfig.model
+    };
+  } catch (err) {
+    console.warn('[ai] linkedin revision failed:', err.message);
+    return {
+      selectedTopic: post.selectedTopic || '',
+      postText: post.postText || '',
+      hashtags: normalizeHashtags(post.hashtags || []),
+      framework: post.framework || '',
+      topicTier: post.topicTier || '',
+      emotionalJob: post.emotionalJob || '',
+      model: runtimeConfig.model
+    };
+  }
+}
+
+module.exports = { isEnabled, summarizeArticle, classifyCategory, classifyProfileRelevance, suggestBlogSettings, generateBlogPost, reviseBlogPost, generateLinkedInPost, reviseLinkedInPost };

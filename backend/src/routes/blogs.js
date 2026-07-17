@@ -6,12 +6,13 @@ const BlogPost = require('../models/BlogPost');
 const SocialPost = require('../models/SocialPost');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const { generateBlogPost, generateLinkedInPost } = require('../services/aiService');
+const { generateBlogPost, reviseBlogPost, generateLinkedInPost, reviseLinkedInPost, suggestBlogSettings } = require('../services/aiService');
 const { latestUsageResetAt, effectiveMonthlyStart } = require('../utils/usageReset');
 const { publishTenantEvent } = require('../utils/realtime');
 const { acquire } = require('../utils/concurrencyGate');
 const genProgress = require('../services/generationProgress');
 const { getSystemSettings } = require('../services/systemSettings');
+const tavilyService = require('../services/tavilyService');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -103,6 +104,68 @@ function blogSourceContext(article = {}) {
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 12000);
+}
+
+function compactSeoArticle(article = {}) {
+  return {
+    title: article.title || '',
+    summary: article.summary || '',
+    aiSummary: article.aiSummary || '',
+    url: article.url || '',
+    type: article.type || '',
+    category: article.category || '',
+    subcategory: article.subcategory || '',
+    country: article.country || '',
+    region: article.region || '',
+    language: article.language || '',
+    opportunityType: article.opportunityType || '',
+    source: article.source || '',
+    sourceType: article.sourceType || '',
+    sourceQuery: article.sourceQuery || '',
+    publishedAt: article.publishedAt || '',
+    relevanceScore: article.relevanceScore || 0,
+    relevanceReason: article.relevanceReason || '',
+    matchedInterests: Array.isArray(article.matchedInterests) ? article.matchedInterests.slice(0, 8) : [],
+    tags: Array.isArray(article.tags) ? article.tags.slice(0, 8) : []
+  };
+}
+
+function seoSearchQuery({ article = {}, style = {}, country = '' }) {
+  const summaryTerms = String(article.summary || article.aiSummary || '')
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((word) => word.length > 3)
+    .slice(0, 12)
+    .join(' ');
+  return [
+    style.primaryKeyword,
+    style.topic || article.title,
+    article.sourceQuery,
+    article.category,
+    article.subcategory,
+    country || article.country,
+    Array.isArray(article.matchedInterests) ? article.matchedInterests.slice(0, 4).join(' ') : '',
+    summaryTerms
+  ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 360);
+}
+
+function compactSourceSnapshot(snapshot = {}) {
+  return {
+    title: String(snapshot.title || '').slice(0, 500),
+    summary: String(snapshot.summary || '').slice(0, 1000),
+    url: String(snapshot.url || '').slice(0, 2000),
+    source: String(snapshot.source || '').slice(0, 160),
+    articleType: String(snapshot.articleType || snapshot.type || '').slice(0, 80),
+    category: String(snapshot.category || '').slice(0, 160),
+    subcategory: String(snapshot.subcategory || '').slice(0, 160),
+    country: String(snapshot.country || '').slice(0, 80),
+    region: String(snapshot.region || '').slice(0, 120),
+    sourceQuery: String(snapshot.sourceQuery || '').slice(0, 300),
+    relevanceReason: String(snapshot.relevanceReason || '').slice(0, 500),
+    matchedInterests: Array.isArray(snapshot.matchedInterests) ? snapshot.matchedInterests.slice(0, 8) : []
+  };
 }
 
 function blockedTopicMatch({ article = {}, userInput = {}, filtering = {} }) {
@@ -247,6 +310,13 @@ const generateSchema = Joi.object({
   status: Joi.string().valid('review', 'published').default('review')
 });
 
+const suggestSettingsSchema = Joi.object({
+  articleId: Joi.string().required(),
+  style: styleSchema.default({}),
+  country: Joi.string().allow('').max(80),
+  limit: Joi.number().integer().min(1).max(8).default(5)
+});
+
 const linkedinOptionsSchema = Joi.object({
   postGoal: Joi.string().valid('thought_leadership', 'client_alert', 'market_insight', 'educational', 'lead_generation').default('thought_leadership'),
   tone: Joi.string().valid('professional', 'conversational', 'authoritative', 'friendly', 'educational', 'persuasive', 'technical', 'thought_leadership').default('professional'),
@@ -287,6 +357,13 @@ const socialPostCreateSchema = Joi.object({
   options: Joi.object().unknown(true).default({})
 });
 
+const socialPostUpdateSchema = Joi.object({
+  selectedTopic: Joi.string().allow('').max(300),
+  postText: Joi.string().min(2).max(10000),
+  hashtags: Joi.array().items(Joi.string().max(80)),
+  status: Joi.string().valid('review', 'published', 'archived')
+});
+
 const updateSchema = Joi.object({
   title: Joi.string().min(2).max(220),
   excerpt: Joi.string().allow('').max(600),
@@ -294,6 +371,11 @@ const updateSchema = Joi.object({
   status: Joi.string().valid('review', 'published', 'archived'),
   style: styleSchema,
   keywords: Joi.array().items(Joi.string().max(80))
+});
+
+const reviseSchema = Joi.object({
+  feedback: Joi.string().trim().min(3).max(2500).required(),
+  previewOnly: Joi.boolean().default(false)
 });
 
 const bulkDeleteSchema = Joi.object({
@@ -305,7 +387,15 @@ router.get('/', protect, requireContentRepository, asyncHandler(async (req, res)
   if (!isBlogAdmin(req.user)) {
     q.status = 'published';
   } else if (req.query.status) {
-    q.status = req.query.status;
+    const statuses = String(req.query.status)
+      .split(',')
+      .map((status) => status.trim())
+      .filter((status) => ['review', 'published', 'archived'].includes(status));
+    if (statuses.length > 1) {
+      q.status = { $in: statuses };
+    } else if (statuses.length === 1) {
+      q.status = statuses[0];
+    }
   }
   if (req.query.type) q.type = req.query.type;
   if (req.query.category) q.category = req.query.category;
@@ -344,6 +434,59 @@ router.post('/cancel', protect, requireBlogAdmin, asyncHandler(async (req, res) 
   res.json({ ok: true, message: 'Generation cancellation requested.' });
 }));
 
+router.post('/suggest-settings', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const { error, value } = suggestSettingsSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+  if (!mongoose.Types.ObjectId.isValid(value.articleId)) {
+    return res.status(400).json({ message: 'Invalid article id' });
+  }
+
+  const article = await Article.findOne({ _id: value.articleId, ...articleTenantQuery(req.user) }).lean();
+  if (!article) return res.status(404).json({ message: 'Source topic not found' });
+
+  const systemSettings = await getSystemSettings();
+  const contentStudioAi = systemSettings.contentStudioAi || {};
+  if (contentStudioAi.enabled === false) {
+    return res.status(503).json({ message: 'Content Studio AI suggestions are currently disabled by the super admin.' });
+  }
+
+  const seoArticle = compactSeoArticle(article);
+  const searchQuery = seoSearchQuery({
+    article: seoArticle,
+    style: value.style,
+    country: value.country
+  });
+
+  let research = [];
+  if (tavilyService.isEnabled() && searchQuery) {
+    try {
+      research = await tavilyService.search(searchQuery, {
+        topic: article.type === 'evergreen' ? 'general' : 'news',
+        searchDepth: 'basic',
+        maxResults: value.limit,
+        includeRawContent: false,
+        timeoutMs: 20000
+      });
+    } catch (err) {
+      console.warn('[blog] Tavily SEO suggestion search failed:', err.message);
+    }
+  }
+
+  const suggestions = await suggestBlogSettings({
+    article: seoArticle,
+    style: value.style,
+    research,
+    company: { name: req.user.company || req.user.name },
+    aiConfig: contentStudioAi.blog || {}
+  });
+
+  res.json({
+    item: suggestions,
+    researchAvailable: research.length > 0,
+    tavilyEnabled: tavilyService.isEnabled()
+  });
+}));
+
 router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyncHandler(async (req, res) => {
   const { error, value } = generateSchema.validate(req.body || {});
   if (error) return res.status(400).json({ message: error.message });
@@ -373,7 +516,6 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
 
   genProgress.startGeneration(String(tenantId), 'blog');
   const release = acquire('blog', tenantScopeKey(req.user));
-  const sourceContext = blogSourceContext(article);
   const userObj = req.user;
 
   setImmediate(async () => {
@@ -408,18 +550,16 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
         excerpt: generated.excerpt,
         bodyMarkdown: generated.bodyMarkdown,
         status: generatedStatus,
-        sourceSnapshot: {
+        sourceSnapshot: compactSourceSnapshot({
           title: article.title,
           summary: article.summary || article.aiSummary || '',
-          rawContent: article.rawContent || article.rawData?.rawContent || '',
-          context: sourceContext,
           url: article.url,
           source: article.source,
           articleType: article.type,
           sourceQuery: article.sourceQuery || '',
           relevanceReason: article.relevanceReason || '',
           matchedInterests: Array.isArray(article.matchedInterests) ? article.matchedInterests : []
-        },
+        }),
         style: value.style,
         category: article.category || '',
         subcategory: article.subcategory || '',
@@ -429,7 +569,6 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
         keywords: generated.suggestedKeywords || value.keywords,
         language: article.language || 'en',
         model: generated.model || '',
-        generationPrompt: JSON.stringify({ style: value.style, keywords: value.keywords, aiConfig: contentStudioAi.blog }),
         publishedAt: generatedStatus === 'published' ? new Date() : undefined
       });
 
@@ -499,7 +638,7 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
         return;
       }
 
-      const sourceSnapshot = {
+      const sourceSnapshot = compactSourceSnapshot({
         title: article.title,
         summary: article.summary || article.aiSummary || '',
         url: article.url,
@@ -510,7 +649,7 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
         country: article.country || '',
         region: article.region || '',
         relevanceReason: article.relevanceReason || ''
-      };
+      });
 
       const resultPayload = {
         ...generated,
@@ -573,6 +712,7 @@ router.post('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req,
 
   const item = await SocialPost.create({
     ...value,
+    sourceSnapshot: compactSourceSnapshot(value.sourceSnapshot),
     tenantAdminId: tenantAdminId(req.user),
     createdBy: req.user._id,
     sourceArticleId: mongoose.Types.ObjectId.isValid(value.sourceArticleId) ? value.sourceArticleId : undefined,
@@ -584,6 +724,88 @@ router.post('/social-posts', protect, requireBlogAdmin, asyncHandler(async (req,
     id: String(item._id)
   });
   res.status(201).json({ item });
+}));
+
+router.patch('/social-posts/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const { error, value } = socialPostUpdateSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const update = { ...value };
+  if (value.status === 'published') update.publishedAt = new Date();
+
+  const item = await SocialPost.findOneAndUpdate(
+    { _id: req.params.id, ...tenantQuery(req.user) },
+    { $set: update },
+    { new: true }
+  ).lean();
+  if (!item) return res.status(404).json({ message: 'Social post not found' });
+
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'updated',
+    id: String(item._id)
+  });
+  res.json({ item });
+}));
+
+router.post('/social-posts/:id/revise', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const { error, value } = reviseSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const post = await SocialPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) }).lean();
+  if (!post) return res.status(404).json({ message: 'Social post not found' });
+  const sourceArticle = post.sourceArticleId
+    ? await Article.findOne({ _id: post.sourceArticleId, ...articleTenantQuery(req.user) }).lean()
+    : null;
+
+  const systemSettings = await getSystemSettings();
+  const contentStudioAi = systemSettings.contentStudioAi || {};
+  if (contentStudioAi.enabled === false) {
+    return res.status(503).json({ message: 'Content Studio AI revision is currently disabled by the super admin.' });
+  }
+
+  const revised = await reviseLinkedInPost({
+    post,
+    sourceArticle,
+    feedback: value.feedback,
+    company: { name: req.user.company || req.user.name },
+    aiConfig: { ...contentStudioAi.linkedin, filtering: contentStudioAi.filtering }
+  });
+
+  if (value.previewOnly) {
+    return res.json({
+      item: {
+        ...post,
+        selectedTopic: revised.selectedTopic || post.selectedTopic || '',
+        postText: revised.postText || post.postText || '',
+        hashtags: revised.hashtags || post.hashtags || [],
+        framework: revised.framework || post.framework || '',
+        topicTier: revised.topicTier || post.topicTier || '',
+        emotionalJob: revised.emotionalJob || post.emotionalJob || ''
+      }
+    });
+  }
+
+  const item = await SocialPost.findOneAndUpdate(
+    { _id: req.params.id, ...tenantQuery(req.user) },
+    { $set: {
+      selectedTopic: revised.selectedTopic || post.selectedTopic || '',
+      postText: revised.postText || post.postText || '',
+      hashtags: revised.hashtags || post.hashtags || [],
+      framework: revised.framework || post.framework || '',
+      topicTier: revised.topicTier || post.topicTier || '',
+      emotionalJob: revised.emotionalJob || post.emotionalJob || ''
+    } },
+    { new: true }
+  ).lean();
+  if (!item) return res.status(404).json({ message: 'Social post not found' });
+
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'revised',
+    id: String(item._id)
+  });
+  res.json({ item });
 }));
 
 router.delete('/social-posts/bulk', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
@@ -641,6 +863,64 @@ router.patch('/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) =>
     action: 'updated',
     id: String(item._id)
   });
+  res.json({ item });
+}));
+
+router.post('/:id/revise', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
+  const { error, value } = reviseSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const blog = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) }).lean();
+  if (!blog) return res.status(404).json({ message: 'Blog not found' });
+  const sourceArticle = blog.sourceArticleId
+    ? await Article.findOne({ _id: blog.sourceArticleId, ...articleTenantQuery(req.user) }).lean()
+    : null;
+
+  const systemSettings = await getSystemSettings();
+  const contentStudioAi = systemSettings.contentStudioAi || {};
+  if (contentStudioAi.enabled === false) {
+    return res.status(503).json({ message: 'Content Studio AI revision is currently disabled by the super admin.' });
+  }
+
+  const revised = await reviseBlogPost({
+    blog,
+    sourceArticle,
+    feedback: value.feedback,
+    company: { name: req.user.company || req.user.name },
+    aiConfig: { ...contentStudioAi.blog, filtering: contentStudioAi.filtering }
+  });
+
+  const update = {
+    title: revised.title,
+    excerpt: revised.excerpt,
+    bodyMarkdown: revised.bodyMarkdown,
+    keywords: revised.suggestedKeywords || blog.keywords || [],
+    model: revised.model || blog.model || ''
+  };
+  update.slug = await uniqueSlug(tenantAdminId(req.user), revised.title, req.params.id);
+
+  if (value.previewOnly) {
+    return res.json({
+      item: {
+        ...blog,
+        ...update
+      }
+    });
+  }
+
+  const item = await BlogPost.findOneAndUpdate(
+    { _id: req.params.id, ...tenantQuery(req.user) },
+    { $set: update },
+    { new: true }
+  ).lean();
+  if (!item) return res.status(404).json({ message: 'Blog not found' });
+
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'revised',
+    id: String(item._id)
+  });
+
   res.json({ item });
 }));
 

@@ -139,11 +139,11 @@ const DEFAULT_STYLE = {
   customOutline: '',
   focusPage: '',
   internalLinkPages: '',
-  ctaTitle: '',
+  ctaTitle: 'Need help assessing this update?',
   ctaDescription: '',
-  ctaButtonText: 'Contact us',
+  ctaButtonText: 'Speak with an advisor',
   ctaUrl: '',
-  cta: 'Contact us to discuss this update.',
+  cta: 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
   keyPoints: '',
   referenceUrls: '',
   includeFaq: true,
@@ -294,21 +294,33 @@ export default function BlogStudio() {
     setGeneratingLinkedin(false);
   };
   const [savingLinkedinPost, setSavingLinkedinPost] = useState(false);
+  const [updatingLinkedinPost, setUpdatingLinkedinPost] = useState(false);
+  const [revisingLinkedinPost, setRevisingLinkedinPost] = useState(false);
   const [deletingBlogs, setDeletingBlogs] = useState(false);
+  const [deletingSocialPosts, setDeletingSocialPosts] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
+  const [revisingDraft, setRevisingDraft] = useState(false);
+  const [suggestingSettings, setSuggestingSettings] = useState(false);
+  const [revisionFeedback, setRevisionFeedback] = useState('');
   const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
   const [draftForm, setDraftForm] = useState({ title: '', excerpt: '', bodyMarkdown: '' });
   const [draftEditorOpen, setDraftEditorOpen] = useState(false);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [selectedBlogIds, setSelectedBlogIds] = useState([]);
+  const [selectedSocialPostIds, setSelectedSocialPostIds] = useState([]);
   const [error, setError] = useState('');
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
   const [pendingDraftId, setPendingDraftId] = useState('');
   const [linkedinForm, setLinkedinForm] = useState(DEFAULT_LINKEDIN_FORM);
   const [linkedinOutput, setLinkedinOutput] = useState(null);
+  const [socialEditorDirty, setSocialEditorDirty] = useState(false);
+  const [unsavedConfirm, setUnsavedConfirm] = useState(null);
   const selectedArticleRef = useRef(selectedArticle);
+  const blogReviseAbortRef = useRef(null);
+  const linkedinReviseAbortRef = useRef(null);
+  const suggestSettingsAbortRef = useRef(null);
   const focusComposerMode = Boolean(inboundState.focusComposer && inboundState.article?._id);
   const hasTopicFilters = useMemo(
     () => Object.values(topicFilters || {}).some(Boolean),
@@ -319,6 +331,31 @@ export default function BlogStudio() {
   const showGenerationLockMessage = useCallback(() => {
     setError('Generation is running. Please wait until it finishes before changing sections or refreshing.');
   }, []);
+
+  const cancelImprovement = useCallback((type = 'content') => {
+    if (type === 'blog') {
+      blogReviseAbortRef.current?.abort();
+      blogReviseAbortRef.current = null;
+      setRevisingDraft(false);
+    } else if (type === 'linkedin') {
+      linkedinReviseAbortRef.current?.abort();
+      linkedinReviseAbortRef.current = null;
+      setRevisingLinkedinPost(false);
+    }
+    setUnsavedConfirm(null);
+    setError('AI improvement cancelled.');
+  }, []);
+
+  const showImprovementInProgressMessage = useCallback((type = 'content') => {
+    const cancelType = String(type).toLowerCase().includes('linkedin') ? 'linkedin' : 'blog';
+    setUnsavedConfirm({
+      title: 'AI improvement is running',
+      message: `AI improvement is running for this ${type}. Please wait until it finishes, then save or discard your edits.`,
+      blocking: true,
+      cancelLabel: 'Cancel Improvement',
+      onCancelTask: () => cancelImprovement(cancelType)
+    });
+  }, [cancelImprovement]);
 
   const keywordList = useMemo(() => cleanList(keywords), [keywords]);
   const categoryTree = useMemo(() => {
@@ -520,6 +557,29 @@ export default function BlogStudio() {
     throw new Error('Generation is taking too long. Please check Review & Publishing.');
   }, [setGenProgress]);
 
+  const persistGeneratedLinkedinPost = useCallback(async (rawOutput = {}) => {
+    const generated = stampLinkedinOutput(rawOutput);
+    const payload = {
+      sourceArticleId: generated.sourceArticleId || selectedArticleRef.current?._id || '',
+      platform: 'linkedin',
+      status: 'review',
+      selectedTopic: generated.selectedTopic || selectedArticleRef.current?.title || '',
+      postText: generated.postText,
+      hashtags: Array.isArray(generated.hashtags) ? generated.hashtags : [],
+      framework: generated.framework || '',
+      topicTier: generated.topicTier || '',
+      emotionalJob: generated.emotionalJob || '',
+      sourceSnapshot: generated.sourceSnapshot || {},
+      options: generated.options || linkedinForm
+    };
+    const { data } = await api.post('/blogs/social-posts', payload);
+    const savedItem = { ...data.item, saved: true, previewToken: generated.previewToken };
+    setLinkedinOutput(savedItem);
+    await loadSocialPosts();
+    emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'created', id: savedItem?._id || '' });
+    return savedItem;
+  }, [linkedinForm, loadSocialPosts, stampLinkedinOutput]);
+
   // Listen to global generation progress updates to handle background success, failure or cancellation
   useEffect(() => {
     if (generationOwnerRef.current) return;
@@ -534,9 +594,8 @@ export default function BlogStudio() {
             emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'generated', id: item?._id || genProgress.resultId || '' });
           } else if (genProgress.type === 'linkedin') {
             forceStudioScrollTop();
-            setLinkedinOutput(stampLinkedinOutput(genProgress.data));
+            await persistGeneratedLinkedinPost(genProgress.data);
             setContentType('social');
-            loadSocialPosts();
           }
         } catch (err) {
           setError(err.response?.data?.message || err.message || 'Failed to retrieve generated content');
@@ -564,7 +623,7 @@ export default function BlogStudio() {
       setGeneratingLinkedin(false);
       setGenProgress(null);
     }
-  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, setLinkedinOutput, stampLinkedinOutput]);
+  }, [genProgress, setGenProgress, loadSocialPosts, openGeneratedDraft, persistGeneratedLinkedinPost, setLinkedinOutput, stampLinkedinOutput]);
 
   // Real-time listener: handles updates pushed to other tabs/users in real-time
   useEffect(() => {
@@ -629,17 +688,18 @@ export default function BlogStudio() {
         loadSocialPostsRef.current?.();
         
         const isActivelyGenerating = generatingRef.current || (genProgressRef.current?.status === 'running' && genProgressRef.current?.type === 'linkedin');
-        if (detail.action === 'generated' && isActivelyGenerating && detail.data) {
+        if (detail.action === 'generated' && isActivelyGenerating && !generationOwnerRef.current && detail.data) {
           // Instantly close the overlay
           setGenerating(false);
           setGeneratingLinkedin(false);
           setGenProgress(null);
           api.post('/blogs/generation-clear').catch(() => {});
 
-          // Set output and open preview drawer
+          // Persist generated output and open editor drawer
           forceStudioScrollTop();
-          setLinkedinOutput(stampLinkedinOutput(detail.data));
-          setContentType('social');
+          persistGeneratedLinkedinPost(detail.data)
+            .then(() => setContentType('social'))
+            .catch((err) => setError(err.response?.data?.message || err.message || 'Could not save generated social post'));
         }
       }
     };
@@ -648,7 +708,7 @@ export default function BlogStudio() {
     return () => {
       window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     };
-  }, [stampLinkedinOutput]);
+  }, [persistGeneratedLinkedinPost, stampLinkedinOutput]);
 
   useEffect(() => {
     if (cachedStudioState?.articles?.length && !hasTopicFilters) return;
@@ -765,31 +825,168 @@ export default function BlogStudio() {
     emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'blogs', action: 'deleted', ids: targetIds });
   }, [loadBlogs, pendingDraftId, selectedBlog?._id]);
 
-  const closeDraftDrawer = useCallback(async () => {
+  const blogDraftDirty = Boolean(
+    draftEditorOpen &&
+    selectedBlog?._id &&
+    (
+      draftForm.title !== (selectedBlog.title || '') ||
+      draftForm.excerpt !== (selectedBlog.excerpt || '') ||
+      draftForm.bodyMarkdown !== (selectedBlog.bodyMarkdown || '')
+    )
+  );
+
+  const resetBlogDraftForm = useCallback(() => {
+    setDraftForm({
+      title: selectedBlog?.title || '',
+      excerpt: selectedBlog?.excerpt || '',
+      bodyMarkdown: selectedBlog?.bodyMarkdown || ''
+    });
+    setRevisionFeedback('');
+  }, [selectedBlog?.bodyMarkdown, selectedBlog?.excerpt, selectedBlog?.title]);
+
+  const requestBlogDraftLeave = useCallback((nextAction) => {
+    if (revisingDraft) {
+      showImprovementInProgressMessage('blog');
+      return false;
+    }
+    if (!blogDraftDirty) {
+      nextAction?.();
+      return true;
+    }
+    setUnsavedConfirm({
+      title: 'Discard unsaved edits?',
+      message: 'You have unsaved blog changes. Discard them and continue, or keep editing.',
+      onDiscard: () => {
+        resetBlogDraftForm();
+        nextAction?.();
+      }
+    });
+    return false;
+  }, [blogDraftDirty, resetBlogDraftForm, revisingDraft, showImprovementInProgressMessage]);
+
+  const requestSocialEditorLeave = useCallback((nextAction) => {
+    if (revisingLinkedinPost) {
+      showImprovementInProgressMessage('LinkedIn post');
+      return false;
+    }
+    if (!socialEditorDirty) {
+      nextAction?.();
+      return true;
+    }
+    setUnsavedConfirm({
+      title: 'Discard unsaved edits?',
+      message: 'You have unsaved LinkedIn changes. Discard them and continue, or keep editing.',
+      onDiscard: () => {
+        setSocialEditorDirty(false);
+        nextAction?.();
+      }
+    });
+    return false;
+  }, [revisingLinkedinPost, showImprovementInProgressMessage, socialEditorDirty]);
+
+  const confirmBlogDraftLeave = useCallback((nextAction) => {
+    return requestBlogDraftLeave(nextAction);
+  }, [requestBlogDraftLeave]);
+
+  const confirmSocialEditorLeave = useCallback((nextAction) => {
+    return requestSocialEditorLeave(nextAction);
+  }, [requestSocialEditorLeave]);
+
+  const dismissUnsavedConfirm = useCallback(() => setUnsavedConfirm(null), []);
+
+  const discardUnsavedAndContinue = useCallback(() => {
+    const action = unsavedConfirm?.onDiscard;
+    setUnsavedConfirm(null);
+    action?.();
+  }, [unsavedConfirm]);
+
+  /*
+   * Use in-app guards for drawer/tab movement. Browser reload cannot show a custom
+   * modal, so we intentionally avoid beforeunload prompts here.
+   */
+
+  const performCloseDraftDrawer = useCallback(async () => {
     const draftId = pendingDraftId;
     const shouldDeletePendingDraft = draftId && selectedBlog?._id === draftId && selectedBlog?.status === 'draft';
 
     if (shouldDeletePendingDraft) {
-      const confirmSave = window.confirm("You have unsaved changes. Do you want to keep this blog in review before closing?");
-      if (confirmSave) {
-        setPendingDraftId('');
-        setDraftDrawerOpen(false);
-        setDraftEditorOpen(false);
-        return;
-      }
+      setUnsavedConfirm({
+        title: 'Discard unsaved edits?',
+        message: 'You have unsaved blog changes. Discard them and continue, or keep editing.',
+        onDiscard: async () => {
+          setDraftDrawerOpen(false);
+          setDraftEditorOpen(false);
+          try {
+            await deleteBlogsInternal([draftId]);
+          } catch (err) {
+            setError(err.response?.data?.message || err.message || 'Could not clear temporary content');
+          }
+        }
+      });
+      return;
     }
 
     setDraftDrawerOpen(false);
     setDraftEditorOpen(false);
-
-    if (!shouldDeletePendingDraft) return;
-
-    try {
-      await deleteBlogsInternal([draftId]);
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not clear temporary content');
-    }
   }, [deleteBlogsInternal, pendingDraftId, selectedBlog?._id, selectedBlog?.status]);
+
+  const closeDraftDrawer = useCallback(() => {
+    confirmBlogDraftLeave(performCloseDraftDrawer);
+  }, [confirmBlogDraftLeave, performCloseDraftDrawer]);
+
+  const suggestSeoSettings = async () => {
+    if (!selectedArticle?._id) {
+      setError('Select a topic first so AI can suggest SEO settings.');
+      return;
+    }
+    suggestSettingsAbortRef.current?.abort();
+    const controller = new AbortController();
+    suggestSettingsAbortRef.current = controller;
+    setSuggestingSettings(true);
+    setError('');
+    try {
+      const { data } = await api.post('/blogs/suggest-settings', {
+        articleId: selectedArticle._id,
+        style: normalizeBlogStyle({ ...style, topic: style.topic || selectedArticle.title }),
+        country: selectedArticle.country || topicFilters.country || '',
+        limit: 5
+      }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const item = data.item || {};
+      setStyle((prev) => ({
+        ...prev,
+        metaTitle: item.metaTitle || prev.metaTitle,
+        metaDescription: item.metaDescription || prev.metaDescription,
+        primaryKeyword: item.primaryKeyword || prev.primaryKeyword,
+        searchIntent: item.searchIntent || prev.searchIntent,
+        audience: item.audience || prev.audience,
+        keyPoints: item.keyPoints || prev.keyPoints,
+        focusPage: item.focusPage || prev.focusPage,
+        internalLinkPages: item.internalLinkPages || prev.internalLinkPages,
+        ctaTitle: item.ctaTitle || prev.ctaTitle,
+        ctaButtonText: item.ctaButtonText || prev.ctaButtonText,
+        ctaDescription: item.ctaDescription || prev.ctaDescription,
+        cta: item.ctaDescription || prev.cta,
+        referenceUrls: item.referenceUrls || prev.referenceUrls,
+        customOutline: item.suggestedOutline || prev.customOutline,
+        outlineMode: item.suggestedOutline ? 'custom' : prev.outlineMode
+      }));
+      if (Array.isArray(item.secondaryKeywords) && item.secondaryKeywords.length) {
+        setKeywords(item.secondaryKeywords.join(', '));
+      }
+      if (!data.tavilyEnabled) {
+        setError('SEO settings suggested with AI. Tavily is not configured, so live web research was skipped.');
+      }
+    } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+      setError(err.response?.data?.message || err.message || 'Could not suggest SEO settings');
+    } finally {
+      if (suggestSettingsAbortRef.current === controller) {
+        suggestSettingsAbortRef.current = null;
+        setSuggestingSettings(false);
+      }
+    }
+  };
 
   const generate = async () => {
     if (!selectedArticle?._id) {
@@ -859,6 +1056,38 @@ export default function BlogStudio() {
     }
   };
 
+  const reviseDraftWithFeedback = async () => {
+    if (!selectedBlog?._id) return;
+    const feedback = revisionFeedback.trim();
+    if (!feedback) {
+      setError('Add feedback before improving the draft.');
+      return;
+    }
+    blogReviseAbortRef.current?.abort();
+    const controller = new AbortController();
+    blogReviseAbortRef.current = controller;
+    setRevisingDraft(true);
+    setError('');
+    try {
+      const { data } = await api.post(`/blogs/${selectedBlog._id}/revise`, { feedback, previewOnly: true }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setDraftForm({
+        title: data.item.title || '',
+        excerpt: data.item.excerpt || '',
+        bodyMarkdown: data.item.bodyMarkdown || ''
+      });
+      setRevisionFeedback('');
+    } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+      setError(err.response?.data?.message || err.message || 'Could not improve this draft');
+    } finally {
+      if (blogReviseAbortRef.current === controller) {
+        blogReviseAbortRef.current = null;
+        setRevisingDraft(false);
+      }
+    }
+  };
+
   const toggleBlogSelection = (blogId) => {
     setSelectedBlogIds((prev) => (
       prev.includes(blogId) ? prev.filter((id) => id !== blogId) : [...prev, blogId]
@@ -887,6 +1116,46 @@ export default function BlogStudio() {
       setDeletingBlogs(false);
     }
   }, [deleteBlogsInternal]);
+
+  const toggleSocialPostSelection = (postId) => {
+    setSelectedSocialPostIds((prev) => (
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    ));
+  };
+
+  const toggleSelectAllSocialPosts = useCallback((visibleIds) => {
+    const ids = Array.isArray(visibleIds) && visibleIds.length
+      ? visibleIds.filter(Boolean)
+      : socialPosts.map((post) => post._id).filter(Boolean);
+    setSelectedSocialPostIds((prev) => (
+      ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]
+    ));
+  }, [socialPosts]);
+
+  const deleteSocialPosts = useCallback(async (ids) => {
+    const targetIds = ids.filter(Boolean);
+    if (!targetIds.length) return;
+    const confirmed = window.confirm(targetIds.length === 1 ? 'Delete this social post?' : `Delete ${targetIds.length} social posts?`);
+    if (!confirmed) return;
+
+    setDeletingSocialPosts(true);
+    setError('');
+    try {
+      if (targetIds.length === 1) {
+        await api.delete(`/blogs/social-posts/${targetIds[0]}`);
+      } else {
+        await api.delete('/blogs/social-posts/bulk', { data: { ids: targetIds } });
+      }
+      setSelectedSocialPostIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+      if (targetIds.includes(linkedinOutput?._id)) setLinkedinOutput(null);
+      await loadSocialPosts();
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'deleted', ids: targetIds });
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Delete failed');
+    } finally {
+      setDeletingSocialPosts(false);
+    }
+  }, [linkedinOutput?._id, loadSocialPosts]);
 
   const generateLinkedinPost = async () => {
     try {
@@ -917,9 +1186,8 @@ export default function BlogStudio() {
 
       const completed = await waitForGenerationCompletion('linkedin', ownerKey);
       setGenerationFinalizing(true);
-      setLinkedinOutput(stampLinkedinOutput(completed.data));
+      await persistGeneratedLinkedinPost(completed.data);
       setContentType('social');
-      loadSocialPosts();
       api.post('/blogs/generation-clear').catch(() => {});
       setGenProgress(null);
     } catch (err) {
@@ -933,23 +1201,24 @@ export default function BlogStudio() {
     }
   };
 
-  const saveLinkedinPost = async () => {
+  const saveLinkedinPost = async (override = {}) => {
     if (!linkedinOutput?.postText) return;
     setSavingLinkedinPost(true);
     setError('');
     try {
+      const source = { ...linkedinOutput, ...(override || {}) };
       const payload = {
-        sourceArticleId: linkedinOutput.sourceArticleId || selectedArticle?._id || '',
+        sourceArticleId: source.sourceArticleId || selectedArticle?._id || '',
         platform: 'linkedin',
-        status: linkedinOutput.reviewRequired ? 'review' : 'published',
-        selectedTopic: linkedinOutput.selectedTopic || selectedArticle?.title || '',
-        postText: linkedinOutput.postText,
-        hashtags: Array.isArray(linkedinOutput.hashtags) ? linkedinOutput.hashtags : [],
-        framework: linkedinOutput.framework || '',
-        topicTier: linkedinOutput.topicTier || '',
-        emotionalJob: linkedinOutput.emotionalJob || '',
-        sourceSnapshot: linkedinOutput.sourceSnapshot || {},
-        options: linkedinOutput.options || linkedinForm
+        status: 'review',
+        selectedTopic: source.selectedTopic || selectedArticle?.title || '',
+        postText: source.postText,
+        hashtags: Array.isArray(source.hashtags) ? source.hashtags : [],
+        framework: source.framework || '',
+        topicTier: source.topicTier || '',
+        emotionalJob: source.emotionalJob || '',
+        sourceSnapshot: source.sourceSnapshot || {},
+        options: source.options || linkedinForm
       };
       const { data } = await api.post('/blogs/social-posts', payload);
       const savedItem = { ...data.item, saved: true };
@@ -963,7 +1232,100 @@ export default function BlogStudio() {
     }
   };
 
+  const updateLinkedinOutput = useCallback((patch) => {
+    setLinkedinOutput((prev) => prev ? { ...prev, ...patch, saved: false } : prev);
+  }, []);
+
+  const updateSavedLinkedinPost = async (patch) => {
+    if (!linkedinOutput?._id) {
+      updateLinkedinOutput(patch);
+      return;
+    }
+    const editKeys = ['selectedTopic', 'postText', 'hashtags'];
+    const containsEditFields = editKeys.some((key) => Object.prototype.hasOwnProperty.call(patch || {}, key));
+    if (containsEditFields && patch?.__commitEdit !== true) {
+      return;
+    }
+    const cleanPatch = { ...(patch || {}) };
+    delete cleanPatch.__commitEdit;
+    setUpdatingLinkedinPost(true);
+    setError('');
+    try {
+      const { data } = await api.patch(`/blogs/social-posts/${linkedinOutput._id}`, cleanPatch);
+      const item = { ...data.item, saved: true };
+      setLinkedinOutput(item);
+      setSocialPosts((prev) => prev.map((post) => post._id === item._id ? item : post));
+      emitAppEvent(APP_EVENT_CONTENT_CHANGED, { scope: 'social', action: 'updated', id: item?._id || '' });
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not update social post');
+    } finally {
+      setUpdatingLinkedinPost(false);
+    }
+  };
+
+  const reviseSavedLinkedinPost = async (feedback) => {
+    if (!linkedinOutput?._id) {
+      setError('Save this LinkedIn post before using AI feedback improvements.');
+      return;
+    }
+    linkedinReviseAbortRef.current?.abort();
+    const controller = new AbortController();
+    linkedinReviseAbortRef.current = controller;
+    setRevisingLinkedinPost(true);
+    setError('');
+    try {
+      const { data } = await api.post(`/blogs/social-posts/${linkedinOutput._id}/revise`, { feedback, previewOnly: true }, { signal: controller.signal });
+      if (controller.signal.aborted) return null;
+      const item = { ...data.item, saved: true };
+      return item;
+    } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return null;
+      setError(err.response?.data?.message || err.message || 'Could not improve social post');
+      return null;
+    } finally {
+      if (linkedinReviseAbortRef.current === controller) {
+        linkedinReviseAbortRef.current = null;
+        setRevisingLinkedinPost(false);
+      }
+    }
+  };
+
+  const resetStudioState = useCallback(() => {
+    selectedArticleRef.current = null;
+    selectedBlogRef.current = null;
+    blogReviseAbortRef.current?.abort();
+    blogReviseAbortRef.current = null;
+    linkedinReviseAbortRef.current?.abort();
+    linkedinReviseAbortRef.current = null;
+    suggestSettingsAbortRef.current?.abort();
+    suggestSettingsAbortRef.current = null;
+    setRevisingDraft(false);
+    setRevisingLinkedinPost(false);
+    setSuggestingSettings(false);
+    setSelectedArticle(null);
+    setStyle(normalizeBlogStyle(DEFAULT_STYLE));
+    setKeywords('');
+    setBlogQuery('');
+    setSelectedBlog(null);
+    setDraftForm({ title: '', excerpt: '', bodyMarkdown: '' });
+    setDraftEditorOpen(false);
+    setDraftDrawerOpen(false);
+    setSelectedBlogIds([]);
+    setSelectedSocialPostIds([]);
+    setRevisionFeedback('');
+    setLinkedinForm(DEFAULT_LINKEDIN_FORM);
+    setLinkedinOutput(null);
+    setSocialPreviewOpen(false);
+    setSocialEditorDirty(false);
+    setUnsavedConfirm(null);
+    setMobileHeaderMenuOpen(false);
+    setPendingDraftId('');
+    setError('');
+    safeSessionSet(studioCacheKey, null);
+  }, [studioCacheKey]);
+
   const refreshStudio = useCallback(() => {
+    resetStudioState();
     if (contentType === 'blog') {
       loadArticles({ page: 1, reset: true });
       loadBlogs({ page: 1, reset: true });
@@ -971,7 +1333,7 @@ export default function BlogStudio() {
     }
     loadArticles({ page: 1, reset: true });
     loadSocialPosts();
-  }, [contentType, loadArticles, loadBlogs, loadSocialPosts]);
+  }, [contentType, loadArticles, loadBlogs, loadSocialPosts, resetStudioState]);
 
   const switchContentType = useCallback((nextType) => {
     if (nextType === contentType) return true;
@@ -979,9 +1341,12 @@ export default function BlogStudio() {
       showGenerationLockMessage();
       return false;
     }
-    setContentType(nextType);
+    const switchAction = () => setContentType(nextType);
+    if (contentType === 'blog') return confirmBlogDraftLeave(switchAction);
+    if (contentType === 'social') return confirmSocialEditorLeave(switchAction);
+    switchAction();
     return true;
-  }, [contentType, generationLocked, showGenerationLockMessage]);
+  }, [confirmBlogDraftLeave, confirmSocialEditorLeave, contentType, generationLocked, showGenerationLockMessage]);
 
   const refreshStudioSafely = useCallback(() => {
     if (generationLocked) {
@@ -1156,8 +1521,20 @@ export default function BlogStudio() {
                 linkedinOutput={linkedinOutput}
                 setLinkedinOutput={setLinkedinOutput}
                 savingLinkedinPost={savingLinkedinPost}
+                updateLinkedinOutput={updateLinkedinOutput}
+                updateSavedLinkedinPost={updateSavedLinkedinPost}
+                updatingLinkedinPost={updatingLinkedinPost}
+                reviseSavedLinkedinPost={reviseSavedLinkedinPost}
+                revisingLinkedinPost={revisingLinkedinPost}
                 socialPosts={socialPosts}
                 loadingSocialPosts={loadingSocialPosts}
+                selectedSocialPostIds={selectedSocialPostIds}
+                toggleSocialPostSelection={toggleSocialPostSelection}
+                toggleSelectAllSocialPosts={toggleSelectAllSocialPosts}
+                deleteSocialPosts={deleteSocialPosts}
+                deletingSocialPosts={deletingSocialPosts}
+                socialEditorDirty={socialEditorDirty}
+                setSocialEditorDirty={setSocialEditorDirty}
                 focusComposerMode={focusComposerMode}
                 onPreviewOpenChange={setSocialPreviewOpen}
               />
@@ -1299,6 +1676,17 @@ export default function BlogStudio() {
                 </SettingsGroup>
 
                 <SettingsGroup title="SEO">
+                  <div className="xl:col-span-2">
+                    <button
+                      type="button"
+                      onClick={suggestSeoSettings}
+                      disabled={suggestingSettings || !selectedArticle}
+                      className="content-studio-suggest-button inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    >
+                      {suggestingSettings ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                      {suggestingSettings ? 'Suggesting SEO Settings...' : 'Suggest SEO & Settings'}
+                    </button>
+                  </div>
                   <Field label="Meta Title (50-60 characters)">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.metaTitle} onChange={(e) => setStyle({ ...style, metaTitle: e.target.value })} placeholder="Optional, AI can generate" />
                   </Field>
@@ -1435,12 +1823,28 @@ export default function BlogStudio() {
           setDraftForm={setDraftForm}
           saveDraftEdits={saveDraftEdits}
           savingDraft={savingDraft}
+          revisionFeedback={revisionFeedback}
+          setRevisionFeedback={setRevisionFeedback}
+          reviseDraftWithFeedback={reviseDraftWithFeedback}
+          revisingDraft={revisingDraft}
+          confirmDraftLeave={confirmBlogDraftLeave}
           blogsHasMore={blogsHasMore}
           blogLoadMoreRef={blogLoadMoreRef}
         />
         </>
         )}
         </div>
+        {unsavedConfirm ? (
+          <UnsavedEditsModal
+            title={unsavedConfirm.title}
+            message={unsavedConfirm.message}
+            onCancel={dismissUnsavedConfirm}
+            onDiscard={discardUnsavedAndContinue}
+            blocking={unsavedConfirm.blocking}
+            cancelLabel={unsavedConfirm.cancelLabel}
+            onCancelTask={unsavedConfirm.onCancelTask}
+          />
+        ) : null}
         {generationLocked ? (
           <div className="content-studio-generation-overlay fixed inset-0 z-[70] flex items-center justify-center px-4">
             <div className="relative w-full max-w-[320px]">
@@ -1525,6 +1929,11 @@ function BlogDraftDrawer({
   setDraftForm,
   saveDraftEdits,
   savingDraft,
+  revisionFeedback,
+  setRevisionFeedback,
+  reviseDraftWithFeedback,
+  revisingDraft,
+  confirmDraftLeave,
   blogsHasMore,
   blogLoadMoreRef
 }) {
@@ -1600,10 +2009,17 @@ function BlogDraftDrawer({
                             <button
                               type="button"
                               onClick={() => {
-                                forceStudioScrollTop();
-                                setSelectedBlog(blog);
-                                setDraftEditorOpen(true);
-                                window.requestAnimationFrame(forceStudioScrollTop);
+                                const openBlog = () => {
+                                  forceStudioScrollTop();
+                                  setSelectedBlog(blog);
+                                  setDraftEditorOpen(true);
+                                  window.requestAnimationFrame(forceStudioScrollTop);
+                                };
+                                if (confirmDraftLeave) {
+                                  confirmDraftLeave(openBlog);
+                                } else {
+                                  openBlog();
+                                }
                               }}
                               className="min-w-0 flex-1 text-left"
                             >
@@ -1640,7 +2056,14 @@ function BlogDraftDrawer({
                 <div className="animate-fade-in-up stagger-1">
                   <button
                     type="button"
-                    onClick={() => setDraftEditorOpen(false)}
+                    onClick={() => {
+                      const backToList = () => setDraftEditorOpen(false);
+                      if (confirmDraftLeave) {
+                        confirmDraftLeave(backToList);
+                      } else {
+                        backToList();
+                      }
+                    }}
                     className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson xl:hidden"
                   >
                     Back to review list
@@ -1674,6 +2097,30 @@ function BlogDraftDrawer({
                     <Field label="Markdown Content">
                       <textarea className="content-studio-markdown-textarea input min-h-[520px] resize-y rounded-xl bg-gray-50 font-mono text-xs leading-relaxed transition-colors hover:border-gray-300 focus:bg-white focus:border-brand-crimson custom-scrollbar md:min-h-[560px]" value={draftForm.bodyMarkdown} onChange={(e) => setDraftForm({ ...draftForm, bodyMarkdown: e.target.value })} />
                     </Field>
+                    <div className="content-studio-improve-panel rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Improve with feedback</div>
+                          <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-900/70">Ask AI to revise this same draft while keeping the SOP format and source grounding.</p>
+                        </div>
+                        <Sparkles size={18} className="shrink-0 text-emerald-700" />
+                      </div>
+                      <textarea
+                        className="content-studio-improve-input input min-h-[96px] resize-y rounded-xl bg-white text-sm transition-colors hover:border-emerald-200 focus:border-emerald-500"
+                        value={revisionFeedback}
+                        onChange={(e) => setRevisionFeedback(e.target.value)}
+                        placeholder="Example: Make the intro stronger, add a clearer table, reduce promotional tone, and keep CTA advisory."
+                      />
+                      <button
+                        type="button"
+                        onClick={reviseDraftWithFeedback}
+                        disabled={revisingDraft || !revisionFeedback.trim()}
+                        className="content-studio-improve-button mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white py-3 text-sm font-black text-emerald-700 transition-all hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {revisingDraft ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                        {revisingDraft ? 'Improving Draft...' : 'Improve Draft'}
+                      </button>
+                    </div>
                     <button type="button" onClick={saveDraftEdits} disabled={savingDraft} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson py-3 font-black text-white transition-all hover:bg-brand-hoverred disabled:cursor-not-allowed disabled:opacity-60">
                       {savingDraft ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                       Save Edits
@@ -1836,9 +2283,43 @@ function LinkedInOutputPreview({
   output,
   onSave,
   saving = false,
-  onBackToList
+  onUpdateLocal,
+  onUpdateSaved,
+  updatingSaved = false,
+  onReviseSaved,
+  revisingSaved = false,
+  onBackToList,
+  defaultEditMode = false,
+  onDirtyChange,
+  resetSignal = 0
 }) {
   const [copied, setCopied] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({ selectedTopic: '', postText: '', hashtags: '' });
+  const [feedback, setFeedback] = useState('');
+  const [statusSaving, setStatusSaving] = useState('');
+  const baseEditForm = useMemo(() => ({
+    selectedTopic: output?.selectedTopic || '',
+    postText: output?.postText || '',
+    hashtags: Array.isArray(output?.hashtags) ? output.hashtags.join(' ') : ''
+  }), [output?.hashtags, output?.postText, output?.selectedTopic]);
+
+  useEffect(() => {
+    setEditForm(baseEditForm);
+    setEditMode(Boolean(defaultEditMode && output?.saved));
+    setFeedback('');
+    setStatusSaving('');
+    onDirtyChange?.(false);
+  }, [baseEditForm, defaultEditMode, onDirtyChange, output?._id, output?.previewToken, output?.saved, resetSignal]);
+
+  useEffect(() => {
+    const dirty = editMode && (
+      editForm.selectedTopic !== baseEditForm.selectedTopic ||
+      editForm.postText !== baseEditForm.postText ||
+      editForm.hashtags !== baseEditForm.hashtags
+    );
+    onDirtyChange?.(dirty);
+  }, [baseEditForm, editForm, editMode, onDirtyChange]);
 
   const copyOutput = useCallback(async () => {
     if (!output?.postText) return;
@@ -1851,6 +2332,50 @@ function LinkedInOutputPreview({
       setCopied(false);
     }
   }, [output]);
+
+  const saveEdits = useCallback(async () => {
+    const patch = {
+      __commitEdit: true,
+      selectedTopic: editForm.selectedTopic,
+      postText: editForm.postText,
+      hashtags: editForm.hashtags
+        .split(/[,\s]+/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .map((tag) => tag.startsWith('#') ? tag : `#${tag}`)
+    };
+    if (output?.saved && output?._id) {
+      await onUpdateSaved?.(patch);
+    } else {
+      await onSave?.(patch);
+    }
+    onDirtyChange?.(false);
+    setEditMode(Boolean(output?.saved));
+  }, [editForm, onDirtyChange, onSave, onUpdateSaved, output?._id, output?.saved]);
+
+  const improveWithFeedback = useCallback(async () => {
+    const value = feedback.trim();
+    if (!value) return;
+    const revised = await onReviseSaved?.(value);
+    if (revised) {
+      setEditForm({
+        selectedTopic: revised.selectedTopic || editForm.selectedTopic,
+        postText: revised.postText || editForm.postText,
+        hashtags: Array.isArray(revised.hashtags) ? revised.hashtags.join(' ') : editForm.hashtags
+      });
+      onDirtyChange?.(true);
+      setFeedback('');
+    }
+  }, [editForm.hashtags, editForm.postText, editForm.selectedTopic, feedback, onDirtyChange, onReviseSaved]);
+
+  const updateStatus = useCallback(async (status) => {
+    setStatusSaving(status);
+    try {
+      await onUpdateSaved?.({ status });
+    } finally {
+      setStatusSaving('');
+    }
+  }, [onUpdateSaved]);
 
   const emptyPreview = (
     <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center">
@@ -1876,53 +2401,103 @@ function LinkedInOutputPreview({
       </button>
       <div className="animate-fade-in-up stagger-1">
         <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Platform</span>
-              <span className="rounded-full border border-brand-crimson/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson">
-                {output.framework || 'LinkedIn'}
-              </span>
-              {output.topicTier ? (
-                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                  {output.topicTier}
-                </span>
-              ) : null}
-              {output.emotionalJob ? (
-                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                  {output.emotionalJob}
-                </span>
-              ) : null}
-            </div>
-            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-              {!output.saved ? (
+          {output.saved ? (
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
+                    output.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                    ['review', 'draft'].includes(output.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                    'bg-gray-50 text-gray-500 border-gray-200'
+                  }`}>
+                    {contentStatusLabel(output.status)}
+                  </span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
+                </div>
                 <button
                   type="button"
-                  onClick={onSave}
-                  disabled={saving}
-                  className="inline-flex min-h-[40px] min-w-0 items-center justify-center gap-1.5 rounded-xl bg-brand-crimson px-3 py-2 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-all hover:bg-brand-hoverred active:scale-[0.98] disabled:cursor-not-allowed disabled:scale-100 disabled:opacity-60 sm:gap-2 sm:px-5 sm:text-[12px]"
+                  onClick={copyOutput}
+                  className="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
                 >
-                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                  <span className="truncate">{saving ? 'Saving...' : 'Save Post'}</span>
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                  {copied ? 'Copied' : 'Copy'}
                 </button>
-              ) : (
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
-              )}
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatusButton status="review" current={output.status} saving={statusSaving || (updatingSaved ? 'updating' : '')} onClick={updateStatus} />
+                <StatusButton status="published" current={output.status} saving={statusSaving || (updatingSaved ? 'updating' : '')} onClick={updateStatus} />
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={copyOutput}
-                className="inline-flex min-h-[40px] min-w-0 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson sm:min-h-[34px] sm:gap-2 sm:rounded-lg"
+                className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] font-black text-gray-600 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
               >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
-                <span className="truncate">{copied ? 'Copied' : 'Copy'}</span>
+                {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
-          </div>
-          <div className="text-sm font-black leading-snug text-gray-900">
-            {output.selectedTopic || 'LinkedIn post preview'}
-          </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4">
+          {editMode ? (
+            <div className="grid grid-cols-1 gap-4">
+                <Field label="Post Title">
+                  <input className="input min-h-[42px] rounded-xl font-bold transition-colors hover:border-gray-300 focus:border-brand-crimson" value={editForm.selectedTopic} onChange={(e) => setEditForm({ ...editForm, selectedTopic: e.target.value })} />
+                </Field>
+                <Field label="Post Text">
+                  <textarea className="content-studio-markdown-textarea input min-h-[420px] resize-y rounded-xl bg-gray-50 font-mono text-xs leading-relaxed transition-colors hover:border-gray-300 focus:bg-white focus:border-brand-crimson custom-scrollbar md:min-h-[520px]" value={editForm.postText} onChange={(e) => setEditForm({ ...editForm, postText: e.target.value })} />
+                </Field>
+                <Field label="Hashtags">
+                  <input className="input min-h-[42px] rounded-xl transition-colors hover:border-gray-300 focus:border-brand-crimson" value={editForm.hashtags} onChange={(e) => setEditForm({ ...editForm, hashtags: e.target.value })} />
+                </Field>
+            </div>
+          ) : null}
+
+          <div className="content-studio-improve-panel rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Improve with feedback</div>
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-900/70">
+                  Ask AI to revise this same draft while keeping the post useful and source grounded.
+                </p>
+              </div>
+              <Sparkles size={18} className="shrink-0 text-emerald-700" />
+            </div>
+            <textarea
+              className="content-studio-improve-input input min-h-[92px] resize-y rounded-xl bg-white text-sm"
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Example: Make the hook sharper, reduce hype, add a clearer advisory CTA."
+            />
+            <button
+              type="button"
+              onClick={improveWithFeedback}
+              disabled={revisingSaved || !feedback.trim() || !output.saved}
+              className="content-studio-improve-button mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white py-3 text-sm font-black text-emerald-700 transition-all hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {revisingSaved ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {revisingSaved ? 'Improving Post...' : output.saved ? 'Improve Post' : 'Save Post to Improve'}
+            </button>
+          </div>
+
+          {editMode ? (
+            <button
+              type="button"
+              onClick={saveEdits}
+              disabled={updatingSaved || saving || !editForm.postText.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson py-3 text-sm font-black text-white transition-all hover:bg-brand-hoverred disabled:opacity-60"
+            >
+              {updatingSaved || saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              {updatingSaved || saving ? 'Saving...' : output.saved ? 'Save Edits' : 'Save Post'}
+            </button>
+          ) : null}
+
+          {!editMode ? (
           <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
@@ -1940,6 +2515,7 @@ function LinkedInOutputPreview({
               </div>
             ) : null}
           </div>
+          ) : null}
         </div>
       </div>
     </>
@@ -1952,10 +2528,12 @@ function LinkedInOutputPreview({
   );
 }
 
-function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId, className = 'mt-4' }) {
+function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId, selectedIds = [], onToggleSelection, className = 'mt-4' }) {
   return (
     <div className={className}>
-      {posts.length ? (
+      {loading && !posts.length ? (
+        <LoadingRows label="Loading saved posts..." />
+      ) : posts.length ? (
         <div className="space-y-2">
           {posts.map((post) => (
             <div
@@ -1964,19 +2542,33 @@ function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId,
                 activeId === post._id ? 'border-brand-crimson shadow-sm ring-1 ring-brand-crimson/15' : 'border-gray-100'
               }`}
             >
-              <button
-                type="button"
-                onClick={() => onSelect?.(post)}
-                className="w-full text-left"
-              >
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <span className="line-clamp-2 text-sm font-black leading-tight text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</span>
-                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
-                    Published
-                  </span>
-                </div>
-                <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
-              </button>
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => onToggleSelection?.(post._id)}
+                  className={`mt-0.5 rounded-lg p-1 transition-all ${selectedIds.includes(post._id) ? 'text-brand-crimson' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                  title={selectedIds.includes(post._id) ? 'Unselect' : 'Select'}
+                >
+                  {selectedIds.includes(post._id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelect?.(post)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <span className="line-clamp-2 text-sm font-black leading-tight text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</span>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                      post.status === 'published' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' :
+                      ['review', 'draft'].includes(post.status) ? 'border-amber-200 bg-amber-50 text-amber-600' :
+                      'border-gray-200 bg-gray-50 text-gray-500'
+                    }`}>
+                      {contentStatusLabel(post.status)}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -2165,8 +2757,20 @@ function LinkedInStudio({
   linkedinOutput,
   setLinkedinOutput,
   savingLinkedinPost,
+  updateLinkedinOutput,
+  updateSavedLinkedinPost,
+  updatingLinkedinPost,
+  reviseSavedLinkedinPost,
+  revisingLinkedinPost,
   socialPosts,
   loadingSocialPosts,
+  selectedSocialPostIds = [],
+  toggleSocialPostSelection,
+  toggleSelectAllSocialPosts,
+  deleteSocialPosts,
+  deletingSocialPosts = false,
+  socialEditorDirty = false,
+  setSocialEditorDirty,
   focusComposerMode = false,
   onPreviewOpenChange
 }) {
@@ -2174,24 +2778,21 @@ function LinkedInStudio({
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
   const [outputDrawerOpen, setOutputDrawerOpen] = useState(false);
-  const hasMountedOutputEffect = useRef(false);
+  const lastAutoOpenTokenRef = useRef(linkedinOutput?.previewToken || '');
   const selectArticleById = (articleId) => {
     const article = articles.find((item) => item._id === articleId);
     if (article) setSelectedArticle(article);
   };
 
   useEffect(() => {
-    if (!hasMountedOutputEffect.current) {
-      hasMountedOutputEffect.current = true;
-      return;
-    }
-    if (linkedinOutput?.postText) {
-      forceStudioScrollTop();
-      setOutputDrawerOpen(true);
-      window.requestAnimationFrame(forceStudioScrollTop);
-      window.setTimeout(forceStudioScrollTop, 80);
-    }
-  }, [linkedinOutput?._id, linkedinOutput?.postText, linkedinOutput?.previewToken]);
+    const token = linkedinOutput?.previewToken || '';
+    if (!token || token === lastAutoOpenTokenRef.current) return;
+    lastAutoOpenTokenRef.current = token;
+    forceStudioScrollTop();
+    setOutputDrawerOpen(true);
+    window.requestAnimationFrame(forceStudioScrollTop);
+    window.setTimeout(forceStudioScrollTop, 80);
+  }, [linkedinOutput?.previewToken]);
 
   useEffect(() => {
     onPreviewOpenChange?.(outputDrawerOpen);
@@ -2263,72 +2864,79 @@ function LinkedInStudio({
         </div>
       </section>
 
-      <section className="relative flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]">
+      <section className="content-studio-panel relative z-10 flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-crimson via-brand-pink to-brand-crimson opacity-50"></div>
-        <PanelHeader icon={Settings2} title="Post Builder" subtitle="Customize before generation" />
+        <PanelHeader icon={Settings2} title="Style & Generation Settings" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="content-studio-settings-body min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
           <div className="space-y-4">
-            <SettingsGroup title="Platform & Source">
-                <div className="xl:col-span-2">
-                <CompactPlatformSelector value={socialPlatform} onChange={setSocialPlatform} />
+            <div
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDropActive(true);
+              }}
+              onDragLeave={() => setDropActive(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDropActive(false);
+                selectArticleById(event.dataTransfer.getData('text/plain'));
+              }}
+              className={`content-studio-dropzone rounded-xl border border-dashed p-3 transition-all duration-300 ${
+                dropActive 
+                  ? 'border-brand-crimson bg-brand-pink/10' 
+                  : selectedArticle 
+                    ? 'border-gray-200 bg-white/60' 
+                    : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-gray-500">
+                <GripVertical size={14} />
+                Selected Topic Source
               </div>
-              <div
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDropActive(true);
-                }}
-                onDragLeave={() => setDropActive(false)}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setDropActive(false);
-                  selectArticleById(event.dataTransfer.getData('text/plain'));
-                }}
-                className={`xl:col-span-2 rounded-xl border border-dashed p-4 transition-all ${dropActive ? 'border-brand-crimson bg-brand-pink/10' : selectedArticle ? 'border-gray-200 bg-white/60' : 'border-gray-200 bg-gray-50/70 hover:bg-gray-50'}`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-xs font-black uppercase tracking-wider text-gray-500">Selected Topic Source</div>
-                  {selectedArticle ? (
+              {selectedArticle ? (
+                <div className="animate-fade-in-up stagger-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedArticle(null);
                         setLinkedinOutput(null);
                       }}
-                      className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+                      className="shrink-0 rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 border border-gray-200 transition hover:bg-red-50 hover:text-red-600 hover:border-red-200"
                     >
                       Clear
                     </button>
-                  ) : null}
-                </div>
-                {selectedArticle ? (
-                  <>
-                    <div className="text-sm font-black leading-snug text-gray-900">{selectedArticle.title}</div>
-                    <p className="mt-2 line-clamp-3 border-l-2 border-gray-200 pl-3 text-xs font-medium italic text-gray-500">
-                      {selectedArticle.summary || selectedArticle.aiSummary}
-                    </p>
-                  </>
-                ) : (
-                  <div className="flex min-h-[90px] items-center justify-center rounded-lg bg-white/60 text-center text-sm font-bold text-gray-500">
-                    Drag a topic here or click one from the left.
                   </div>
-                )}
-              </div>
-            </SettingsGroup>
+                  <div className="mt-2 text-xs font-medium text-gray-500 line-clamp-2 italic border-l-2 border-gray-200 pl-2">{selectedArticle.summary || selectedArticle.aiSummary}</div>
+                </div>
+              ) : (
+                <div className="content-studio-empty-source flex min-h-[78px] items-center justify-center rounded-lg bg-white/60 text-center">
+                  <div className="text-sm font-bold text-gray-500">Drag or click a topic to select</div>
+                </div>
+              )}
+            </div>
 
             <SettingsGroup title="Post Strategy">
-              <SelectField
-                label="Post Goal"
-                value={linkedinForm.postGoal}
-                onChange={(value) => update('postGoal', value)}
-                options={[
-                  ['thought_leadership', 'Thought Leadership'],
-                  ['client_alert', 'Client Alert'],
-                  ['market_insight', 'Market Insight'],
-                  ['educational', 'Educational'],
-                  ['lead_generation', 'Lead Generation']
-                ]}
-              />
+              <div
+                className="xl:col-span-2 grid grid-cols-1 gap-3 xl:grid-cols-2"
+              >
+                <Field label="Topic">
+                  <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={selectedArticle?.title || ''} readOnly placeholder="Auto-filled from selected topic" />
+                </Field>
+                <SelectField
+                  label="Post Goal"
+                  value={linkedinForm.postGoal}
+                  onChange={(value) => update('postGoal', value)}
+                  options={[
+                    ['thought_leadership', 'Thought Leadership'],
+                    ['client_alert', 'Client Alert'],
+                    ['market_insight', 'Market Insight'],
+                    ['educational', 'Educational'],
+                    ['lead_generation', 'Lead Generation']
+                  ]}
+                />
+              </div>
               <SelectField
                 label="Tone"
                 value={linkedinForm.tone}
@@ -2439,20 +3047,25 @@ function LinkedInStudio({
 
         </div>
 
-        <div className="border-t border-gray-200/50 bg-white/70 p-5 backdrop-blur">
-          <div className="grid grid-cols-1 gap-3">
+        <div className="content-studio-footer border-t border-gray-200/50 bg-white/70 p-4 backdrop-blur">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
             <button
               type="button"
               disabled={generatingLinkedin || !canUseBlogStudio}
               onClick={generateLinkedinPost}
-              className="btn-primary w-full rounded-xl py-3.5 text-base font-black tracking-wide shadow-lg transition-all hover:shadow-brand-crimson/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className="content-studio-generate-button btn-primary w-full rounded-xl py-3 text-base font-black tracking-wide shadow-lg transition-all hover:shadow-brand-crimson/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {generatingLinkedin ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
               {generatingLinkedin ? 'Generating LinkedIn Post...' : 'Generate LinkedIn Post'}
             </button>
-          </div>
-          <div className="mt-3 text-xs font-semibold text-gray-500">
-            After generation, the post preview will open in the right-side drawer.
+            <button
+              type="button"
+              onClick={() => setOutputDrawerOpen(true)}
+              className="content-studio-review-button inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
+            >
+              <BookOpenText size={16} />
+              Review & Publishing
+            </button>
           </div>
         </div>
       </section>
@@ -2472,15 +3085,55 @@ function LinkedInStudio({
       }}
       onSave={saveLinkedinPost}
       saving={savingLinkedinPost}
+      onUpdateLocal={updateLinkedinOutput}
+      onUpdateSaved={updateSavedLinkedinPost}
+      updatingSaved={updatingLinkedinPost}
+      onReviseSaved={reviseSavedLinkedinPost}
+      revisingSaved={revisingLinkedinPost}
+      selectedPostIds={selectedSocialPostIds}
+      togglePostSelection={toggleSocialPostSelection}
+      toggleSelectAllPosts={toggleSelectAllSocialPosts}
+      deletePosts={deleteSocialPosts}
+      deletingPosts={deletingSocialPosts}
+      editorDirty={socialEditorDirty}
+      onEditorDirtyChange={setSocialEditorDirty}
+      improving={revisingLinkedinPost}
+      onCancelImprovement={() => cancelImprovement('linkedin')}
     />
     </>
   );
 }
 
-function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, onSelectSaved, onSave, saving }) {
+function SocialOutputDrawer({
+  open,
+  onClose,
+  output,
+  savedPosts,
+  loadingSaved,
+  onSelectSaved,
+  onSave,
+  saving,
+  onUpdateLocal,
+  onUpdateSaved,
+  updatingSaved,
+  onReviseSaved,
+  revisingSaved,
+  selectedPostIds = [],
+  togglePostSelection,
+  toggleSelectAllPosts,
+  deletePosts,
+  deletingPosts = false,
+  editorDirty = false,
+  onEditorDirtyChange,
+  improving = false,
+  onCancelImprovement
+}) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [savedPostsQuery, setSavedPostsQuery] = useState('');
   const [confirmAction, setConfirmAction] = useState(null);
+  const [discardConfirmAction, setDiscardConfirmAction] = useState(null);
+  const [discardVersion, setDiscardVersion] = useState(0);
   const drawerRef = useRef(null);
   const listPaneRef = useRef(null);
   const previewPaneRef = useRef(null);
@@ -2499,6 +3152,7 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
     setConfirmAction(null);
     setSavedPostsQuery('');
     setMobilePreviewOpen(Boolean(output));
+    setEditorOpen(Boolean(output && !output.saved));
     forceStudioScrollTop();
     previewPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
     listPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
@@ -2528,28 +3182,66 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
     };
   }, [open, mobilePreviewOpen, output?._id]);
 
+  const requestDiscardBefore = useCallback((nextAction) => {
+    if (improving) {
+      setDiscardConfirmAction(() => 'improving');
+      return;
+    }
+    if (!editorDirty) {
+      nextAction?.();
+      return;
+    }
+    setDiscardConfirmAction(() => nextAction);
+  }, [editorDirty, improving]);
+
   const selectSavedPost = useCallback((post) => {
-    onSelectSaved?.(post);
-    setMobilePreviewOpen(true);
-  }, [onSelectSaved]);
+    requestDiscardBefore(() => {
+      onSelectSaved?.(post);
+      setEditorOpen(true);
+      setMobilePreviewOpen(true);
+    });
+  }, [onSelectSaved, requestDiscardBefore]);
 
   const hasUnsavedOutput = Boolean(output && !output.saved);
 
   const requestClose = useCallback(() => {
-    if (hasUnsavedOutput) {
-      setConfirmAction('close');
-      return;
-    }
-    onClose?.();
-  }, [hasUnsavedOutput, onClose]);
+    requestDiscardBefore(() => {
+      if (hasUnsavedOutput) {
+        setConfirmAction('close');
+        return;
+      }
+      onClose?.();
+    });
+  }, [hasUnsavedOutput, onClose, requestDiscardBefore]);
+
+  useEffect(() => {
+    if (!open || !editorDirty) return undefined;
+
+    const guardOutsideDrawerClick = (event) => {
+      const drawerNode = drawerRef.current;
+      if (event.target?.closest?.('[data-unsaved-edits-modal]')) return;
+      if (!drawerNode || drawerNode.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestClose();
+    };
+
+    document.addEventListener('click', guardOutsideDrawerClick, true);
+    return () => {
+      document.removeEventListener('click', guardOutsideDrawerClick, true);
+    };
+  }, [editorDirty, open, requestClose]);
 
   const requestBackToList = useCallback(() => {
-    if (hasUnsavedOutput) {
-      setConfirmAction('back');
-      return;
-    }
-    setMobilePreviewOpen(false);
-  }, [hasUnsavedOutput]);
+    requestDiscardBefore(() => {
+      if (hasUnsavedOutput) {
+        setConfirmAction('back');
+        return;
+      }
+      setMobilePreviewOpen(false);
+      setEditorOpen(false);
+    });
+  }, [hasUnsavedOutput, requestDiscardBefore]);
 
   const confirmSaveAndContinue = useCallback(async () => {
     const action = confirmAction;
@@ -2570,7 +3262,36 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
       return;
     }
     setMobilePreviewOpen(false);
+    setEditorOpen(false);
   }, [confirmAction, onClose]);
+
+  const openEditor = useCallback(() => {
+    setEditorOpen(true);
+    window.requestAnimationFrame(() => {
+      previewPaneRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+    });
+  }, []);
+
+  const editorPrompt = output ? (
+    <div className="flex h-full min-h-[520px] items-center justify-center bg-white p-6">
+      <div className="flex h-full min-h-[420px] w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/30 p-6 text-center">
+        <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-gray-100">
+          <BookOpenText size={20} />
+        </div>
+        <div className="max-w-sm text-sm font-black leading-snug text-gray-900">{output.selectedTopic || 'Saved LinkedIn post'}</div>
+        <p className="mt-4 max-w-sm text-xs font-semibold leading-relaxed text-gray-500">
+          Click this item in the list to open edit mode.
+        </p>
+        <button
+          type="button"
+          onClick={openEditor}
+          className="mt-6 inline-flex min-h-[42px] items-center justify-center rounded-xl bg-brand-crimson px-5 text-sm font-black text-white transition-all hover:bg-brand-hoverred"
+        >
+          Open Editor
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -2580,13 +3301,13 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
       />
       <aside
         ref={drawerRef}
-        className={`fixed inset-y-0 left-0 right-0 z-50 h-full w-full overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 xl:left-auto xl:max-w-[620px] ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 right-0 z-50 h-full w-full overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 xl:left-auto xl:max-w-[760px] ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between gap-3 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <div className="min-w-0">
-              <div className="text-base font-black text-gray-900">Saved Posts & Preview</div>
-              <div className="text-xs font-semibold text-gray-500">Review the generated post and reopen saved posts from here.</div>
+              <div className="text-base font-black text-gray-900">Review & Publishing</div>
+              <div className="text-xs font-semibold text-gray-500">Review, edit, and publish your generated content from here.</div>
             </div>
             <button
               type="button"
@@ -2596,7 +3317,7 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
               Close
             </button>
           </div>
-          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(250px,290px)_minmax(0,1fr)]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
             <aside
               ref={listPaneRef}
               className={`${mobilePreviewOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col overflow-y-auto border-b border-gray-100 bg-gray-50/60 p-4 custom-scrollbar xl:border-b-0 xl:border-r`}
@@ -2608,33 +3329,82 @@ function SocialOutputDrawer({ open, onClose, output, savedPosts, loadingSaved, o
                     className="input min-h-[42px] rounded-xl bg-gray-50 pl-9 transition-colors hover:bg-white hover:border-gray-300 focus:bg-white focus:border-brand-crimson"
                     value={savedPostsQuery}
                     onChange={(e) => setSavedPostsQuery(e.target.value)}
-                    placeholder="Search saved posts..."
+                    placeholder="Search review content..."
                   />
                 </div>
+                {selectedPostIds.length ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2">
+                    <span className="text-xs font-black text-brand-crimson">{selectedPostIds.length} selected</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => toggleSelectAllPosts?.(filteredSavedPosts.map((post) => post._id))} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
+                        {filteredSavedPosts.length && filteredSavedPosts.every((post) => selectedPostIds.includes(post._id)) ? 'Unselect All' : 'Select All'}
+                      </button>
+                      <button type="button" onClick={() => deletePosts?.(selectedPostIds)} disabled={deletingPosts} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+                        {deletingPosts ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <SavedSocialPostsList
                 posts={filteredSavedPosts}
                 loading={loadingSaved}
                 onSelect={selectSavedPost}
                 activeId={output?.saved ? output._id : ''}
+                selectedIds={selectedPostIds}
+                onToggleSelection={togglePostSelection}
                 className="mt-0"
               />
             </aside>
             <div
               ref={previewPaneRef}
-              key={output?._id || output?.postText || 'empty-social-preview'}
+              key={`${output?._id || output?.postText || 'empty-social-preview'}:${editorOpen ? 'editor' : 'prompt'}`}
               className={`${mobilePreviewOpen ? 'block' : 'hidden xl:block'} h-full min-h-0 overflow-y-auto bg-white custom-scrollbar`}
             >
               <LinkedInOutputPreview
                 output={output}
                 onSave={onSave}
                 saving={saving}
+                onUpdateLocal={onUpdateLocal}
+                onUpdateSaved={onUpdateSaved}
+                updatingSaved={updatingSaved}
+                onReviseSaved={onReviseSaved}
+                revisingSaved={revisingSaved}
                 onBackToList={requestBackToList}
+                defaultEditMode
+                onDirtyChange={onEditorDirtyChange}
+                resetSignal={discardVersion}
               />
             </div>
           </div>
         </div>
       </aside>
+      {discardConfirmAction ? (
+        <UnsavedEditsModal
+          title={discardConfirmAction === 'improving' ? 'AI improvement is running' : 'Discard unsaved edits?'}
+          message={discardConfirmAction === 'improving'
+            ? 'AI improvement is running. Please wait until it finishes, then save or discard your edits.'
+            : 'You have unsaved LinkedIn changes. Discard them and continue, or keep editing.'}
+          onCancel={() => setDiscardConfirmAction(null)}
+          onDiscard={() => {
+            const action = discardConfirmAction;
+            if (action === 'improving') {
+              setDiscardConfirmAction(null);
+              return;
+            }
+            setDiscardConfirmAction(null);
+            onEditorDirtyChange?.(false);
+            setDiscardVersion((value) => value + 1);
+            action?.();
+          }}
+          blocking={discardConfirmAction === 'improving'}
+          cancelLabel={discardConfirmAction === 'improving' ? 'Cancel Improvement' : ''}
+          onCancelTask={discardConfirmAction === 'improving' ? () => {
+            setDiscardConfirmAction(null);
+            onCancelImprovement?.();
+          } : null}
+        />
+      ) : null}
       {confirmAction ? (
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-gray-950/55 px-4 pt-[max(5rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center sm:pt-0">
           <div className="w-full max-w-[340px] rounded-[24px] border border-gray-200 bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.24)]">
@@ -2740,6 +3510,61 @@ function StatusButton({ status, current, saving, onClick }) {
       {saving === status ? <Loader2 size={12} className="animate-spin" /> : <Settings2 size={12} />}
       {label}
     </button>
+  );
+}
+
+function UnsavedEditsModal({
+  title = 'Discard unsaved edits?',
+  message,
+  onCancel,
+  onDiscard,
+  blocking = false,
+  cancelLabel = '',
+  onCancelTask
+}) {
+  return (
+    <div data-unsaved-edits-modal className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/60 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-[420px] rounded-[26px] border border-gray-200 bg-white p-5 shadow-[0_28px_80px_rgba(15,23,42,0.30)] sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+            <FileText size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-base font-black text-gray-900">{title}</div>
+            <p className="mt-2 text-sm font-semibold leading-relaxed text-gray-500">
+              {message}
+            </p>
+          </div>
+        </div>
+        <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className={`${blocking && !onCancelTask ? 'sm:col-span-2' : ''} inline-flex min-h-[44px] items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50`}
+          >
+            {blocking ? 'Keep Waiting' : 'Keep Editing'}
+          </button>
+          {blocking && onCancelTask ? (
+            <button
+              type="button"
+              onClick={onCancelTask}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-600 transition-all hover:bg-red-100"
+            >
+              {cancelLabel || 'Cancel'}
+            </button>
+          ) : null}
+          {!blocking ? (
+            <button
+              type="button"
+              onClick={onDiscard}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-crimson px-4 text-sm font-black text-white shadow-sm ring-2 ring-brand-crimson ring-offset-2 transition-all hover:bg-brand-hoverred"
+            >
+              Discard Changes
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 

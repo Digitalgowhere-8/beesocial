@@ -80,6 +80,16 @@ function renderInlineMarkdownHtml(text = '') {
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
 }
 
+function sopHeadingMeta(heading = '') {
+  const key = String(heading || '').trim().toLowerCase();
+  if (key === 'banner') return { label: 'CREATIVE BRIEF', color: '#0369a1', border: '#bae6fd', bg: '#f0f9ff' };
+  if (key === 'cta' || key === 'recommended next step') return { label: 'CONVERSION', color: '#047857', border: '#a7f3d0', bg: '#ecfdf5' };
+  if (key === 'keywords/tags' || key === 'keywords' || key === 'tags') return { label: 'SEO', color: '#b45309', border: '#fde68a', bg: '#fffbeb' };
+  if (key.includes('meta') || key === 'social media copy') return { label: 'DISTRIBUTION', color: '#7c3aed', border: '#ddd6fe', bg: '#f5f3ff' };
+  if (key === 'resources') return { label: 'ATTRIBUTION', color: '#7c3aed', border: '#ddd6fe', bg: '#f5f3ff' };
+  return null;
+}
+
 function stripInlineMarkdown(text = '') {
   return String(text || '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -129,6 +139,39 @@ function parseMarkdownTableRow(line = '') {
     .replace(/\|$/, '')
     .split('|')
     .map((cell) => cell.trim());
+}
+
+function sopSectionTone(heading = '') {
+  const key = String(heading || '').trim().toLowerCase();
+  if (key === 'banner') {
+    return {
+      eyebrow: 'Creative Brief',
+      className: 'content-repo-sop-banner content-repo-sop-banner-creative',
+      labelClassName: 'content-repo-sop-eyebrow'
+    };
+  }
+  if (key === 'cta' || key === 'recommended next step') {
+    return {
+      eyebrow: 'Conversion',
+      className: 'content-repo-sop-banner content-repo-sop-banner-conversion',
+      labelClassName: 'content-repo-sop-eyebrow'
+    };
+  }
+  if (key === 'keywords/tags' || key === 'keywords' || key === 'tags') {
+    return {
+      eyebrow: 'SEO',
+      className: 'content-repo-sop-banner content-repo-sop-banner-seo',
+      labelClassName: 'content-repo-sop-eyebrow'
+    };
+  }
+  if (key.includes('meta') || key === 'social media copy' || key === 'resources') {
+    return {
+      eyebrow: key === 'resources' ? 'Attribution' : 'Distribution',
+      className: 'content-repo-sop-banner content-repo-sop-banner-distribution',
+      labelClassName: 'content-repo-sop-eyebrow'
+    };
+  }
+  return null;
 }
 
 function markdownToPlainText(bodyMarkdown = '', title = '') {
@@ -200,7 +243,18 @@ function markdownToHtml(bodyMarkdown = '', title = '') {
     }
 
     if (/^##\s+/.test(line)) {
-      blocks.push(`<h2>${renderInlineMarkdownHtml(line.replace(/^##\s+/, ''))}</h2>`);
+      const heading = line.replace(/^##\s+/, '');
+      const sopMeta = sopHeadingMeta(heading);
+      if (sopMeta) {
+        blocks.push(
+          `<div style="border:1px solid ${sopMeta.border};background:${sopMeta.bg};padding:12px 16px;margin:28px 0 12px;border-radius:10px;">` +
+          `<div style="font-size:10px;letter-spacing:1.8px;font-weight:700;color:${sopMeta.color};">${sopMeta.label}</div>` +
+          `<h2 style="margin:4px 0 0;color:#111827;font-size:20px;">${renderInlineMarkdownHtml(heading === 'Recommended next step' ? 'CTA' : heading)}</h2>` +
+          `</div>`
+        );
+      } else {
+        blocks.push(`<h2>${renderInlineMarkdownHtml(heading)}</h2>`);
+      }
       i += 1;
       continue;
     }
@@ -267,6 +321,137 @@ function markdownToHtml(bodyMarkdown = '', title = '') {
   return blocks.join('');
 }
 
+function parseSopSections(bodyMarkdown = '', title = '') {
+  const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
+  const sections = [];
+  let current = { heading: '', lines: [] };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const match = line.trim().match(/^##\s+(.+)$/);
+    if (match) {
+      if (current.heading || current.lines.some((item) => item.trim())) sections.push(current);
+      current = { heading: match[1].trim(), lines: [] };
+      continue;
+    }
+    current.lines.push(line);
+  }
+
+  if (current.heading || current.lines.some((item) => item.trim())) sections.push(current);
+  return sections;
+}
+
+function sectionKey(heading = '') {
+  return String(heading || '').trim().toLowerCase();
+}
+
+function sectionText(lines = []) {
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function isMetaSection(heading = '') {
+  const key = sectionKey(heading);
+  return [
+    'banner',
+    'keywords/tags',
+    'keywords',
+    'tags',
+    'seo / meta title',
+    'seo/meta title',
+    'seo meta title',
+    'meta title',
+    'meta description',
+    'social media copy',
+    'resources',
+    'cta',
+    'recommended next step'
+  ].includes(key);
+}
+
+function isFaqSection(heading = '') {
+  const key = sectionKey(heading);
+  return key === 'faq' || key === 'faqs';
+}
+
+function findSopSection(sections = [], names = []) {
+  const keys = names.map(sectionKey);
+  return sections.find((section) => keys.includes(sectionKey(section.heading)));
+}
+
+function headingHtml(label = '') {
+  return `<p style="margin:18px 0 8px;font-weight:700;color:#111827;">${escapeHtml(label)}</p>`;
+}
+
+function wordRowHtml(label = '', content = '', options = {}) {
+  const verticalAlign = options.verticalAlign || 'top';
+  return [
+    '<tr>',
+    `<td style="border:1px solid #111;padding:10px 12px;width:18%;vertical-align:${verticalAlign};font-weight:700;color:#111;">${escapeHtml(label)}</td>`,
+    `<td style="border:1px solid #111;padding:14px 16px;vertical-align:${verticalAlign};color:#111;">${content}</td>`,
+    '</tr>'
+  ].join('');
+}
+
+function buildWordCopyPayload({ title = '', excerpt = '', bodyMarkdown = '' }) {
+  const sections = parseSopSections(bodyMarkdown, title);
+  const keywordsSection = findSopSection(sections, ['Keywords/Tags', 'Keywords', 'Tags']);
+  const metaTitleSection = findSopSection(sections, ['SEO / Meta Title', 'SEO Meta Title', 'Meta Title']);
+  const metaDescriptionSection = findSopSection(sections, ['Meta Description']);
+  const socialSection = findSopSection(sections, ['Social Media Copy']);
+  const resourcesSection = findSopSection(sections, ['Resources']);
+  const ctaSection = findSopSection(sections, ['CTA', 'Recommended next step']);
+  const faqSection = findSopSection(sections, ['FAQ', 'FAQs']);
+  const contentSections = sections.filter((section) => !isMetaSection(section.heading) && !isFaqSection(section.heading));
+  const contentMarkdown = contentSections
+    .map((section) => section.heading ? `## ${section.heading}\n${sectionText(section.lines)}` : sectionText(section.lines))
+    .filter(Boolean)
+    .join('\n\n');
+
+  const keywordsText = keywordsSection ? markdownToPlainText(sectionText(keywordsSection.lines)) : '';
+  const metaTitleText = metaTitleSection ? markdownToPlainText(sectionText(metaTitleSection.lines)) : '';
+  const metaDescriptionText = metaDescriptionSection ? markdownToPlainText(sectionText(metaDescriptionSection.lines)) : '';
+  const socialText = socialSection ? markdownToPlainText(sectionText(socialSection.lines)) : '';
+  const resourcesText = resourcesSection ? markdownToPlainText(sectionText(resourcesSection.lines)) : '';
+  const ctaLines = ctaSection ? sectionText(ctaSection.lines).split('\n').map((line) => line.trim()).filter(Boolean) : [];
+  const ctaTitle = ctaLines[0] || '';
+  const ctaButton = ctaLines.find((line) => /advisor|contact|book|speak|learn|download/i.test(line)) || '';
+  const ctaDescription = ctaLines.filter((line) => line !== ctaTitle && line !== ctaButton).join('\n');
+
+  const plainParts = [
+    keywordsText ? `Keywords\n${keywordsText}` : '',
+    `Title\n${stripInlineMarkdown(title)}`,
+    `Content\n${[stripInlineMarkdown(excerpt), markdownToPlainText(contentMarkdown, title)].filter(Boolean).join('\n\n')}`,
+    ctaTitle || ctaDescription || ctaButton
+      ? ['CTA Title : ' + ctaTitle, ctaDescription, ctaButton ? `Button: ${ctaButton}` : ''].filter(Boolean).join('\n')
+      : '',
+    metaTitleText ? `Meta Title\n${metaTitleText}` : '',
+    metaDescriptionText ? `Meta Description\n${metaDescriptionText}` : '',
+    socialText ? `Social Copy\n${socialText}` : '',
+    resourcesText ? `Resource\n${resourcesText}` : ''
+  ].filter(Boolean);
+
+  const faqText = faqSection ? markdownToPlainText(sectionText(faqSection.lines)) : '';
+  const faqHtml = faqSection ? markdownToHtml(sectionText(faqSection.lines)) : '';
+  const htmlRows = [
+    keywordsText ? wordRowHtml('Keywords', markdownToHtml(sectionText(keywordsSection.lines))) : '',
+    wordRowHtml('Title', `<div style="font-size:30px;line-height:1.18;font-weight:700;color:#000;">${escapeHtml(title)}</div>`, { verticalAlign: 'middle' }),
+    wordRowHtml('Content', `${excerpt ? `<p>${renderInlineMarkdownHtml(excerpt)}</p>` : ''}${markdownToHtml(contentMarkdown, title)}`),
+    faqHtml ? wordRowHtml('FAQs', faqHtml) : '',
+    ctaTitle || ctaDescription || ctaButton
+      ? wordRowHtml('CTA', `${ctaTitle ? `<p><strong>CTA Title :</strong> ${escapeHtml(ctaTitle)}</p>` : ''}${ctaDescription ? `<p>${renderInlineMarkdownHtml(ctaDescription)}</p>` : ''}${ctaButton ? `<p><strong>Button:</strong> ${escapeHtml(ctaButton)}</p>` : ''}`)
+      : '',
+    metaTitleText ? wordRowHtml('Meta Title', `<p>${renderInlineMarkdownHtml(metaTitleText)}</p>`) : '',
+    metaDescriptionText ? wordRowHtml('Meta Description', `<p>${renderInlineMarkdownHtml(metaDescriptionText)}</p>`) : '',
+    socialText ? wordRowHtml('Social Copy', `<p>${renderInlineMarkdownHtml(socialText).replace(/\n/g, '<br />')}</p>`) : '',
+    resourcesText ? wordRowHtml('Resource', `<p>${renderInlineMarkdownHtml(resourcesText).replace(/\n/g, '<br />')}</p>`) : ''
+  ].filter(Boolean);
+
+  return {
+    plainText: plainParts.join('\n\n').trim(),
+    htmlBody: `<table style="border-collapse:collapse;width:100%;border:1px solid #111;">${htmlRows.join('')}</table>`
+  };
+}
+
 function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
   const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
   const blocks = [];
@@ -309,6 +494,20 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
         continue;
       }
 
+      const sopTone = sopSectionTone(heading);
+      if (sopTone) {
+        blocks.push(
+          <div key={`sop-${i}`} className={`mt-10 rounded-2xl border px-5 py-4 ${sopTone.className}`}>
+            <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${sopTone.labelClassName}`}>{sopTone.eyebrow}</div>
+            <h3 className="mt-1 text-xl font-black tracking-tight">
+              {heading === 'Recommended next step' ? 'CTA' : heading}
+            </h3>
+          </div>
+        );
+        i += 1;
+        continue;
+      }
+
       blocks.push(
         <h3 key={`h2-${i}`} className="mt-10 text-2xl font-black tracking-tight text-gray-900">
           {heading}
@@ -328,12 +527,12 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
       }
 
       blocks.push(
-        <div key={`table-${i}`} className="my-7 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div key={`table-${i}`} className="my-7 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-100">
           <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50/90">
               <tr>
                 {headers.map((header, index) => (
-                  <th key={`${header}-${index}`} className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-gray-500">
+                  <th key={`${header}-${index}`} className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-gray-600">
                     {renderInlineMarkdown(header)}
                   </th>
                 ))}
@@ -451,7 +650,7 @@ export default function BlogLibrary() {
     setLoadingBlogs(true);
     setError('');
     try {
-      const params = { status: 'published', limit: LIBRARY_PAGE_SIZE, page };
+      const params = { status: 'review,published', limit: LIBRARY_PAGE_SIZE, page };
       if (query) params.q = query;
       const { data } = await api.get('/blogs', { params });
       const nextBlogs = data.items || [];
@@ -624,20 +823,20 @@ export default function BlogLibrary() {
 
   const copyBlogPost = useCallback(async () => {
     if (!selected) return;
-    const plainParts = [
-      selected.title || '',
-      selected.excerpt || '',
-      markdownToPlainText(selected.bodyMarkdown || '', selected.title || '')
-    ].filter(Boolean);
-    const plainText = plainParts.join('\n\n');
+    const wordPayload = buildWordCopyPayload({
+      title: selected.title || '',
+      excerpt: selected.excerpt || '',
+      bodyMarkdown: selected.bodyMarkdown || ''
+    });
+    const plainText = wordPayload.plainText;
     const html = `
       <article>
         <style>
-          article { color: #1f2937; font-family: Arial, sans-serif; line-height: 1.7; }
+          article { color: #111; font-family: Georgia, "Times New Roman", serif; line-height: 1.25; margin: 0 auto; max-width: 820px; }
           h1 { color: #111827; font-size: 30px; line-height: 1.2; margin: 0 0 18px; }
-          h2 { color: #111827; font-size: 22px; margin: 30px 0 12px; }
-          h3 { color: #111827; font-size: 18px; margin: 24px 0 10px; }
-          p { margin: 12px 0; }
+          h2 { color: #111; font-size: 24px; line-height: 1.12; margin: 26px 0 10px; }
+          h3 { color: #111; font-size: 19px; margin: 20px 0 8px; }
+          p { margin: 10px 0; }
           blockquote { border-left: 4px solid #163A24; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
           ul, ol { margin: 12px 0 18px 24px; padding: 0; }
           li { margin: 6px 0; }
@@ -646,9 +845,7 @@ export default function BlogLibrary() {
           th { background: #f3f4f6; color: #374151; font-weight: 700; }
           a { color: #163A24; }
         </style>
-        ${selected.title ? `<h1>${escapeHtml(selected.title)}</h1>` : ''}
-        ${selected.excerpt ? `<blockquote>${renderInlineMarkdownHtml(selected.excerpt)}</blockquote>` : ''}
-        ${markdownToHtml(selected.bodyMarkdown || '', selected.title || '')}
+        ${wordPayload.htmlBody}
       </article>
     `;
 
@@ -926,7 +1123,10 @@ export default function BlogLibrary() {
                           className="min-w-0 flex-1 text-left"
                         >
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm">LinkedIn</span>
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm">LinkedIn</span>
+                              <StatusPill status={post.status} />
+                            </div>
                             <span className="text-[10px] font-bold text-gray-400">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</span>
                           </div>
                           <div className="line-clamp-2 text-sm font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
@@ -978,6 +1178,21 @@ export default function BlogLibrary() {
                           }}
                           className="min-w-0 flex-1 text-left"
                         >
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                                isSelected
+                                  ? 'border-brand-crimson/20 bg-brand-pink/20 text-brand-crimson'
+                                  : 'border-brand-crimson/10 bg-brand-pink/50 text-brand-crimson'
+                              }`}>
+                                Blog
+                              </span>
+                              <StatusPill status={blog.status} />
+                            </div>
+                            <span className="shrink-0 text-[10px] font-bold text-gray-400">
+                              {(blog.publishedAt || blog.updatedAt || blog.createdAt) ? new Date(blog.publishedAt || blog.updatedAt || blog.createdAt).toLocaleDateString() : ''}
+                            </span>
+                          </div>
                           <div className={`mb-2 text-base font-black leading-snug ${isSelected ? 'text-gray-900' : 'text-gray-800 group-hover:text-gray-900'}`}>
                             {blog.title}
                           </div>
@@ -1023,21 +1238,24 @@ export default function BlogLibrary() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       <Pill icon={MessageSquareText} highlight>LinkedIn</Pill>
+                      <StatusPill status={selectedSocial.status} />
                       {selectedSocial.framework && <Pill icon={Tag}>{selectedSocial.framework}</Pill>}
                       {selectedSocial.createdAt && <Pill icon={CalendarDays}>{new Date(selectedSocial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
                     </div>
-                    <button
-                      type="button"
-                      onClick={copySocialPost}
-                      className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
-                        copied
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
-                      }`}
-                    >
-                      {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={copySocialPost}
+                        className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                          copied
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
+                        }`}
+                      >
+                        {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
                     </div>
                   </div>
                   <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
@@ -1115,6 +1333,24 @@ function Pill({ icon: Icon, children, highlight = false }) {
     }`}>
       <Icon size={12} />
       {children}
+    </span>
+  );
+}
+
+function contentStatusLabel(status) {
+  if (status === 'published') return 'Published';
+  if (status === 'archived') return 'Archived';
+  return 'Review';
+}
+
+function StatusPill({ status }) {
+  return (
+    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+      status === 'published' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' :
+      ['review', 'draft'].includes(status) ? 'border-amber-200 bg-amber-50 text-amber-600' :
+      'border-gray-200 bg-gray-50 text-gray-500'
+    }`}>
+      {contentStatusLabel(status)}
     </span>
   );
 }
