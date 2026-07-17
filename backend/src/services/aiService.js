@@ -40,6 +40,14 @@ function clampNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, number));
 }
 
+function normalizeWords(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function generationConfig(config = {}, fallback = {}) {
   return {
     model: String(config.model || fallback.model || MODEL),
@@ -189,12 +197,29 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
   };
 }
 
+function linkedinAudiencePhrase(value = '', fallback = 'business teams') {
+  const text = String(value || '').trim();
+  if (!text) return fallback;
+  const normalized = text.toLowerCase();
+  if (normalized.includes('foreign compan')) return 'foreign companies and finance teams';
+  if (normalized.includes('finance')) return 'finance and compliance teams';
+  if (normalized.includes('company secretar')) return 'company secretaries and compliance teams';
+  if (normalized.includes('corporate service')) return 'corporate service providers';
+  if (normalized.includes('founder') || normalized.includes('ceo')) return 'founders and leadership teams';
+  if (normalized.includes('business decision')) return 'business decision-makers';
+  if (text.length > 80 || text.split(',').length > 2) return fallback;
+  return text;
+}
+
 function fallbackLinkedInPost({ article, options = {} }) {
   const topic = article?.title || options.topic || 'A practical market update';
   const audience = options.audience || 'business decision-makers';
-  const cta = options.cta || 'If this is on your radar, save this and review how it affects your next decision.';
-  const summary = article?.summary || article?.aiSummary || 'This update may create a practical signal for operators, advisors, or business leaders.';
-  const hook = String(topic).split(/[,:|-]/)[0].trim().slice(0, 70) || 'This deserves a closer look';
+  const profileType = options.profileType === 'personal' ? 'personal' : 'company';
+  const fallbackAngle = linkedinFallbackAngle({ article, topic, audience });
+  const cta = options.cta || fallbackAngle.cta;
+  const hook = fallbackAngle.hook;
+  const voiceLine = profileType === 'personal' ? fallbackAngle.personalVoice : fallbackAngle.companyVoice;
+  const audiencePhrase = linkedinAudiencePhrase(audience, fallbackAngle.audience || 'business teams');
 
   return {
     selectedTopic: topic,
@@ -205,15 +230,15 @@ function fallbackLinkedInPost({ article, options = {} }) {
     postText: [
       hook,
       '',
-      'Most teams notice the headline.',
-      'The real signal sits underneath it.',
+      voiceLine,
+      fallbackAngle.tension,
       '',
-      summary,
+      fallbackAngle.proof,
       '',
-      `For ${audience}, the practical question is not whether this matters.`,
-      'It is where it changes timing, risk, or client conversations.',
+      `For ${audiencePhrase}, the practical review is:`,
+      ...fallbackAngle.bullets.map((item) => `- ${item}`),
       '',
-      'The rule I use: if it changes a decision, it deserves a clear note.',
+      fallbackAngle.rule,
       '',
       cta
     ].join('\n'),
@@ -1118,6 +1143,77 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   }
 }
 
+function cleanScrapedText(value = '') {
+  return String(value || '')
+    .replace(/^#{1,6}\s+/gm, ' ')
+    .replace(/\bStep\s+\d+\s*:\s*/gi, ' ')
+    .replace(/\bAdvertisement\b/gi, ' ')
+    .replace(/\bSelect Voice\b/gi, ' ')
+    .replace(/\bSelect Speed\b/gi, ' ')
+    .replace(/\b\d+\s*-\s*MIN READ\b/gi, ' ')
+    .replace(/\[[^\]]{0,80}\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function conciseLinkedInSourceSummary(article = {}) {
+  const raw = cleanScrapedText(article.aiSummary || article.summary || article.blogContext || article.rawContent || article.rawData?.rawContent);
+  if (!raw) return 'This update may create a practical signal for operators, advisors, or business leaders.';
+  const rawLower = raw.toLowerCase();
+  const looksLikeUiDump = (
+    (rawLower.match(/\bregister of\b/g) || []).length >= 3 ||
+    (rawLower.match(/\bexemption question\b/g) || []).length >= 2 ||
+    (rawLower.match(/\bsection\b/g) || []).length >= 4 ||
+    rawLower.includes('confirm register information follow these steps')
+  );
+  if (looksLikeUiDump) {
+    const title = cleanScrapedText(article.title || 'This filing requirement')
+      .replace(/\s*\|\s*[^|]{2,120}$/g, '')
+      .trim() || 'This filing requirement';
+    return `${title} can change how companies check filing responsibility, supporting records, and governance sign-off before submission.`;
+  }
+  const sentences = raw
+    .split(/(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(business|banking|finance|select voice|select speed|advertisement)$/i.test(line))
+    .filter((line) => !/^step\s+\d+/i.test(line))
+    .filter((line) => !/register of .{0,80} exemption question/i.test(line));
+  return (sentences.slice(0, 2).join(' ') || raw).slice(0, 520).trim();
+}
+
+function hasLinkedInSourceLeak(value = '', article = {}) {
+  const body = String(value || '').toLowerCase();
+  const title = String(article.title || '').toLowerCase();
+  const source = String(article.source || article.rawData?.source || '').toLowerCase();
+  const titleBase = title.replace(/\s*\|\s*[^|]{2,120}$/g, '').trim();
+  const escapedTitleBase = titleBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return (
+    /\|\s*[a-z][a-z\s&.-]{2,80}\s+(may|can|could|should|will)\b/i.test(String(value || '')) ||
+    (title.includes('|') && titleBase.length > 20 && body.includes(titleBase) && body.includes('|')) ||
+    (titleBase.length > 24 && new RegExp(`${escapedTitleBase}\\s+(may|can|could|should|will|usually|often)\\b`, 'i').test(String(value || ''))) ||
+    (source.length > 8 && body.includes(`| ${source}`))
+  );
+}
+
+function hasScrapedArticleArtifacts(value = '') {
+  const body = String(value || '').toLowerCase();
+  return [
+    'advertisement',
+    'select voice',
+    'select speed',
+    '2-min read',
+    'min read',
+    'read more',
+    'businessbanking',
+    '[...]',
+    '## step',
+    'confirm register information',
+    'exemption question',
+    'select speed'
+  ].some((term) => body.includes(term));
+}
+
 function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
   const title = String(style.topic || article.title || 'Market intelligence update').replace(/\s+/g, ' ').trim();
   const summary = String(article.summary || article.aiSummary || research[0]?.snippet || '').replace(/\s+/g, ' ').trim();
@@ -1172,6 +1268,105 @@ function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
       `What steps should companies take next?`
     ],
     sources: research.map((item) => ({ title: item.title || '', url: item.url || '' })).filter((item) => item.url)
+  };
+}
+
+function linkedinFallbackAngle({ article = {}, topic = '', audience = '' }) {
+  const body = normalizeWords([
+    topic,
+    article.summary,
+    article.aiSummary,
+    article.category,
+    article.subcategory,
+    article.relevanceReason
+  ].filter(Boolean).join(' '));
+
+  if (body.includes('financial statement') || body.includes('filing') || body.includes('annual return')) {
+    return {
+      hook: 'Filing is governance.',
+      companyVoice: 'Our team would treat this as a control point, not an admin task.',
+      personalVoice: 'I would treat this as a control point, not an admin task.',
+      tension: 'The issue is not only whether the form is submitted. It is whether the records behind it can stand up to review.',
+      proof: 'Foreign-company filing requirements usually test three things: deadline ownership, supporting records, and approval before submission.',
+      audience: 'foreign companies and finance teams',
+      bullets: [
+        'who owns the filing deadline',
+        'which financial records support the submission',
+        'who signs off before anything is filed'
+      ],
+      rule: 'A filing requirement is useful only when it becomes an owned internal control.',
+      cta: 'Before filing, check the deadline owner, supporting records, and approval trail.'
+    };
+  }
+
+  if (body.includes('resident director') || body.includes('director') || body.includes('governance')) {
+    return {
+      hook: 'Directors carry real risk.',
+      companyVoice: 'Our team would not treat a director appointment as a name on a form.',
+      personalVoice: 'I would not treat a director appointment as a name on a form.',
+      tension: 'The risk sits in oversight, authority, and whether the director can reasonably stand behind the company position.',
+      proof: 'Director requirements are not just appointment mechanics. They create accountability for oversight, filings, and governance decisions.',
+      audience: 'company directors and governance teams',
+      bullets: [
+        'who has statutory responsibility',
+        'what due diligence is documented',
+        'how governance questions are escalated'
+      ],
+      rule: 'A director requirement should create a governance check, not just a filing step.',
+      cta: 'Review the role, authority, and documentation before relying on the appointment.'
+    };
+  }
+
+  if (body.includes('foreign entity') || body.includes('re domiciliation') || body.includes('redomiciliation') || body.includes('registration')) {
+    return {
+      hook: 'Registration changes obligations.',
+      companyVoice: 'Our team would check the operating consequences before treating this as a setup step.',
+      personalVoice: 'I would check the operating consequences before treating this as a setup step.',
+      tension: 'Moving an entity into a new register can affect documents, governance, tax conversations, and timing.',
+      proof: 'A registration transfer is useful only when the entity records, approvals, and timing are mapped before the process starts.',
+      audience: 'foreign companies and expansion teams',
+      bullets: [
+        'which entity records need updating',
+        'what approvals or documents are required',
+        'when clients should plan the transfer timeline'
+      ],
+      rule: 'A registration step matters when it changes the operating checklist.',
+      cta: 'Map the required documents, approvals, and timing before starting the transfer.'
+    };
+  }
+
+  if (body.includes('tax') || body.includes('gst') || body.includes('vat') || body.includes('invoice')) {
+    return {
+      hook: 'Tax updates need owners.',
+      companyVoice: 'Our team would turn this into a responsibility check before it becomes a deadline issue.',
+      personalVoice: 'I would turn this into a responsibility check before it becomes a deadline issue.',
+      tension: 'The risk is usually not awareness. It is unclear ownership across finance, operations, and advisors.',
+      proof: 'Tax changes create practical risk when the obligation is known but the owner, evidence, and filing position are not documented.',
+      audience: 'finance and tax teams',
+      bullets: [
+        'which obligation changed',
+        'who owns the next filing or review',
+        'what evidence should be kept'
+      ],
+      rule: 'A tax update should leave behind a clear owner and record trail.',
+      cta: 'Assign the owner, check the filing position, and document the basis for the decision.'
+    };
+  }
+
+  return {
+    hook: String(topic).split(/[,:|-]/)[0].trim().slice(0, 70) || 'This deserves a closer look',
+    companyVoice: 'Our team would turn this into a specific review point before acting on it.',
+    personalVoice: 'I would turn this into a specific review point before acting on it.',
+    tension: 'The value is not in noticing the update. It is in deciding what responsibility, timing, or evidence changes.',
+    proof: conciseLinkedInSourceSummary(article),
+    audience: 'business teams',
+    bullets: [
+      'what decision this affects',
+      'who owns the next step',
+      'what needs to be documented'
+    ],
+    rule: 'A useful update should create one clear next action.',
+    cta: 'Review the owner, evidence, and next step before treating this as complete.'
   };
 }
 
@@ -1724,6 +1919,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   const framework = options.framework || 'auto';
   const topicTier = options.topicTier || 'auto';
   const emotionalJob = options.emotionalJob || 'auto';
+  const profileType = options.profileType === 'personal' ? 'personal' : 'company';
+  const profileUrl = String(options.profileUrl || '').trim();
   const icpPainPoints = options.icpPainPoints || '';
   const marketReality = options.marketReality || '';
   const personaProfile = options.personaProfile || '';
@@ -1749,6 +1946,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             'You do not sound like a content writer or AI.',
             'You write like someone who has done the work, learned the lesson, and can explain it plainly.',
             'You optimize for sharpness, specificity, and memorability over safe generic phrasing.',
+            'Your job is not to summarize the article. Your job is to turn it into one useful professional-services insight.',
+            'The post should feel like a senior advisor noticed the operational risk behind the source and wrote a clear note for decision-makers.',
             '',
             'Return ONLY valid JSON. No markdown outside JSON.',
             '',
@@ -1763,20 +1962,36 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Remember,',
             '- Stay informed',
             '- The key takeaway is',
+            '- Most teams notice the headline',
+            '- The real signal sits underneath',
+            '- The practical question is not whether this matters',
+            '- If it changes a decision',
+            '- If this is on your radar',
+            '- save this and review',
             '',
             'Never use motivational fluff, corporate filler, or AI-polished phrasing.',
             'Use one clear idea only.',
-            'Use I only when the post is written as a lived/operator insight.',
+            'Use I only for personal profiles or when a named individual voice is explicitly provided.',
+            'For company profiles, use we, our team, or neutral advisory language. Never invent a founder story for a company profile.',
             'Do not invent facts, numbers, timeframes, clients, or results.',
             'If proof is not provided by the user or source, use a cautious proof element from the source only.'
             ,
+            'Never pad the post with vague lessons. Every sentence must either create tension, give evidence, explain risk, or give a next step.',
+            'Never use a reusable template opening. If the same opening could work for 10 different sources, rewrite it.',
+            'Never start with "Filing financial statements is more than...", "Compliance is more than...", or any generic "X is more than just paperwork" line.',
+            'Never paste the article title, source name, or title pipe format as a sentence. Do not write lines like "<Title> | <Publisher> may affect...".',
+            'Never print a long audience list from the form. Convert the audience into a natural role group such as "foreign companies" or "regional finance teams".',
             'If the source is weak, indirect, or low-relevance, do NOT fake importance.',
             'Instead, turn it into a sharper lesson about filtering, risk judgment, governance, timing, or decision quality.',
             'If the source contains an enforcement action, penalty, regulatory filing, fine, deadline, consultation, or official notice, make the business implication concrete.',
             'Turn compliance updates into operational judgment: who owns the control, what can fail, what should be reviewed, and why it matters.',
             'Avoid generic lines like "not all news matters" unless made more specific and original.',
+            'Avoid reusable template openings. The first line must name the specific business issue from the source.',
             'Every post should contain at least one line that feels quotable or worth saving.',
-            'Do not write a summary. Write a point of view built from the source.'
+            'Do not write a summary. Write a point of view built from the source.',
+            'Use the writing framework as a structure underneath the post, not as visible labels.',
+            'Never paste raw scraped article text, bylines, read-time labels, ad labels, navigation labels, or page UI text into the LinkedIn post.',
+            'Use source context only to extract the business implication. Rewrite everything in original words.'
           ].join('\n')
         },
         {
@@ -1786,6 +2001,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '',
             'COMPANY / AUTHOR CONTEXT',
             `Company/author: ${company.name || 'The company'}`,
+            `Profile type: ${profileType}`,
+            `Profile URL: ${profileUrl || 'Not provided'}`,
             `Audience / ICP: ${audience}`,
             `Person profile: ${personaProfile || 'Founder/operator/advisor/consultant'}`,
             `Tone: ${tone}`,
@@ -1839,12 +2056,38 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- POV: high reach',
             '- 5-Line Mirror: authority + relatability',
             '- AIDA: conversion / announcement',
+            'Framework selection rules from the writing framework:',
+            '- Personal profiles can use SLAY, 5-Line Mirror, and PAS when lived insight is available.',
+            '- Company profiles should prefer AIDA, PAS, POV, or PRA unless a named spokesperson is provided.',
+            '- Use SLAY only when there is a real story, lesson, actionable steps, and reader reflection.',
+            '- Use PAS only when the ICP pain is specific and the consequence is concrete.',
+            '- Use POV only for broader reach posts where the reader becomes the main character.',
+            '- Use 5-Line Mirror only for high-authority posts with a clear mirror, friction, realization, shift, and invitation.',
+            '- Use AIDA for announcements, offers, launch-style posts, or conversion moments.',
             `Preferred framework: ${framework}`,
             '',
             'STEP 5 - HOOK GENERATION',
             `Hook style preference: ${hookStyle}`,
-            'Generate proof-led, warning-led, contrarian, and personal-story hook options.',
+            'Generate proof-led, warning-led, contrarian, identity call-out, curiosity-loop, myth-busting, and personal-story hook options.',
+            'Use personal-story hooks only when profile type is personal or custom instructions name a specific spokesperson.',
             'Each hook line 1 must be under 8 words, create curiosity or tension, and avoid generic phrasing.',
+            'Good hook patterns:',
+            '- <Specific control> fails before the deadline.',
+            '- <Role/accountability> is the real filing risk.',
+            '- <Requirement> is not the hard part.',
+            '- <Market/category> risk starts with <specific noun>.',
+            '- <Official/source-specific action> changes the owner, not just the form.',
+            'Bad hook patterns:',
+            '- X is more than just paperwork.',
+            '- Governance matters.',
+            '- Businesses should pay attention.',
+            '- This update is important.',
+            'Hook line 1 must be source-specific. It should mention the actual risk, role, requirement, market, deadline, control, or business decision from the source.',
+            'Do not use abstract hook words like headline, signal, radar, update, change, or decision unless paired with a concrete source-specific noun.',
+            'The first five lines should form a slippery slide: each line should pull the reader to the next.',
+            'Prefer first-line hooks with one idea and one breath. Avoid comma-heavy openers.',
+            'A number can be used only when the source or user supplied it.',
+            'Do not explain the hook. If it needs explanation, rewrite it.',
             'Prefer hooks that are concrete, pointed, and slightly uncomfortable over bland summary hooks.',
             'Select the strongest hook.',
             '',
@@ -1854,15 +2097,46 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Max 2 lines per paragraph.',
             '- No paragraph over 30 words.',
             '- Mix short, medium, and punchy sentence lengths.',
-            '- Include exactly one proof element.',
+            '- Include exactly one proof element from the source. Use it in your own words in one concise sentence.',
+            '- Include at least 3 concrete business implications from the source/category, such as timing, ownership, documentation, governance, due diligence, filing, cost, risk, client communication, or operational responsibility.',
+            '- Use a short list only when it sharpens the advice. Each bullet must be specific, not generic.',
             '- Include one soft authority line only if it adds credibility without sounding promotional.',
             '- Include one clear takeaway: Rule of One.',
             '- Do not include hashtags inside postText. Return hashtags only in the hashtags array.',
             '- Do not restate the source summary. Convert it into a practical lesson, decision rule, or operating question.',
+            '- Do not copy long article paragraphs, bylines, publication labels, read-time text, ad labels, or page UI text from the source context.',
+            '- Do not paste the source title, publisher, or URL-like title format into postText.',
+            '- Do not write "For <full audience field>, the practical review is". Write a natural role-specific line instead.',
+            '- The post must contain one sentence that starts with a concrete source noun, not "This", "It", "The update", or "The announcement".',
+            '- The CTA must ask the reader to review a concrete action/control from this source, not to simply save the post.',
+            '',
+            'Preferred post shape from the writing framework:',
+            '1. Hook: one short source-specific line.',
+            '2. Tension: why the obvious reading misses the real business risk.',
+            '3. Proof: one source-grounded fact, rewritten in plain English.',
+            '4. Practical implications: 3 specific things a buyer/operator should check.',
+            '5. Rule of one: one memorable decision rule.',
+            '6. CTA: one concrete next action.',
+            '',
+            'Example tone only, do not copy:',
+            'Resident director risk starts with control.',
+            '',
+            'The appointment is not the hard part.',
+            'The hard part is proving someone owns the obligation when filings, records, or approvals are tested.',
+            '',
+            'Before submission, confirm:',
+            '- who owns the deadline',
+            '- which records support the filing',
+            '- who signs off before it goes out',
+            '',
+            'Small admin gaps become governance problems when ownership is unclear.',
             '',
             'Voice rules:',
             '- Write like someone who has done the work.',
-            '- Use I for lived insights when natural.',
+            `- Profile type is ${profileType}. Use ${profileType === 'personal' ? 'I when the insight is genuinely lived or first-person.' : 'we, our team, or neutral advisory language. Do not use I.'}`,
+            '- If using a company profile, do not invent personal lived experience, founder moments, or private client results.',
+            '- If using a personal profile, the post may sound more direct and opinionated, but still must not invent proof.',
+            '- Treat the profile URL as identity context only. Do not claim you read private profile details unless they were provided in the form.',
             '- No corporate jargon unless natural.',
             '- No motivational fluff.',
             '- No AI-polished tone.',
@@ -1888,8 +2162,10 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             'STEP 8 - QUALITY CONTROL',
             'Validate before output:',
             '- Hook is strong and under 8 words.',
+            '- Hook names the concrete issue from the source.',
             '- No banned phrases used.',
             '- One clear idea only.',
+            '- At least 3 concrete implications are present.',
             '- Sounds human, not AI.',
             '- Valuable to a cold reader.',
             '- No generic ending.',
@@ -1929,7 +2205,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
 
     const raw = resp.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw);
-    if (!parsed.postText || !parsed.hook) {
+    if (!parsed.postText || !parsed.hook || hasScrapedArticleArtifacts(parsed.postText) || hasLinkedInSourceLeak(parsed.postText, article)) {
       return {
         ...fallbackLinkedInPost({ article, options }),
         model: runtimeConfig.model
@@ -1971,6 +2247,9 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
 
 async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = '', company = {}, aiConfig = {} }) {
   const cli = getClient();
+  const postOptions = post.options || {};
+  const profileType = postOptions.profileType === 'personal' ? 'personal' : 'company';
+  const profileUrl = String(postOptions.profileUrl || '').trim();
   const runtimeConfig = generationConfig(aiConfig, {
     model: MODEL,
     temperature: 0.5,
@@ -2017,8 +2296,18 @@ async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = 
             'Revise the current LinkedIn post using the user feedback.',
             'Return ONLY valid JSON.',
             'Keep it human, calm, specific, and non-hype-led.',
+            'Revise into one useful professional-services insight, not an article summary.',
             'Do not invent facts, statistics, laws, dates, or claims.',
             'Preserve source grounding and advisory caveats for tax, legal, compliance, employment, or regulatory topics.',
+            'Preserve the selected profile type voice.',
+            'For company profiles, use we, our team, or neutral advisory language. Do not invent first-person founder stories.',
+            'For personal profiles, first-person language is allowed only when it is grounded in provided context.',
+            'Never paste raw scraped article text, page UI labels, headings, read-time labels, bylines, ads, or navigation text.',
+            'Never use generic openings like "X is more than just paperwork", "Governance matters", or "Businesses should pay attention".',
+            'First line must be under 8 words and name the concrete source-specific issue.',
+            'Do not paste the source title, source name, URL, or title pipe format into the revised post.',
+            'Do not print the full audience field as a comma-separated list. Rewrite it as a natural audience phrase.',
+            'Use the same post shape: hook, tension, one source-grounded proof, 3 concrete implications, one decision rule, contextual CTA.',
             'Avoid clickbait, excessive emojis, exaggerated urgency, and generic endings.',
             'Return JSON shape: { "selectedTopic": "...", "postText": "...", "hashtags": ["#..."], "framework": "...", "topicTier": "...", "emotionalJob": "..." }'
           ].join('\n')
@@ -2031,6 +2320,8 @@ async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = 
             '',
             'COMPANY CONTEXT',
             `Company name: ${company.name || 'The company'}`,
+            `Profile type: ${profileType}`,
+            `Profile URL: ${profileUrl || 'Not provided'}`,
             '',
             'CURRENT POST',
             `Topic: ${post.selectedTopic || ''}`,
@@ -2048,9 +2339,17 @@ async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = 
     });
 
     const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    const revisedText = String(parsed.postText || post.postText || '').trim();
+    if (hasScrapedArticleArtifacts(revisedText) || hasLinkedInSourceLeak(revisedText, sourceArticle || post.sourceSnapshot || {})) {
+      return {
+        ...fallbackLinkedInPost({ article: sourceArticle || post.sourceSnapshot || {}, options: postOptions }),
+        model: runtimeConfig.model
+      };
+    }
+
     return {
       selectedTopic: String(parsed.selectedTopic || post.selectedTopic || '').trim(),
-      postText: stripTrailingHashtags(String(parsed.postText || post.postText || '').trim()),
+      postText: stripTrailingHashtags(revisedText),
       hashtags: normalizeHashtags(Array.isArray(parsed.hashtags) ? parsed.hashtags : post.hashtags || []),
       framework: String(parsed.framework || post.framework || '').trim(),
       topicTier: String(parsed.topicTier || post.topicTier || '').trim(),

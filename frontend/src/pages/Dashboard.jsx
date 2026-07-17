@@ -1221,6 +1221,9 @@ export default function Dashboard({ initialTab = 'analytics' }) {
               isAdmin={isAdmin}
               viewMode={analyticsViewMode}
               onViewModeChange={setAnalyticsViewMode}
+              canDragCompose={canDragCompose}
+              onArticleDragStart={startArticleDrag}
+              onArticleDragEnd={endArticleDrag}
             />
           </div>
         ) : (
@@ -1377,7 +1380,7 @@ export default function Dashboard({ initialTab = 'analytics' }) {
           </div>
         )}
       </div>
-      {isIntelDesk && (
+      {(isIntelDesk || dashTab === 'analytics') && (
         <ComposerDropTray
           open={composerOpen}
           article={draggedArticle}

@@ -1977,6 +1977,92 @@ body.theme-dark .content-studio-review-button:hover {
   border-color: rgba(244, 63, 108, 0.3) !important;
 }
 
+.content-studio-platform-tab {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.content-studio-platform-tab-active,
+.content-studio-platform-tab-active:hover,
+.content-studio-platform-tab-active:focus,
+.content-studio-platform-tab-active:active {
+  background: #0f3d18 !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  transform: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  transition: none !important;
+  opacity: 1 !important;
+}
+
+.content-studio-platform-tab-active::before,
+.content-studio-platform-tab-active::after {
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
+
+.content-studio-platform-tab-soon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 9.5rem;
+  z-index: -1;
+  transform: translateX(-250%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(148, 163, 184, 0.12) 18%,
+    rgba(255, 255, 255, 0.82) 50%,
+    rgba(148, 163, 184, 0.12) 82%,
+    transparent 100%
+  );
+  animation: content-studio-platform-shine 2s ease-in-out infinite;
+}
+
+.content-studio-platform-tab-soon:nth-child(3)::before {
+  animation-delay: 0.45s;
+}
+
+@keyframes content-studio-platform-shine {
+  0%,
+  28% {
+    transform: translateX(-250%);
+    opacity: 0;
+  }
+  42%,
+  62% {
+    opacity: 0.86;
+  }
+  82%,
+  100% {
+    transform: translateX(105%);
+    opacity: 0;
+  }
+}
+
+body.theme-dark .content-studio-platform-tab-soon::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(148, 163, 184, 0.16) 18%,
+    rgba(255, 255, 255, 0.72) 50%,
+    rgba(148, 163, 184, 0.16) 82%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-studio-platform-tab-soon::before {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 body.theme-dark .content-studio-topic-footer {
   background: rgba(15, 23, 36, 0.96) !important;
   color: #cbd5e1 !important;

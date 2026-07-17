@@ -151,6 +151,8 @@ const DEFAULT_STYLE = {
 };
 
 const DEFAULT_LINKEDIN_FORM = {
+  profileType: 'company',
+  profileUrl: '',
   postGoal: 'thought_leadership',
   tone: 'professional',
   audience: 'business decision-makers',
@@ -1485,7 +1487,7 @@ export default function BlogStudio() {
 
   return (
     <Layout headerActions={headerActions}>
-      <div className="content-studio-page relative flex min-h-full -m-3 flex-col gap-3 p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
+      <div className="content-studio-page relative flex min-h-full min-w-0 -m-3 flex-col gap-3 overflow-x-hidden p-3 mesh-bg sm:-m-5 sm:p-4 lg:-m-6 lg:p-4">
         <div className={(CONTENT_STUDIO_UPCOMING_MODE || generationLocked) ? 'pointer-events-none select-none blur-[5px] saturate-[0.82] transition-all duration-300' : 'transition-all duration-300'}>
         {error && (
           <div className="content-studio-error-alert mb-3 rounded-xl border border-red-200/50 bg-red-50/80 px-5 py-4 text-sm font-semibold text-red-700 shadow-sm backdrop-blur-md animate-fade-in-up stagger-2">
@@ -1494,7 +1496,7 @@ export default function BlogStudio() {
         )}
 
         {contentType === 'social' && (
-          <div className="flex min-h-0 flex-1 flex-col animate-fade-in-up stagger-2">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden animate-fade-in-up stagger-2">
             {socialPlatform === 'linkedin' && (
               <LinkedInStudio
                 socialPlatform={socialPlatform}
@@ -2801,7 +2803,7 @@ function LinkedInStudio({
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-4 animate-fade-in-up stagger-3 xl:grid-cols-2">
+    <div className="grid min-w-0 grid-cols-1 gap-4 overflow-x-hidden animate-fade-in-up stagger-3 xl:grid-cols-2">
       <section className={`${focusComposerMode ? 'hidden xl:flex' : 'flex'} content-studio-panel min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:h-[calc(100vh-96px)]`}>
         <PanelHeader icon={Layers} title="Intelligence Topics" />
         <TopicFilterBar
@@ -2870,6 +2872,37 @@ function LinkedInStudio({
 
         <div className="content-studio-settings-body min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
           <div className="space-y-4">
+            <SettingsGroup title="Platform & Source">
+              <div className="xl:col-span-2 grid grid-cols-3 rounded-xl border border-gray-100 bg-gray-50 p-1">
+                {[
+                  ['linkedin', 'LinkedIn', ''],
+                  ['instagram', 'Instagram', 'Soon'],
+                  ['facebook', 'Facebook', 'Soon']
+                ].map(([key, label, status]) => {
+                  const active = socialPlatform === key;
+                  const disabled = key !== 'linkedin';
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (!disabled) setSocialPlatform(key);
+                      }}
+                      className={`content-studio-platform-tab min-h-[38px] rounded-lg px-3 text-xs font-black transition-all ${
+                        active
+                          ? 'content-studio-platform-tab-active bg-brand-crimson text-white shadow-sm'
+                          : 'content-studio-platform-tab-soon text-amber-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-90'
+                      }`}
+                    >
+                      <span>{label}</span>
+                      {status ? <span className="ml-1 text-[9px] uppercase tracking-wider">{status}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </SettingsGroup>
+
             <div
               onDragOver={(event) => {
                 event.preventDefault();
@@ -2918,6 +2951,23 @@ function LinkedInStudio({
             </div>
 
             <SettingsGroup title="Post Strategy">
+              <SelectField
+                label="Profile Type"
+                value={linkedinForm.profileType}
+                onChange={(value) => update('profileType', value)}
+                options={[
+                  ['company', 'Company'],
+                  ['personal', 'Personal']
+                ]}
+              />
+              <Field label="Profile URL">
+                <input
+                  className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors"
+                  value={linkedinForm.profileUrl}
+                  onChange={(e) => update('profileUrl', e.target.value)}
+                  placeholder={linkedinForm.profileType === 'personal' ? 'https://www.linkedin.com/in/...' : 'https://www.linkedin.com/company/...'}
+                />
+              </Field>
               <div
                 className="xl:col-span-2 grid grid-cols-1 gap-3 xl:grid-cols-2"
               >
@@ -3301,7 +3351,7 @@ function SocialOutputDrawer({
       />
       <aside
         ref={drawerRef}
-        className={`fixed inset-y-0 left-0 right-0 z-50 h-full w-full overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 xl:left-auto xl:max-w-[760px] ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 right-0 z-50 h-full w-full max-w-[100vw] overflow-hidden border-l border-gray-200 bg-white shadow-[0_0_60px_rgba(15,23,42,0.18)] transition-transform duration-300 xl:left-auto xl:max-w-[760px] ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">

@@ -512,7 +512,7 @@ function sortByLatest(items) {
   return [...items].sort((a, b) => getArticleTime(b) - getArticleTime(a));
 }
 
-function UpdateRow({ item }) {
+function UpdateRow({ item, draggable = false, onDragStart, onDragEnd }) {
   const accent = TYPE_ACCENTS[item.type] || CRIMSON;
   const when = item.fetchedAt || item.publishedAt
     ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
@@ -528,7 +528,14 @@ function UpdateRow({ item }) {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="analytics-update-row group block rounded-lg border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-brand-crimson/20 hover:shadow-md"
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return;
+        onDragStart?.(event, item);
+      }}
+      onDragEnd={onDragEnd}
+      className={`analytics-update-row group block rounded-lg border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-brand-crimson/20 hover:shadow-md ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      title={draggable ? 'Drag to create blog or social post' : undefined}
     >
       <div className="mb-2 flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -562,7 +569,7 @@ function UpdateRow({ item }) {
   );
 }
 
-function TrendingUpdatesCard({ items, className = '' }) {
+function TrendingUpdatesCard({ items, className = '', canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   const visibleItems = useMemo(() => sortByLatest(items).slice(0, 20), [items]);
   const marqueeItems = visibleItems.length > 3 ? [...visibleItems, ...visibleItems] : visibleItems;
   const scrollRef = useRef(null);
@@ -624,6 +631,9 @@ function TrendingUpdatesCard({ items, className = '' }) {
               <UpdateRow
                 key={`${item._id || item.url || index}-${index}`}
                 item={item}
+                draggable={canDragCompose}
+                onDragStart={onArticleDragStart}
+                onDragEnd={onArticleDragEnd}
               />
             ))}
           </div>
@@ -731,7 +741,7 @@ function MarketDistributionCard({ markets, className = '' }) {
   );
 }
 
-function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution }) {
+function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution, canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   return (
     <div className="analytics-today-grid grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 xl:h-full xl:grid-cols-2 xl:overflow-hidden xl:pb-2">
       <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] xl:h-full xl:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
@@ -740,7 +750,13 @@ function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, m
         <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
       </div>
 
-      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+      <TrendingUpdatesCard
+        items={trendingUpdates}
+        className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col"
+        canDragCompose={canDragCompose}
+        onArticleDragStart={onArticleDragStart}
+        onArticleDragEnd={onArticleDragEnd}
+      />
 
       {!total && (
         <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
@@ -788,7 +804,7 @@ function AllDataDashboard({ total, counts, categoryCount, donutData, signalData,
   );
 }
 
-export default function AnalyticsSection({ data, velocityData = [], loading, isAdmin = false, viewMode = 'today', onViewModeChange }) {
+export default function AnalyticsSection({ data, velocityData = [], loading, isAdmin = false, viewMode = 'today', onViewModeChange, canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   const allArticles = useMemo(
     () => Object.values(data || {}).flat().filter(Boolean),
     [data]
@@ -970,6 +986,9 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
           trendingUpdates={trendingUpdates}
           categoryMomentum={categoryMomentum}
           marketDistribution={marketDistribution}
+          canDragCompose={canDragCompose}
+          onArticleDragStart={onArticleDragStart}
+          onArticleDragEnd={onArticleDragEnd}
         />
       ) : (
         <AllDataDashboard

@@ -318,6 +318,8 @@ const suggestSettingsSchema = Joi.object({
 });
 
 const linkedinOptionsSchema = Joi.object({
+  profileType: Joi.string().valid('company', 'personal').default('company'),
+  profileUrl: Joi.string().allow('').max(500),
   postGoal: Joi.string().valid('thought_leadership', 'client_alert', 'market_insight', 'educational', 'lead_generation').default('thought_leadership'),
   tone: Joi.string().valid('professional', 'conversational', 'authoritative', 'friendly', 'educational', 'persuasive', 'technical', 'thought_leadership').default('professional'),
   audience: Joi.string().allow('').max(220).default('business decision-makers'),
