@@ -65,9 +65,14 @@ const fetchLogSchema = new mongoose.Schema(
     // Per-source breakdown. Kept flexible because different runners can send
     // this as objects, JSON strings, or legacy string rows.
     perSource: [{ type: mongoose.Schema.Types.Mixed }],
+    debugSamples: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    progressMessages: [{ type: mongoose.Schema.Types.Mixed }],
 
     // Aggregate totals
     totalFetched:   { type: Number, default: 0 },
+    totalMatched:   { type: Number, default: 0 },
+    totalRejected:  { type: Number, default: 0 },
+    totalAiIgnored: { type: Number, default: 0 },
     totalInserted:  { type: Number, default: 0 },
     totalDuplicates:{ type: Number, default: 0 },
     totalErrors:    { type: Number, default: 0 },

@@ -454,11 +454,13 @@ router.get('/runs/:logId/progress', protect, requireProfileAutomation, asyncHand
     startedAt: log.startedAt,
     finishedAt: log.finishedAt,
     resultCount: log.resultCount,
-    messages: [{
-      at: (log.finishedAt || log.startedAt || new Date()).toISOString?.() || new Date().toISOString(),
-      step: log.status,
-      message: log.notes || `Fetch ${log.status}`
-    }]
+    messages: Array.isArray(log.progressMessages) && log.progressMessages.length
+      ? log.progressMessages
+      : [{
+          at: (log.finishedAt || log.startedAt || new Date()).toISOString?.() || new Date().toISOString(),
+          step: log.status,
+          message: log.notes || `Fetch ${log.status}`
+        }]
   });
 }));
 

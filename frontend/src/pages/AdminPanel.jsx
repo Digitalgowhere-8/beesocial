@@ -500,6 +500,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
   const [cleanupNotice, setCleanupNotice] = useState('');
+  const [expandedPlatformRunId, setExpandedPlatformRunId] = useState('');
 
   const loadDatabaseHealth = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setRefreshingHealth(true);
@@ -831,8 +832,15 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
             const isSuccess = run.status === 'success';
             const isFailed = run.status === 'failed';
             const isRunning = run.status === 'running' || run.status === 'queued';
+            const isExpanded = expandedPlatformRunId === run._id;
+            const messages = Array.isArray(run.progressMessages) ? run.progressMessages : [];
             return (
-              <div key={run._id} className="relative overflow-hidden rounded-xl bg-white p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5">
+              <button
+                key={run._id}
+                type="button"
+                onClick={() => setExpandedPlatformRunId(isExpanded ? '' : run._id)}
+                className="relative overflow-hidden rounded-xl bg-white p-5 text-left border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5"
+              >
                 <div className="absolute top-0 right-0 p-5">
                   <div className={`h-2.5 w-2.5 rounded-full ${
                     isSuccess ? 'bg-emerald-400 glow-dot-success' 
@@ -852,7 +860,12 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                     {run.startedAt ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true }) : '-'}
                   </span>
                 </div>
-                <div className="font-black text-gray-900 text-base">{owner.name || owner.email || 'Unknown user'}</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-black text-gray-900 text-base">{owner.name || owner.email || 'Unknown user'}</div>
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-gray-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-400 ring-1 ring-gray-100">
+                    Details <ChevronDown size={12} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  </span>
+                </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 bg-gray-50/80 rounded-lg p-2.5 border border-gray-100/50">
                   <div className="text-center">
                     <div className="text-[10px] font-black uppercase text-gray-400">Fetched</div>
@@ -867,7 +880,38 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                     <div className="font-black text-red-500 mt-0.5">{run.totalErrors || 0}</div>
                   </div>
                 </div>
-              </div>
+                {isExpanded ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <UsageMini label="Matched" value={compactNumber(run.totalMatched || 0)} />
+                      <UsageMini label="Rejected" value={compactNumber(run.totalRejected || 0)} />
+                      <UsageMini label="AI ignored" value={compactNumber(run.totalAiIgnored || 0)} />
+                      <UsageMini label="Duplicates" value={compactNumber(run.totalDuplicates || 0)} />
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3 ring-1 ring-gray-100">
+                      <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
+                      <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                        {messages.length ? messages.slice(-30).map((item, index) => (
+                          <div key={`${run._id}-msg-${index}`} className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>
+                              <span className="shrink-0 text-[10px] font-semibold text-gray-400">
+                                {item.at ? formatDistanceToNow(new Date(item.at), { addSuffix: true }) : ''}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs font-semibold leading-relaxed text-gray-600">{item.message || '-'}</div>
+                          </div>
+                        )) : (
+                          <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs font-semibold text-gray-400">
+                            No saved progress messages for this older run.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <DebugSamples samples={run.debugSamples} />
+                  </div>
+                ) : null}
+              </button>
             );
           })}
           {!recentRuns.length && (
@@ -2117,10 +2161,14 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                 <Stat label="Status" value={lastLog.status} />
                 <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
                 <Stat label="Fetched" value={lastLog.totalFetched} />
+                <Stat label="Matched" value={lastLog.totalMatched ?? lastLog.resultCount ?? 0} />
+                <Stat label="Rejected" value={lastLog.totalRejected ?? 0} />
+                <Stat label="AI Ignored" value={lastLog.totalAiIgnored ?? 0} />
                 <Stat label="Inserted" value={lastLog.totalInserted} highlight />
                 <Stat label="Duplicates" value={lastLog.totalDuplicates} />
                 <Stat label="Errors" value={lastLog.totalErrors} />
                 <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+                <DebugSamples samples={lastLog.debugSamples} />
               </div>
             )}
           </div>
@@ -2877,10 +2925,14 @@ export function FetchTab({ embedded = false }) {
             <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
             <Stat label="Trigger" value={logTriggerLabel(lastLog) || '-'} />
             <Stat label="Fetched" value={lastLog.totalFetched} />
+            <Stat label="Matched" value={lastLog.totalMatched ?? lastLog.resultCount ?? 0} />
+            <Stat label="Rejected" value={lastLog.totalRejected ?? 0} />
+            <Stat label="AI Ignored" value={lastLog.totalAiIgnored ?? 0} />
             <Stat label="Inserted" value={lastLog.totalInserted} highlight />
             <Stat label="Duplicates" value={lastLog.totalDuplicates} />
             <Stat label="Errors" value={lastLog.totalErrors} />
             <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+            <DebugSamples samples={lastLog.debugSamples} />
           </div>
         )}
       </div>
@@ -3036,6 +3088,34 @@ function Stat({ label, value, highlight }) {
       <span className={`min-w-0 flex-1 text-right leading-snug break-words ${highlight ? 'text-brand-crimson text-base font-black' : 'text-gray-700 text-sm font-bold'}`}>
         {value ?? '-'}
       </span>
+    </div>
+  );
+}
+
+function DebugSamples({ samples }) {
+  const groups = [
+    ['Matched', samples?.matched || []],
+    ['AI Ignored', samples?.aiIgnored || []],
+    ['Rejected', samples?.rejected || []]
+  ].filter(([, items]) => items.length);
+
+  if (!groups.length) return null;
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md bg-gray-50 p-3 ring-1 ring-gray-100">
+      <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">Debug samples</div>
+      {groups.map(([label, items]) => (
+        <div key={label} className="space-y-1.5">
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-500">{label}</div>
+          {items.slice(0, 3).map((item, index) => (
+            <div key={`${label}-${index}`} className="rounded-md bg-white px-2.5 py-2 text-xs ring-1 ring-gray-100">
+              <div className="truncate font-black text-gray-800">{item.title || 'Untitled'}</div>
+              <div className="mt-1 line-clamp-2 text-gray-500">{item.reason || '-'}</div>
+              <div className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">{item.category || item.topic || item.source || ''}{item.score !== undefined ? ` | Score ${item.score}` : ''}</div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -3326,7 +3406,7 @@ function LogRunDetails({ log, progress }) {
         <div className="admin-log-messages rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-            {messages.length ? messages.slice(-8).map((item, index) => (
+            {messages.length ? messages.slice(-30).map((item, index) => (
               <div key={`${item.at || index}-${index}`} className="admin-log-message rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>

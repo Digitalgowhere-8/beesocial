@@ -18,7 +18,7 @@ try {
   OpenAI = null;
 }
 
-const { CATEGORIES } = require('../config/categories');
+const { CATEGORIES, matchCategory } = require('../config/categories');
 
 let client = null;
 function getClient() {
@@ -32,7 +32,7 @@ function isEnabled() {
 }
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+const PROFILE_RELEVANCE_MIN_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 60) || 60));
 
 function clampNumber(value, fallback, min, max) {
   const number = Number(value);
@@ -808,15 +808,40 @@ function evergreenCategoryPromptText() {
   ].join('\n');
 }
 
+function validFallbackCategory(category) {
+  return CATEGORIES[String(category || '').trim()] ? String(category || '').trim() : '';
+}
+
+function validFallbackSubcategory(category, subcategory) {
+  const cleanCategory = validFallbackCategory(category);
+  if (!cleanCategory) return '';
+  const value = String(subcategory || '').trim();
+  const allowed = Object.keys(CATEGORIES[cleanCategory]?.subcategories || {});
+  return allowed.find((item) => item.toLowerCase() === value.toLowerCase()) || '';
+}
+
 function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
   const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
+  const body = [
+    article.title,
+    article.summary,
+    article.aiSummary,
+    article.rawContent,
+    article.sourceQuery
+  ].filter(Boolean).join(' ');
+  const matched = matchCategory(body);
+  const category = validFallbackCategory(article.category) || validFallbackCategory(matched.category);
+  const subcategory = validFallbackSubcategory(category, article.subcategory) || validFallbackSubcategory(category, matched.subcategory);
+  const shouldStore = score >= PROFILE_RELEVANCE_MIN_SCORE && category && subcategory;
   return {
-    decision: score >= PROFILE_RELEVANCE_MIN_SCORE ? 'STORE' : 'IGNORE',
-    category: score >= PROFILE_RELEVANCE_MIN_SCORE ? (article.category || 'General') : 'IGNORE',
-    subcategory: article.subcategory || '',
+    decision: shouldStore ? 'STORE' : 'IGNORE',
+    category: shouldStore ? category : 'IGNORE',
+    subcategory: shouldStore ? subcategory : 'IGNORE',
     summary: article.summary || article.aiSummary || '',
     relevance_score: score,
-    relevance_reason: `Fallback Tavily relevance score ${score} for ${topic}.`
+    relevance_reason: shouldStore
+      ? `Fallback rule-based match for ${category} / ${subcategory} with Tavily relevance score ${score} for ${topic}.`
+      : `Fallback ignored because score/category/sub-category did not meet storage rules for ${topic}.`
   };
 }
 
@@ -836,6 +861,14 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   const sourceDomains = profileSourceDomains(profile, article, topic);
   const competitors = listPromptValues(profile.competitors || article.competitors);
   const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || article.days || 30) || 30));
+  const articleExcerpt = [
+    article.summary,
+    article.aiSummary,
+    article.rawContent
+  ].filter(Boolean).join('\n\n').slice(0, 6000);
+  const dateFallbackNote = article.dateFallbackUsed
+    ? 'Source did not provide a reliable published date. Treat this as a candidate only; STORE only if the content clearly contains a fresh announcement/update signal inside the allowed window, otherwise IGNORE. If the article text shows an older date outside the allowed window, return IGNORE.'
+    : '';
   const selectedCategory = profile.category || article.category || 'General';
   const selectedCategories = listPromptValues(profile.categories || article.categories || selectedCategory);
   const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
@@ -872,7 +905,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
         '',
         'STEP 3: CATEGORY AND SUB-CATEGORY SELECTION',
-        `For STORE decisions, map the article into ONE exact storage category from this taxonomy only: ${mainCategories.join(', ')}.`,
+        `For STORE decisions, map the article into one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
         'Use the government focus areas above only as interpretation guidance, not as output categories.',
         'Never invent a new category or sub-category. If no existing taxonomy category fits, return IGNORE.',
         '',
@@ -893,13 +926,14 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `Topic/type: ${topic}`,
         `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
         `Maximum age preference: ${maxAgeDays} days`,
+        dateFallbackNote,
         `Current year: ${currentYear}`,
         '',
         'ARTICLE',
         `Title: ${article.title || ''}`,
         `URL: ${article.url || ''}`,
         `Source: ${article.sourceType || article.source || ''}`,
-        `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+        `Content/summary/raw excerpt: ${articleExcerpt}`
       ]
     : isCompetitorTopic
       ? [
@@ -933,12 +967,12 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           `HIGH (70-100): Named tracked competitor opening a NEW office, completing an acquisition, launching a NEW service, or winning a major mandate in ${marketText}.`,
           `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): Named competitor announcing an expansion plan, leadership hire, partnership, investment increase, pricing/market strategy, or regulatory approval in ${marketText}.`,
           'Score 0: no named tracked competitor or activity outside the selected markets.',
-          `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
-          '',
-          'STEP 3: CATEGORY AND SUB-CATEGORY SELECTION',
-          'For STORE decisions, use category "Competitor Intelligence" only if that exact category exists in the storage taxonomy.',
-          'Choose the best exact storage sub-category from the existing taxonomy only. Never invent a new category or sub-category.',
-          'If the competitor event is relevant but no exact existing taxonomy fit is available, use the closest valid existing Competitor Intelligence sub-category from the taxonomy. If there is no valid fit, return IGNORE.',
+        `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}.`,
+        '',
+        'STEP 3: CATEGORY AND SUB-CATEGORY SELECTION',
+          `For STORE decisions, map the competitor event into one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
+          'Choose the best exact storage sub-category from the selected category taxonomy only. Never invent a new category or sub-category.',
+          'If the competitor event is relevant but no existing category/sub-category fit is available, return IGNORE.',
           '',
           'STEP 4: OUTPUT',
           `summary must explain in 2 short sentences what the competitor did and why it matters to ${companyName} in ${marketText}.`,
@@ -958,13 +992,14 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           `Tracked competitors: ${competitors.join(', ') || 'None'}`,
           `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
           `Maximum age preference: ${maxAgeDays} days`,
+          dateFallbackNote,
           `Current year: ${currentYear}`,
           '',
           'ARTICLE',
           `Title: ${article.title || ''}`,
           `URL: ${article.url || ''}`,
           `Source: ${article.sourceType || article.source || ''}`,
-          `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+          `Content/summary/raw excerpt: ${articleExcerpt}`
         ]
     : isEvergreenTopic
       ? [
@@ -999,9 +1034,8 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           topicFilterInstructions(topic),
           '',
           'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
-          `For STORE decisions, the content only needs to match ONE relevant category from the taxonomy: ${mainCategories.join(', ')}.`,
-          'The selected/profile category is only a hint. Do not force the page into that category if another existing taxonomy category fits better.',
-          'Use the best exact category and sub-category from the existing taxonomy only.',
+          `For STORE decisions, the content must match one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
+          'Use the best exact category and sub-category from the existing taxonomy.',
           `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
           'Never invent a new category or sub-category. If no existing taxonomy fit is available, return IGNORE.',
           '',
@@ -1024,13 +1058,14 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           `Topic/type: ${topic}`,
           `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
           `Maximum age preference: ${maxAgeDays} days`,
+          dateFallbackNote,
           `Current year: ${currentYear}`,
           '',
           'ARTICLE',
           `Title: ${article.title || ''}`,
           `URL: ${article.url || ''}`,
           `Source: ${article.sourceType || article.source || ''}`,
-          `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+          `Content/summary/raw excerpt: ${articleExcerpt}`
         ]
     : [
         `You are a news intelligence AI for ${companyName}.`,
@@ -1050,6 +1085,8 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         '- Opinion/editorial pieces with no factual regulatory, policy, market, or business update.',
         '- Real estate, property market, construction, housing, consumer retail, food and beverage, infrastructure, transport, logistics, energy, mining, manufacturing, or insurance news without a direct business, compliance, market-entry, tax, employment, investment, or professional-services angle.',
         '- Technology, AI, cybersecurity, fraud, scam alerts, litigation, arbitration, defence, geopolitical, child protection, social welfare, or patent/IP stories without a direct advisory, regulatory, or compliance angle.',
+        '- Trade-war, sanctions, export-control, mining, industrial, or geopolitical stories must be IGNORE unless the article clearly explains a concrete tax, compliance, company registry, licensing, filing, employment, market-entry, FDI, or governance impact for the selected market.',
+        '- A passing mention of a company, acquisition, corporate filing, director name, stock market, or company registry search is NOT enough by itself. There must be an actionable service/tax/compliance/regulatory/business-entry angle.',
         '- Static government pages, directory listings, portal homepages, resource hubs, e-service pages, search pages, login pages, or tool pages.',
         `- Any update older than ${maxAgeDays} days when the article clearly shows an older effective or publication date.`,
         `- Any article that does not fit at least one existing taxonomy category from: ${mainCategories.join(', ')}.`,
@@ -1058,7 +1095,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         '',
         'STEP 2: SCORING',
         `Give HIGH (70-100) when the article has a concrete NEW business, market, economy, investment, tax, compliance, employment, company registry, FDI, trade, professional-services, or competitor signal affecting ${marketText}.`,
-        `Give MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69) when the article has a clear business impact in ${marketText} and fits at least one taxonomy category, even if it is not a formal government/regulatory announcement.`,
+        `Give MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69) only when the article has a clear actionable business impact in ${marketText} and fits at least one existing taxonomy category, even if it is not a formal government/regulatory announcement.`,
         'Give 0 when it is unrelated to the market, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
         `STORE only when score is at least ${PROFILE_RELEVANCE_MIN_SCORE}. If the article is not strong enough for ${PROFILE_RELEVANCE_MIN_SCORE}, return IGNORE with score 0.`,
         '',
@@ -1066,9 +1103,8 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         topicFilterInstructions(topic),
         '',
         'STEP 4: CATEGORY AND SUB-CATEGORY SELECTION',
-        `For STORE decisions, the article only needs to match ONE relevant category from the 10 main categories in the taxonomy: ${mainCategories.join(', ')}.`,
-        'The selected/profile category is only a hint. Do not force the article into that category.',
-        'Do not reject an article only because it does not match the first/profile category. If it is about the selected market and fits any taxonomy category, STORE it.',
+        `For STORE decisions, the article must match one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
+        'Do not force the article into the first/profile category when multiple selected categories are available.',
         'Use the best exact category name from the existing taxonomy only.',
         'Choose the best exact sub-category under that category from the existing taxonomy only.',
         `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
@@ -1094,13 +1130,14 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `Tracked competitors: ${competitors.join(', ') || 'None'}`,
         `Preferred source domains: ${sourceDomains.join(', ') || 'None provided'}`,
         `Maximum age preference: ${maxAgeDays} days`,
+        dateFallbackNote,
         `Current year: ${currentYear}`,
         '',
         'ARTICLE',
         `Title: ${article.title || ''}`,
         `URL: ${article.url || ''}`,
         `Source: ${article.sourceType || article.source || ''}`,
-        `Content/summary/raw excerpt: ${article.summary || article.aiSummary || ''}`
+        `Content/summary/raw excerpt: ${articleExcerpt}`
       ];
 
   try {
@@ -1112,7 +1149,11 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
       messages: [
         {
           role: 'system',
-          content: 'You are a precise business-intelligence relevance classifier. Return valid JSON only.'
+          content: [
+            'You are a precise business-intelligence relevance classifier. Return valid JSON only.',
+            'Never store homepage, listing, directory, search, login, or generic portal pages; return IGNORE for those.',
+            'Choose category and sub-category from the article’s primary business impact, not from the source name alone.'
+          ].join(' ')
         },
         {
           role: 'user',
@@ -1925,7 +1966,6 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   const marketReality = options.marketReality || '';
   const personaProfile = options.personaProfile || '';
   const proofElement = options.proofElement || '';
-  const authorityLine = options.authorityLine || '';
   const takeaway = options.takeaway || '';
   const cta = options.cta || '';
   const includeCTA = options.includeCTA !== false;
@@ -2026,7 +2066,6 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             `ICP pain points:\n${icpPainPoints}`,
             `Market realities:\n${marketReality}`,
             `Proof element to use:\n${proofElement}`,
-            `Soft authority line to use:\n${authorityLine}`,
             `Preferred takeaway:\n${takeaway}`,
             `CTA direction:\n${cta}`,
             `Custom instructions:\n${customInstructions}`,
@@ -2100,7 +2139,6 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Include exactly one proof element from the source. Use it in your own words in one concise sentence.',
             '- Include at least 3 concrete business implications from the source/category, such as timing, ownership, documentation, governance, due diligence, filing, cost, risk, client communication, or operational responsibility.',
             '- Use a short list only when it sharpens the advice. Each bullet must be specific, not generic.',
-            '- Include one soft authority line only if it adds credibility without sounding promotional.',
             '- Include one clear takeaway: Rule of One.',
             '- Do not include hashtags inside postText. Return hashtags only in the hashtags array.',
             '- Do not restate the source summary. Convert it into a practical lesson, decision rule, or operating question.',

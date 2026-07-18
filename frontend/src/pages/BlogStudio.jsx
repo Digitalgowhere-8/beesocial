@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
@@ -165,7 +165,6 @@ const DEFAULT_LINKEDIN_FORM = {
   icpPainPoints: '',
   marketReality: '',
   proofElement: '',
-  authorityLine: '',
   takeaway: '',
   includeHashtags: true,
   includeCTA: true,
@@ -201,12 +200,13 @@ const LINKEDIN_STEPS = [
   'Structuring post hook & template layout...',
   'Writing post paragraphs & tone...',
   'Applying spacing constraints & readability...',
-  'Refining soft authority line & CTA details...'
+  'Refining CTA details and readability...'
 ];
 
 export default function BlogStudio() {
   const { user, refreshMe, genProgress, setGenProgress } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const inboundState = location.state || {};
   const canUseBlogStudio = user?.access?.canUseBlogStudio !== false;
   const studioCacheKey = useMemo(
@@ -990,6 +990,16 @@ export default function BlogStudio() {
     }
   };
 
+  const openBlogInRepository = useCallback((blog = selectedBlog) => {
+    if (!blog?._id) return;
+    navigate('/blogs', { state: { mode: 'blogs', selectedBlogId: blog._id } });
+  }, [navigate, selectedBlog]);
+
+  const openLinkedInInRepository = useCallback((post = linkedinOutput) => {
+    if (!post?._id) return;
+    navigate('/blogs', { state: { mode: 'linkedin', selectedSocialId: post._id } });
+  }, [linkedinOutput, navigate]);
+
   const generate = async () => {
     if (!selectedArticle?._id) {
       setError('Select or drag a topic first.');
@@ -1539,6 +1549,7 @@ export default function BlogStudio() {
                 setSocialEditorDirty={setSocialEditorDirty}
                 focusComposerMode={focusComposerMode}
                 onPreviewOpenChange={setSocialPreviewOpen}
+                onOpenSelectedInRepository={openLinkedInInRepository}
               />
             )}
           </div>
@@ -1797,7 +1808,7 @@ export default function BlogStudio() {
                   className="content-studio-review-button inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
                 >
                   <BookOpenText size={16} />
-                  Review & Publishing
+                  Review
                 </button>
               </div>
             </div>
@@ -1832,6 +1843,7 @@ export default function BlogStudio() {
           confirmDraftLeave={confirmBlogDraftLeave}
           blogsHasMore={blogsHasMore}
           blogLoadMoreRef={blogLoadMoreRef}
+          onOpenSelectedInRepository={openBlogInRepository}
         />
         </>
         )}
@@ -1937,7 +1949,8 @@ function BlogDraftDrawer({
   revisingDraft,
   confirmDraftLeave,
   blogsHasMore,
-  blogLoadMoreRef
+  blogLoadMoreRef,
+  onOpenSelectedInRepository
 }) {
   const allBlogsSelected = blogs.length > 0 && selectedBlogIds.length === blogs.length;
 
@@ -2027,13 +2040,6 @@ function BlogDraftDrawer({
                             >
                               <div className="mb-2 flex items-start justify-between gap-2">
                                 <span className="truncate text-sm font-black leading-tight text-gray-900">{blog.title}</span>
-                                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                                  blog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                  ['review', 'draft'].includes(blog.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                  'bg-gray-50 text-gray-500 border-gray-200'
-                                }`}>
-                                  {contentStatusLabel(blog.status)}
-                                </span>
                               </div>
                               <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{blog.excerpt}</p>
                             </button>
@@ -2071,22 +2077,14 @@ function BlogDraftDrawer({
                     Back to review list
                   </button>
                   <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
-                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
-                          selectedBlog.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                          ['review', 'draft'].includes(selectedBlog.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                          'bg-gray-50 text-gray-500 border-gray-200'
-                        }`}>
-                          {contentStatusLabel(selectedBlog.status)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <StatusButton status="review" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
-                      <StatusButton status="published" current={selectedBlog.status} saving={savingStatus} onClick={updateBlogStatus} />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenSelectedInRepository?.(selectedBlog)}
+                      className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 text-sm font-black text-white shadow-sm transition-all hover:bg-brand-hoverred"
+                    >
+                      <BookOpenText size={15} />
+                      Review
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
@@ -2293,7 +2291,8 @@ function LinkedInOutputPreview({
   onBackToList,
   defaultEditMode = false,
   onDirtyChange,
-  resetSignal = 0
+  resetSignal = 0,
+  onOpenSelectedInRepository
 }) {
   const [copied, setCopied] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -2407,14 +2406,6 @@ function LinkedInOutputPreview({
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest border ${
-                    output.status === 'published' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                    ['review', 'draft'].includes(output.status) ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                    'bg-gray-50 text-gray-500 border-gray-200'
-                  }`}>
-                    {contentStatusLabel(output.status)}
-                  </span>
                   <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">Saved</span>
                 </div>
                 <button
@@ -2426,10 +2417,14 @@ function LinkedInOutputPreview({
                   {copied ? 'Copied' : 'Copy'}
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusButton status="review" current={output.status} saving={statusSaving || (updatingSaved ? 'updating' : '')} onClick={updateStatus} />
-                <StatusButton status="published" current={output.status} saving={statusSaving || (updatingSaved ? 'updating' : '')} onClick={updateStatus} />
-              </div>
+              <button
+                type="button"
+                onClick={() => onOpenSelectedInRepository?.(output)}
+                className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 text-sm font-black text-white shadow-sm transition-all hover:bg-brand-hoverred"
+              >
+                <MessageSquareText size={15} />
+                Review
+              </button>
             </>
           ) : (
             <div className="flex justify-end">
@@ -2560,13 +2555,6 @@ function SavedSocialPostsList({ posts = [], loading = false, onSelect, activeId,
                 >
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <span className="line-clamp-2 text-sm font-black leading-tight text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</span>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                      post.status === 'published' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' :
-                      ['review', 'draft'].includes(post.status) ? 'border-amber-200 bg-amber-50 text-amber-600' :
-                      'border-gray-200 bg-gray-50 text-gray-500'
-                    }`}>
-                      {contentStatusLabel(post.status)}
-                    </span>
                   </div>
                   <p className="line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">{post.postText}</p>
                 </button>
@@ -2774,7 +2762,8 @@ function LinkedInStudio({
   socialEditorDirty = false,
   setSocialEditorDirty,
   focusComposerMode = false,
-  onPreviewOpenChange
+  onPreviewOpenChange,
+  onOpenSelectedInRepository
 }) {
   const update = (key, value) => setLinkedinForm({ ...linkedinForm, [key]: value });
   const [draggingArticleId, setDraggingArticleId] = useState('');
@@ -3072,9 +3061,6 @@ function LinkedInStudio({
               <Field label="Call to Action">
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} placeholder="Optional - leave blank for a contextual CTA" />
               </Field>
-              <Field label="Soft Authority Line">
-                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.authorityLine} onChange={(e) => update('authorityLine', e.target.value)} placeholder="Subtle credibility line" />
-              </Field>
               <ToggleField label="Include hashtags" checked={linkedinForm.includeHashtags} onChange={(checked) => update('includeHashtags', checked)} />
               <ToggleField label="Include CTA" checked={linkedinForm.includeCTA} onChange={(checked) => update('includeCTA', checked)} />
             </SettingsGroup>
@@ -3114,7 +3100,7 @@ function LinkedInStudio({
               className="content-studio-review-button inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
             >
               <BookOpenText size={16} />
-              Review & Publishing
+              Review
             </button>
           </div>
         </div>
@@ -3149,6 +3135,7 @@ function LinkedInStudio({
       onEditorDirtyChange={setSocialEditorDirty}
       improving={revisingLinkedinPost}
       onCancelImprovement={() => cancelImprovement('linkedin')}
+      onOpenSelectedInRepository={onOpenSelectedInRepository}
     />
     </>
   );
@@ -3176,7 +3163,8 @@ function SocialOutputDrawer({
   editorDirty = false,
   onEditorDirtyChange,
   improving = false,
-  onCancelImprovement
+  onCancelImprovement,
+  onOpenSelectedInRepository
 }) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -3424,6 +3412,7 @@ function SocialOutputDrawer({
                 defaultEditMode
                 onDirtyChange={onEditorDirtyChange}
                 resetSignal={discardVersion}
+                onOpenSelectedInRepository={onOpenSelectedInRepository}
               />
             </div>
           </div>
