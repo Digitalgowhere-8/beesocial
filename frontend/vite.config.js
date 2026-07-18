@@ -10,7 +10,7 @@ export default defineConfig({
       // axios baseURL is now <backendUrl>/api, so all API calls are /api/*.
       // In local dev, proxy /api → backend:5000 so no CORS issues.
       '/api': {
-        target: process.env.VITE_API_PROXY || 'http://localhost:5000',
+        target: process.env.VITE_API_PROXY || 'http://127.0.0.1:5000',
         changeOrigin: true
       }
     }

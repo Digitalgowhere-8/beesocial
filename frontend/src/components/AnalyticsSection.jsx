@@ -4,13 +4,13 @@ import { TrendingUp, Newspaper, Landmark, Building2, BarChart2, Activity, Globe,
 import { useAuth } from '../context/AuthContext';
 import { getDashboardAppearance, scoreBandForValue } from '../utils/feedTheme';
 
-const CRIMSON = '#D11243';
+const CRIMSON = '#163A24';
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 const TYPE_ACCENTS = {
-  news: '#3b82f6',
-  govt: '#10b981',
-  competitor: '#f59e0b',
-  evergreen: '#8b5cf6',
+  govt: '#10B981',
+  news: '#163A24',
+  competitor: '#F59E0B',
+  evergreen: '#8B5CF6',
 };
 const TYPE_NAMES = {
   news: 'News Articles',
@@ -37,8 +37,8 @@ function StatCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
     <div
       className="analytics-stat-card bg-white rounded-xl p-4 sm:p-5 flex flex-col gap-3 relative overflow-hidden fade-in min-w-0"
       style={{
-        boxShadow: '0 1px 12px rgba(209,18,67,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-        border: '1px solid rgba(209,18,67,0.08)',
+        boxShadow: '0 1px 12px rgba(22,58,36,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        border: '1px solid rgba(22,58,36,0.08)',
         animationDelay: `${delay}s`,
       }}
     >
@@ -86,7 +86,7 @@ function DonutChart({ data, className = '' }) {
   const center = 80;
 
   return (
-    <div className={`analytics-card analytics-card-donut flex flex-col overflow-hidden bg-white rounded-xl p-3 fade-in min-w-0 sm:p-4 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+    <div className={`analytics-card analytics-card-donut flex flex-col overflow-hidden bg-white rounded-xl p-3 fade-in min-w-0 sm:p-4 ${className}`} style={{ animationDelay: '0.3s', boxShadow: '0 1px 12px rgba(22,58,36,0.06)', border: '1px solid rgba(22,58,36,0.08)' }}>
       <div className="mb-2 flex items-center gap-2 2xl:mb-4">
         <BarChart2 size={16} style={{ color: CRIMSON }} />
         <span className="text-sm font-bold text-gray-700"> Buzz by Type
@@ -104,7 +104,7 @@ function DonutChart({ data, className = '' }) {
             viewBox={`0 0 ${center * 2} ${center * 2}`}
           >
             {/* Background circle */}
-            <circle cx={center} cy={center} r={r} fill="none" stroke="#f3f4f6" strokeWidth="24" />
+            <circle cx={center} cy={center} r={r} fill="none" stroke="#F2F0E8" strokeWidth="24" />
             {segments.map((seg, i) => (
               <circle
                 key={i}
@@ -141,7 +141,7 @@ function DonutChart({ data, className = '' }) {
                 <div className="h-3 w-3 rounded-sm shrink-0" style={{ background: seg.color }} />
                 <span className="truncate text-[12px] font-bold text-gray-600">{seg.label}</span>
               </div>
-              <div className="h-[clamp(0.4rem,0.75vh,0.55rem)] rounded-full bg-gray-100">
+              <div className="h-[clamp(0.4rem,0.75vh,0.55rem)] rounded-full bg-[#F2F0E8]">
                 <div className="h-full rounded-full" style={{ width: `${seg.pct}%`, background: seg.color }} />
               </div>
               <span className="text-right text-[12px] font-black text-gray-700">{seg.value}</span>
@@ -175,7 +175,7 @@ function SignalChart({ data, mode, className = '' }) {
   const areaD = pathD + ` L${pts[pts.length - 1].x},${H} L${pts[0].x},${H} Z`;
 
   return (
-    <div className={`analytics-card analytics-card-signal bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.4s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+    <div className={`analytics-card analytics-card-signal bg-white rounded-xl p-4 sm:p-5 fade-in min-w-0 ${className}`} style={{ animationDelay: '0.4s', boxShadow: '0 1px 12px rgba(22,58,36,0.06)', border: '1px solid rgba(22,58,36,0.08)' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
           <Activity size={16} style={{ color: CRIMSON }} />
@@ -238,7 +238,7 @@ function SourceCard({ label, status, lastFetch, count }) {
   return (
     <div className="flex items-center gap-3 p-3.5 rounded-xl hover:bg-gray-50/80 transition-all duration-200 group/source cursor-default"
       style={{ border: '1px solid transparent' }}
-      onMouseOver={e => e.currentTarget.style.border = '1px solid rgba(209,18,67,0.08)'}
+      onMouseOver={e => e.currentTarget.style.border = '1px solid rgba(8,59,18,0.08)'}
       onMouseOut={e => e.currentTarget.style.border = '1px solid transparent'}
     >
       {/* Globe icon */}
@@ -512,7 +512,7 @@ function sortByLatest(items) {
   return [...items].sort((a, b) => getArticleTime(b) - getArticleTime(a));
 }
 
-function UpdateRow({ item }) {
+function UpdateRow({ item, draggable = false, onDragStart, onDragEnd }) {
   const accent = TYPE_ACCENTS[item.type] || CRIMSON;
   const when = item.fetchedAt || item.publishedAt
     ? formatDistanceToNow(new Date(item.fetchedAt || item.publishedAt), { addSuffix: true })
@@ -528,7 +528,14 @@ function UpdateRow({ item }) {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="analytics-update-row group block rounded-lg border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-brand-crimson/20 hover:shadow-md"
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return;
+        onDragStart?.(event, item);
+      }}
+      onDragEnd={onDragEnd}
+      className={`analytics-update-row group block rounded-lg border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-brand-crimson/20 hover:shadow-md ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      title={draggable ? 'Drag to create blog or social post' : undefined}
     >
       <div className="mb-2 flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -553,16 +560,16 @@ function UpdateRow({ item }) {
       </p>
 
       <div className="grid grid-cols-2 gap-1.5 text-[9px] font-black uppercase tracking-wider text-gray-500">
-        <span className="analytics-update-meta-pill truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Market: {String(market).toUpperCase()}</span>
-        <span className="analytics-update-meta-pill truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Score: {score || '-'}</span>
-        <span className="analytics-update-meta-pill truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Category: {String(category).toUpperCase()}</span>
-        <span className="analytics-update-meta-pill truncate rounded-md bg-gray-50 px-2 py-1.5 ring-1 ring-gray-100">Sub: {String(subcategory).toUpperCase()}</span>
+        <span className="analytics-update-meta-pill truncate rounded-md bg-[#F2F0E8] px-2 py-1.5 ring-1 ring-[#E9E5D8]">Market: {String(market).toUpperCase()}</span>
+        <span className="analytics-update-meta-pill truncate rounded-md bg-[#F2F0E8] px-2 py-1.5 ring-1 ring-[#E9E5D8]">Score: {score || '-'}</span>
+        <span className="analytics-update-meta-pill truncate rounded-md bg-[#F2F0E8] px-2 py-1.5 ring-1 ring-[#E9E5D8]">Category: {String(category).toUpperCase()}</span>
+        <span className="analytics-update-meta-pill truncate rounded-md bg-[#F2F0E8] px-2 py-1.5 ring-1 ring-[#E9E5D8]">Sub: {String(subcategory).toUpperCase()}</span>
       </div>
     </a>
   );
 }
 
-function TrendingUpdatesCard({ items, className = '' }) {
+function TrendingUpdatesCard({ items, className = '', canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   const visibleItems = useMemo(() => sortByLatest(items).slice(0, 20), [items]);
   const marqueeItems = visibleItems.length > 3 ? [...visibleItems, ...visibleItems] : visibleItems;
   const scrollRef = useRef(null);
@@ -607,14 +614,14 @@ function TrendingUpdatesCard({ items, className = '' }) {
             <h3 className="truncate text-sm font-black text-gray-900">Today's Buzz</h3>
           </div>
         </div>
-        <span className="todays-buzz-count rounded-md bg-brand-pink/70 px-2.5 py-1 text-[10px] font-black text-brand-crimson ring-1 ring-brand-crimson/10">
+        <span className="todays-buzz-count rounded-md bg-brand-pink/70 px-2.5 py-1 text-[10px] font-black text-brand-crimson ring-1 ring-[#F9C416]/35">
           {visibleItems.length}
         </span>
       </div>
 
       <div
         ref={scrollRef}
-        className="hide-scrollbar relative min-h-0 flex-1 overflow-y-auto rounded-lg bg-gray-50/40 p-2 ring-1 ring-gray-100"
+        className="hide-scrollbar relative min-h-0 flex-1 overflow-y-auto rounded-lg bg-[#F7F5EC] p-2 ring-1 ring-[#E9E5D8]"
         onMouseEnter={() => { pausedRef.current = true; }}
         onMouseLeave={() => { pausedRef.current = false; }}
       >
@@ -624,6 +631,9 @@ function TrendingUpdatesCard({ items, className = '' }) {
               <UpdateRow
                 key={`${item._id || item.url || index}-${index}`}
                 item={item}
+                draggable={canDragCompose}
+                onDragStart={onArticleDragStart}
+                onDragEnd={onArticleDragEnd}
               />
             ))}
           </div>
@@ -653,8 +663,8 @@ function CategoryMomentumCard({ categories, className = '' }) {
               <span className="truncate text-[12px] font-black leading-none text-gray-700">{item.label}</span>
               <span className="shrink-0 text-[10px] font-black leading-none text-gray-500">{item.count}</span>
             </div>
-            <div className="h-[clamp(0.2rem,0.55vh,0.4rem)] shrink-0 rounded-full bg-gray-100">
-              <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${Math.round((item.count / max) * 100)}%` }} />
+            <div className="category-momentum-track h-[clamp(0.2rem,0.55vh,0.4rem)] shrink-0 rounded-full bg-[#F2F0E8]">
+              <div className="category-momentum-fill h-full rounded-full bg-brand-crimson" style={{ width: `${Math.round((item.count / max) * 100)}%` }} />
             </div>
           </div>
         )) : (
@@ -693,7 +703,7 @@ function MarketDistributionCard({ markets, className = '' }) {
           <Globe size={16} className="text-brand-crimson" />
           <h3 className="truncate text-sm font-black text-gray-900">Market Distribution</h3>
         </div>
-        <span className="shrink-0 rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-gray-100">
+        <span className="shrink-0 rounded-md bg-[#F2F0E8] px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-500 ring-1 ring-[#E9E5D8]">
           {total} signals
         </span>
       </div>
@@ -710,9 +720,9 @@ function MarketDistributionCard({ markets, className = '' }) {
                     {market.types.length ? market.types.join(' / ') : 'Unclassified'}
                   </div>
                 </div>
-                <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-gray-100">{market.count}</span>
+                <span className="rounded-md bg-[#F2F0E8] px-2 py-1 text-[10px] font-black text-gray-500 ring-1 ring-[#E9E5D8]">{market.count}</span>
               </div>
-              <div className="h-[clamp(0.3rem,0.72vh,0.48rem)] shrink-0 rounded-full bg-gray-100">
+              <div className="h-[clamp(0.3rem,0.72vh,0.48rem)] shrink-0 rounded-full bg-[#F2F0E8]">
                 <div
                   className="h-full rounded-full"
                   style={{
@@ -731,7 +741,7 @@ function MarketDistributionCard({ markets, className = '' }) {
   );
 }
 
-function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution }) {
+function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, marketDistribution, canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   return (
     <div className="analytics-today-grid grid min-h-0 grid-cols-1 gap-4 overflow-y-auto pb-2 xl:h-full xl:grid-cols-2 xl:overflow-hidden xl:pb-2">
       <div className="grid min-h-0 grid-cols-1 gap-[clamp(0.45rem,1vh,0.75rem)] xl:h-full xl:grid-rows-[minmax(140px,0.78fr)_minmax(150px,1fr)_minmax(150px,1fr)]">
@@ -740,7 +750,13 @@ function TodayDashboard({ total, donutData, trendingUpdates, categoryMomentum, m
         <CategoryMomentumCard categories={categoryMomentum} className="min-h-[210px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
       </div>
 
-      <TrendingUpdatesCard items={trendingUpdates} className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col" />
+      <TrendingUpdatesCard
+        items={trendingUpdates}
+        className="min-h-[480px] xl:h-full xl:min-h-0 xl:flex xl:flex-col"
+        canDragCompose={canDragCompose}
+        onArticleDragStart={onArticleDragStart}
+        onArticleDragEnd={onArticleDragEnd}
+      />
 
       {!total && (
         <section className="rounded-lg border border-dashed border-gray-200 bg-white p-5 text-[12px] font-semibold text-gray-400 shadow-card xl:col-span-2">
@@ -768,7 +784,7 @@ function AllDataDashboard({ total, counts, categoryCount, donutData, signalData,
         <SignalChart data={signalData} mode="all" />
       </div>
 
-      <div className="analytics-card analytics-card-sources bg-white rounded-xl p-4 sm:p-5 fade-in" style={{ animationDelay: '0.5s', boxShadow: '0 1px 12px rgba(209,18,67,0.06)', border: '1px solid rgba(209,18,67,0.08)' }}>
+      <div className="analytics-card analytics-card-sources bg-white rounded-xl p-4 sm:p-5 fade-in" style={{ animationDelay: '0.5s', boxShadow: '0 1px 12px rgba(8,59,18,0.06)', border: '1px solid rgba(8,59,18,0.08)' }}>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <Globe size={16} style={{ color: CRIMSON }} />
           <span className="text-sm font-bold text-gray-700">Data Source Health</span>
@@ -788,7 +804,7 @@ function AllDataDashboard({ total, counts, categoryCount, donutData, signalData,
   );
 }
 
-export default function AnalyticsSection({ data, velocityData = [], loading, isAdmin = false, viewMode = 'today', onViewModeChange }) {
+export default function AnalyticsSection({ data, velocityData = [], loading, isAdmin = false, viewMode = 'today', onViewModeChange, canDragCompose = false, onArticleDragStart, onArticleDragEnd }) {
   const allArticles = useMemo(
     () => Object.values(data || {}).flat().filter(Boolean),
     [data]
@@ -970,6 +986,9 @@ export default function AnalyticsSection({ data, velocityData = [], loading, isA
           trendingUpdates={trendingUpdates}
           categoryMomentum={categoryMomentum}
           marketDistribution={marketDistribution}
+          canDragCompose={canDragCompose}
+          onArticleDragStart={onArticleDragStart}
+          onArticleDragEnd={onArticleDragEnd}
         />
       ) : (
         <AllDataDashboard

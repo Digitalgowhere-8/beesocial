@@ -108,7 +108,7 @@ const SOURCE_TYPE_OPTIONS = [
   { key: 'news', label: 'News sources', help: 'Business, market and publisher domains', icon: Globe2, accent: 'from-sky-500/15 via-blue-500/10 to-cyan-500/10', ring: 'ring-sky-100', tint: 'text-sky-700' },
   { key: 'govt', label: 'Government sources', help: 'Regulatory, ministry and official domains', icon: ShieldCheck, accent: 'from-emerald-500/15 via-green-500/10 to-teal-500/10', ring: 'ring-emerald-100', tint: 'text-emerald-700' },
   { key: 'competitor', label: 'Competitor sources', help: 'Firm websites and competitor intelligence domains', icon: Building2, accent: 'from-amber-500/15 via-orange-500/10 to-yellow-500/10', ring: 'ring-amber-100', tint: 'text-amber-700' },
-  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-violet-500/15 via-fuchsia-500/10 to-pink-500/10', ring: 'ring-violet-100', tint: 'text-violet-700' }
+  { key: 'evergreen', label: 'Evergreen sources', help: 'Reference and guide sources for evergreen content', icon: Sparkles, accent: 'from-brand-pink/80 via-[#F9C416]/10 to-white', ring: 'ring-brand-crimson/10', tint: 'text-brand-crimson' }
 ];
 
 const COUNTRY_TIMEZONES = {
@@ -257,7 +257,7 @@ export default function AdminPanel() {
               })()}
             </div>
           ) : (
-            <div className="hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(78px,1fr)] gap-1.5 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+            <div className="content-header-segmented hide-scrollbar inline-grid min-w-0 grid-flow-col auto-cols-[minmax(78px,1fr)] gap-1.5 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
               {tabs.map((item) => {
                 const active = item.key === tab;
                 return (
@@ -267,7 +267,7 @@ export default function AdminPanel() {
                     onClick={() => setTab(item.key)}
                     className={[
                       'flex min-h-[36px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[11px] font-black transition-all',
-                      active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                      active ? 'content-header-tab-active bg-brand-crimson text-white shadow-sm' : 'content-header-tab-idle text-gray-500 hover:bg-gray-50'
                     ].join(' ')}
                   >
                     {item.icon ? <item.icon size={13} /> : null}
@@ -299,7 +299,7 @@ export default function AdminPanel() {
           </div>
         </div>
         <div className="hidden min-w-0 flex-1 gap-2 xl:flex xl:flex-row xl:items-center">
-          <div className="hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
+          <div className="content-header-segmented hide-scrollbar inline-grid min-w-0 flex-1 grid-flow-col auto-cols-[minmax(120px,1fr)] gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm sm:auto-cols-[minmax(132px,1fr)]">
             {(isSuperAdmin ? (SUPER_ADMIN_SUBTABS[tab] || []) : tabs).map((item) => {
               const active = isSuperAdmin ? item.key === subTab : item.key === tab;
               return (
@@ -315,7 +315,7 @@ export default function AdminPanel() {
                   }}
                   className={[
                     'group flex min-h-[40px] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-black transition-all sm:px-5',
-                    active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+                    active ? 'content-header-tab-active bg-brand-crimson text-white shadow-sm' : 'content-header-tab-idle text-gray-500 hover:bg-gray-50'
                   ].join(' ')}
                 >
                   {!isSuperAdmin && item.icon ? <item.icon size={14} /> : null}
@@ -500,6 +500,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
   const [cleanupNotice, setCleanupNotice] = useState('');
+  const [expandedPlatformRunId, setExpandedPlatformRunId] = useState('');
 
   const loadDatabaseHealth = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setRefreshingHealth(true);
@@ -597,7 +598,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   };
 
   return (
-    <div className="space-y-6" data-analytics-section="Super admin platform overview">
+    <div className="super-admin-overview space-y-6" data-analytics-section="Super admin platform overview">
       {activeSubTab === 'overview' ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" data-analytics-section="Platform KPI cards">
@@ -632,9 +633,13 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                   <div key={row.user?._id || index} className="rounded-2xl border border-gray-100 bg-white/80 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-crimson to-rose-700 text-sm font-black text-white shadow-sm">
-                          {(row.user?.name || 'U')[0].toUpperCase()}
-                        </div>
+                        {row.user?.avatar ? (
+                          <img src={row.user.avatar} className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover shadow-sm" alt={row.user?.name || 'User avatar'} />
+                        ) : (
+                          <div className="super-admin-user-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-sm font-black text-white shadow-sm">
+                            {(row.user?.name || row.user?.email || 'U')[0].toUpperCase()}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <div className="truncate text-sm font-black text-gray-900">{row.user?.name || 'Unknown user'}</div>
                           <div className="truncate text-xs font-medium text-gray-500">{row.user?.email || '-'}</div>
@@ -675,9 +680,13 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                       <tr key={row.user?._id || index} className="premium-table-row">
                         <td className="rounded-l-2xl px-3 py-4">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white shadow-sm ring-4 ring-brand-pink/40">
-                              {(row.user?.name || 'U')[0].toUpperCase()}
-                            </div>
+                            {row.user?.avatar ? (
+                              <img src={row.user.avatar} className="h-9 w-9 shrink-0 rounded-full border border-gray-200 object-cover shadow-sm" alt={row.user?.name || 'User avatar'} />
+                            ) : (
+                              <div className="super-admin-user-avatar flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white shadow-sm">
+                                {(row.user?.name || row.user?.email || 'U')[0].toUpperCase()}
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <div className="truncate font-black leading-tight text-gray-900">{row.user?.name || 'Unknown user'}</div>
                               <div className="mt-0.5 truncate text-xs font-semibold text-gray-500">{row.user?.email || '-'}</div>
@@ -760,7 +769,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
           <AnalyticsKpi icon={MonitorUp} label="Page views" value={traffic.pageViews || 0} detail={`${traffic.engagementRate || 0}% engaged`} color="text-emerald-600" bg="bg-emerald-50" />
           <AnalyticsKpi icon={MousePointerClick} label="Clicks" value={traffic.clicks || 0} detail={`${traffic.clickThroughRate || 0}% CTR`} color="text-amber-600" bg="bg-amber-50" />
           <AnalyticsKpi icon={Timer} label="Avg time" value={formatDuration(traffic.avgEngagedMsPerSession)} detail="Per session" color="text-violet-600" bg="bg-violet-50" />
-          <AnalyticsKpi icon={Eye} label="Section views" value={traffic.sectionViews || 0} detail="Tracked panels" color="text-rose-600" bg="bg-rose-50" />
+          <AnalyticsKpi icon={Eye} label="Section views" value={traffic.sectionViews || 0} detail="Tracked panels" color="text-brand-crimson" bg="bg-brand-pink" />
           <AnalyticsKpi icon={TrendingUp} label="Bounce rate" value={`${traffic.bounceRate || 0}%`} detail="Low is better" color="text-gray-700" bg="bg-gray-50" />
         </div>
 
@@ -823,8 +832,15 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
             const isSuccess = run.status === 'success';
             const isFailed = run.status === 'failed';
             const isRunning = run.status === 'running' || run.status === 'queued';
+            const isExpanded = expandedPlatformRunId === run._id;
+            const messages = Array.isArray(run.progressMessages) ? run.progressMessages : [];
             return (
-              <div key={run._id} className="relative overflow-hidden rounded-xl bg-white p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5">
+              <button
+                key={run._id}
+                type="button"
+                onClick={() => setExpandedPlatformRunId(isExpanded ? '' : run._id)}
+                className="relative overflow-hidden rounded-xl bg-white p-5 text-left border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5"
+              >
                 <div className="absolute top-0 right-0 p-5">
                   <div className={`h-2.5 w-2.5 rounded-full ${
                     isSuccess ? 'bg-emerald-400 glow-dot-success' 
@@ -844,7 +860,12 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                     {run.startedAt ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true }) : '-'}
                   </span>
                 </div>
-                <div className="font-black text-gray-900 text-base">{owner.name || owner.email || 'Unknown user'}</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-black text-gray-900 text-base">{owner.name || owner.email || 'Unknown user'}</div>
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-gray-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-gray-400 ring-1 ring-gray-100">
+                    Details <ChevronDown size={12} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  </span>
+                </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 bg-gray-50/80 rounded-lg p-2.5 border border-gray-100/50">
                   <div className="text-center">
                     <div className="text-[10px] font-black uppercase text-gray-400">Fetched</div>
@@ -859,7 +880,38 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
                     <div className="font-black text-red-500 mt-0.5">{run.totalErrors || 0}</div>
                   </div>
                 </div>
-              </div>
+                {isExpanded ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <UsageMini label="Matched" value={compactNumber(run.totalMatched || 0)} />
+                      <UsageMini label="Rejected" value={compactNumber(run.totalRejected || 0)} />
+                      <UsageMini label="AI ignored" value={compactNumber(run.totalAiIgnored || 0)} />
+                      <UsageMini label="Duplicates" value={compactNumber(run.totalDuplicates || 0)} />
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3 ring-1 ring-gray-100">
+                      <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
+                      <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                        {messages.length ? messages.slice(-30).map((item, index) => (
+                          <div key={`${run._id}-msg-${index}`} className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>
+                              <span className="shrink-0 text-[10px] font-semibold text-gray-400">
+                                {item.at ? formatDistanceToNow(new Date(item.at), { addSuffix: true }) : ''}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs font-semibold leading-relaxed text-gray-600">{item.message || '-'}</div>
+                          </div>
+                        )) : (
+                          <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs font-semibold text-gray-400">
+                            No saved progress messages for this older run.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <DebugSamples samples={run.debugSamples} />
+                  </div>
+                ) : null}
+              </button>
             );
           })}
           {!recentRuns.length && (
@@ -879,7 +931,7 @@ function PlatformMetric({ icon: Icon, label, value, detail, danger = false }) {
   return (
     <div className="premium-glass p-5 relative overflow-hidden">
       <div className="relative z-10 flex items-start gap-4">
-        <span className={`admin-content-icon-tile flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-rose-100/50 text-brand-crimson border border-rose-200/50'}`}>
+        <span className={`admin-content-icon-tile flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm ${danger ? 'bg-gradient-to-br from-red-50 to-red-100 text-red-600 border border-red-200/50' : 'bg-gradient-to-br from-brand-pink/60 to-[#F9C416]/15 text-brand-crimson border border-[#F9C416]/25'}`}>
           <Icon size={20} />
         </span>
         <div className="min-w-0 flex-1">
@@ -952,7 +1004,7 @@ function SystemHealthCard({ usage, failedPct, recentRuns = [] }) {
           </span>
         </div>
         <div className="mt-3 h-2 rounded-full bg-white ring-1 ring-gray-100">
-          <div className="h-full rounded-full bg-gradient-to-r from-brand-crimson to-rose-500" style={{ width: `${Math.max(8, storageLevel)}%` }} />
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-crimson to-[#F9C416]" style={{ width: `${Math.max(8, storageLevel)}%` }} />
         </div>
       </div>
     </div>
@@ -1284,7 +1336,7 @@ function ArticlesTab({ ownerOnly = false }) {
   };
 
   return (
-    <div className="admin-logs-page space-y-5">
+    <div className="admin-articles-page space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
         <Filters
           initial={filters}
@@ -1698,7 +1750,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   if (!config || !profileMeta) return <Loader />;
 
   return (
-    <div className={showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}>
+    <div className={`super-admin-fetch-page ${showFetchActivity ? 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid grid-cols-1 gap-5'}`}>
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -1816,7 +1868,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                             key={item.key}
                             type="button"
                             onClick={() => setSourceType(item.key)}
-                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(209,18,67,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
+                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-crimson bg-gradient-to-br from-white via-brand-pink/15 to-white text-slate-950 shadow-[0_14px_32px_rgba(22,58,36,0.10)]' : 'border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}
                           >
                             <div className="text-sm font-black">{item.label}</div>
                             <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{total} sources</div>
@@ -1960,7 +2012,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </div>
           </FetchField>
           <FetchField label="Data age">
-            <select className="select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
+            <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.days || 30} onChange={(e) => update('days', Number(e.target.value))}>
               <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={14}>Last 14 days</option>
@@ -1970,7 +2022,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </select>
           </FetchField>
           <FetchField label="Minimum score">
-            <input type="number" min="0" max="100" className="input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
+            <input type="number" min="0" max="100" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
           </FetchField>
         </div>
 
@@ -1988,16 +2040,16 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               Enable schedule
             </label>
             <FetchField label="Frequency">
-              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
+              <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.schedule?.frequency || 'daily'} onChange={(e) => updateSchedule('frequency', e.target.value)}>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
               </select>
             </FetchField>
             <FetchField label="Time">
-              <input type="time" className="input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
+              <input type="time" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.schedule?.time || '07:00'} onChange={(e) => updateSchedule('time', e.target.value)} />
             </FetchField>
             <FetchField label="Timezone">
-              <select className="select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
+              <select className="admin-super-fetch-field-control select min-h-[44px] rounded-xl" value={config.schedule?.timezone || config.timezone || 'Asia/Kolkata'} onChange={(e) => updateSchedule('timezone', e.target.value)}>
                 {browserTimezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
               </select>
             </FetchField>
@@ -2051,7 +2103,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
+            <button type="button" onClick={saveConfig} disabled={saving || !selectedCountries.length} className="admin-super-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Save
             </button>
@@ -2109,10 +2161,14 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                 <Stat label="Status" value={lastLog.status} />
                 <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
                 <Stat label="Fetched" value={lastLog.totalFetched} />
+                <Stat label="Matched" value={lastLog.totalMatched ?? lastLog.resultCount ?? 0} />
+                <Stat label="Rejected" value={lastLog.totalRejected ?? 0} />
+                <Stat label="AI Ignored" value={lastLog.totalAiIgnored ?? 0} />
                 <Stat label="Inserted" value={lastLog.totalInserted} highlight />
                 <Stat label="Duplicates" value={lastLog.totalDuplicates} />
                 <Stat label="Errors" value={lastLog.totalErrors} />
                 <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+                <DebugSamples samples={lastLog.debugSamples} />
               </div>
             )}
           </div>
@@ -2513,11 +2569,11 @@ export function FetchTab({ embedded = false }) {
   return (
     <div className={embedded ? 'grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_280px]' : 'grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]'}>
       {/* Trigger card */}
-      <div className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
-        <div className={embedded ? 'mb-4 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(209,18,67,0.12),_transparent_42%),linear-gradient(135deg,#fff7f8_0%,#ffffff_55%,#f8fafc_100%)] p-5' : 'mb-5'}>
+      <div className={`admin-fetch-control-surface rounded-3xl border p-4 shadow-sm sm:p-5 ${embedded ? 'border-gray-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.06)]' : 'border-gray-100 bg-white'}`}>
+        <div className={embedded ? 'admin-fetch-hero-panel mb-5 rounded-[28px] border border-brand-crimson/10 bg-[radial-gradient(circle_at_top_left,_rgba(22,58,36,0.08),_transparent_38%),linear-gradient(135deg,#F3FFE5_0%,#ffffff_55%,#f8fafc_100%)] px-5 pb-7 pt-5' : 'mb-5'}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <span className={`flex shrink-0 items-center justify-center text-white shadow-sm ${embedded ? 'h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-crimson to-brand-hoverred' : 'h-11 w-11 rounded-xl bg-brand-crimson'}`}>
+              <span className={`flex shrink-0 items-center justify-center border text-white ${embedded ? 'h-12 w-12 rounded-2xl border-brand-crimson/20 bg-brand-crimson' : 'h-11 w-11 rounded-xl border-brand-crimson/20 bg-brand-crimson'}`}>
                 <RefreshCw size={18} />
               </span>
               <div className="min-w-0">
@@ -2538,16 +2594,16 @@ export function FetchTab({ embedded = false }) {
           </div>
 
           {embedded ? (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Selected categories</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{selectedCategories.length || 0}</div>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Topics enabled</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{selectedTopics.length || 0}</div>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-sm">
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Schedule</div>
                 <div className="mt-1 text-lg font-black text-slate-900">{canUseScheduler ? (form.scheduleEnabled ? 'Enabled' : 'Available') : 'Locked'}</div>
               </div>
@@ -2569,7 +2625,7 @@ export function FetchTab({ embedded = false }) {
           <div className={embedded ? 'xl:col-span-5' : 'md:col-span-2 2xl:col-span-1'}>
           <FetchField label="Category">
             <details className="group relative">
-              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-brand-crimson/30 hover:bg-brand-pink/10 [&::-webkit-details-marker]:hidden">
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:border-gray-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-gray-200/70 [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 truncate">
                   {selectedCategories.length
                     ? selectedCategories.length === 1
@@ -2587,7 +2643,7 @@ export function FetchTab({ embedded = false }) {
                       <label
                         key={category}
                         className={`admin-fetch-choice flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-bold transition-all ${
-                          checked ? 'admin-fetch-choice-selected bg-white text-gray-900 ring-1 ring-brand-crimson/30' : 'text-gray-600 hover:bg-gray-50'
+                          checked ? 'admin-fetch-choice-selected bg-white text-gray-900' : 'text-gray-600 hover:bg-gray-50'
                         }`}
                       >
                         <input
@@ -2634,11 +2690,11 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(180deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(209,18,67,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(209,18,67,0.05)]'}`}>
+        <div className={`admin-fetch-topics-panel mt-4 rounded-[28px] border p-4 ${embedded ? 'border-brand-crimson/20 bg-[linear-gradient(180deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(22,58,36,0.05)]' : 'border-brand-crimson/10 bg-white/90 shadow-[0_10px_30px_rgba(22,58,36,0.05)]'}`}>
           <FetchField label="Topics">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {TOPIC_OPTIONS.map((topic) => (
-                <label key={topic.key} className={`admin-fetch-choice group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-choice-selected border-brand-crimson bg-white text-gray-900 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-sm'}`}>
+                <label key={topic.key} className={`admin-fetch-topic-choice admin-fetch-choice group flex min-h-[74px] cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all ${selectedTopics.includes(topic.key) ? 'admin-fetch-topic-choice-selected admin-fetch-choice-selected border-brand-crimson/30 bg-brand-pink/25 text-gray-900 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:bg-brand-pink/10 hover:shadow-sm'}`}>
                   <input type="checkbox" checked={selectedTopics.includes(topic.key)} onChange={() => toggleTopic(topic.key)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-crimson focus:ring-brand-crimson/30" />
                   <span className="min-w-0">
                     <span className="block truncate font-black text-gray-900">{topic.label}</span>
@@ -2656,9 +2712,9 @@ export function FetchTab({ embedded = false }) {
           </FetchField>
         </div>
 
-        <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#fff7f8_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(209,18,67,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
+        <div className={`admin-fetch-summary mt-5 flex flex-col gap-3 rounded-[28px] border p-4 sm:flex-row sm:items-center sm:justify-between ${embedded ? 'border-brand-crimson/10 bg-[linear-gradient(135deg,#F3FFE5_0%,#ffffff_100%)] shadow-[0_16px_40px_rgba(22,58,36,0.06)]' : 'border-brand-crimson/10 bg-brand-pink/15'}`}>
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
+            <span className="admin-fetch-summary-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10">
               <Play size={17} />
             </span>
             <div className="min-w-0">
@@ -2675,7 +2731,7 @@ export function FetchTab({ embedded = false }) {
               type="button"
               disabled={savingDetails || !selectedCategories.length}
               onClick={saveSearchDetails}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+              className={`admin-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 ${savingDetails ? 'admin-fetch-save-button-saving' : ''}`}
               title={selectedCategories.length ? 'Save as default fetch details' : 'Select a category first'}
             >
               {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -2685,7 +2741,7 @@ export function FetchTab({ embedded = false }) {
               type="button"
               disabled={!canUseFetch || pipelineRunning || !selectedCategories.length}
               onClick={runFetch}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              className="admin-fetch-run-button inline-flex items-center justify-center gap-2 rounded-xl bg-brand-crimson px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-brand-crimson/90 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
               title={!canUseFetch ? 'Manual fetch access is disabled for this profile' : selectedCategories.length ? 'Run intelligence fetch' : 'Select a category first'}
             >
               {pipelineRunning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -2785,11 +2841,11 @@ export function FetchTab({ embedded = false }) {
                 type="button"
                 onClick={saveSchedule}
                 disabled={savingSchedule || !selectedCategories.length}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+                className={`admin-fetch-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 ${savingSchedule ? 'admin-fetch-save-button-saving' : ''}`}
                 title={selectedCategories.length ? 'Save schedule settings' : 'Select a category before saving schedule'}
               >
                 {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save schedule
+                {savingSchedule ? 'Saving' : 'Save schedule'}
               </button>
             </div>
           </div>
@@ -2869,10 +2925,14 @@ export function FetchTab({ embedded = false }) {
             <Stat label="Started" value={lastLog.startedAt ? formatDistanceToNow(new Date(lastLog.startedAt), { addSuffix: true }) : '-'} />
             <Stat label="Trigger" value={logTriggerLabel(lastLog) || '-'} />
             <Stat label="Fetched" value={lastLog.totalFetched} />
+            <Stat label="Matched" value={lastLog.totalMatched ?? lastLog.resultCount ?? 0} />
+            <Stat label="Rejected" value={lastLog.totalRejected ?? 0} />
+            <Stat label="AI Ignored" value={lastLog.totalAiIgnored ?? 0} />
             <Stat label="Inserted" value={lastLog.totalInserted} highlight />
             <Stat label="Duplicates" value={lastLog.totalDuplicates} />
             <Stat label="Errors" value={lastLog.totalErrors} />
             <Stat label="Duration" value={lastLog.durationMs ? `${Math.round(lastLog.durationMs / 1000)}s` : '-'} />
+            <DebugSamples samples={lastLog.debugSamples} />
           </div>
         )}
       </div>
@@ -3032,6 +3092,34 @@ function Stat({ label, value, highlight }) {
   );
 }
 
+function DebugSamples({ samples }) {
+  const groups = [
+    ['Matched', samples?.matched || []],
+    ['AI Ignored', samples?.aiIgnored || []],
+    ['Rejected', samples?.rejected || []]
+  ].filter(([, items]) => items.length);
+
+  if (!groups.length) return null;
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md bg-gray-50 p-3 ring-1 ring-gray-100">
+      <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">Debug samples</div>
+      {groups.map(([label, items]) => (
+        <div key={label} className="space-y-1.5">
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-500">{label}</div>
+          {items.slice(0, 3).map((item, index) => (
+            <div key={`${label}-${index}`} className="rounded-md bg-white px-2.5 py-2 text-xs ring-1 ring-gray-100">
+              <div className="truncate font-black text-gray-800">{item.title || 'Untitled'}</div>
+              <div className="mt-1 line-clamp-2 text-gray-500">{item.reason || '-'}</div>
+              <div className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">{item.category || item.topic || item.source || ''}{item.score !== undefined ? ` | Score ${item.score}` : ''}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LogMetric({ label, value, tone = 'muted' }) {
   const toneClass = {
     success: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
@@ -3132,7 +3220,7 @@ function LogsTab() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="admin-logs-page space-y-5">
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="admin-theme-card rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3146,7 +3234,7 @@ function LogsTab() {
                 <p className="mt-1 text-sm font-medium text-gray-500">{items.length} latest fetch logs</p>
               </div>
             </div>
-            <button onClick={load} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50">
+            <button onClick={load} className="admin-logs-refresh-button inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50">
               <RefreshCw size={14} /> Refresh
             </button>
           </div>
@@ -3169,14 +3257,14 @@ function LogsTab() {
             </div>
           </div>
           <div className="flex gap-2">
-            <select className="select min-h-[44px] rounded-xl" value={cleanupDays} onChange={(e) => setCleanupDays(Number(e.target.value))}>
+            <select className="select min-h-[44px] min-w-0 flex-1 rounded-xl" value={cleanupDays} onChange={(e) => setCleanupDays(Number(e.target.value))}>
               <option value={7}>Older than 7 days</option>
               <option value={15}>Older than 15 days</option>
               <option value={30}>Older than 30 days</option>
               <option value={60}>Older than 60 days</option>
               <option value={90}>Older than 90 days</option>
             </select>
-            <button type="button" onClick={cleanupLogs} disabled={deleting} className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50">
+            <button type="button" onClick={cleanupLogs} disabled={deleting} className="admin-logs-delete-button inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-100 disabled:opacity-50">
               {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Delete
             </button>
@@ -3318,7 +3406,7 @@ function LogRunDetails({ log, progress }) {
         <div className="admin-log-messages rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Progress messages</div>
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-            {messages.length ? messages.slice(-8).map((item, index) => (
+            {messages.length ? messages.slice(-30).map((item, index) => (
               <div key={`${item.at || index}-${index}`} className="admin-log-message rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</span>
@@ -4640,7 +4728,7 @@ const PLAN_ACCENT = {
   free:       { ring: 'ring-emerald-200', bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', grad: 'from-emerald-500 to-teal-600' },
   growth:     { ring: 'ring-blue-200',    bg: 'bg-blue-50',    text: 'text-blue-700',    badge: 'bg-blue-100 text-blue-800',    grad: 'from-blue-500 to-indigo-600' },
   scale:      { ring: 'ring-purple-200',  bg: 'bg-purple-50',  text: 'text-purple-700',  badge: 'bg-purple-100 text-purple-800', grad: 'from-purple-500 to-fuchsia-600' },
-  premium:    { ring: 'ring-rose-200',    bg: 'bg-rose-50',    text: 'text-rose-700',    badge: 'bg-rose-100 text-rose-800',    grad: 'from-rose-500 to-pink-600' },
+  premium:    { ring: 'ring-[#F9C416]/40',    bg: 'bg-[#F3FFE5]',    text: 'text-brand-crimson',    badge: 'bg-[#F9C416]/20 text-brand-crimson',    grad: 'from-[#F9C416] to-brand-crimson' },
   enterprise: { ring: 'ring-amber-200',   bg: 'bg-amber-50',   text: 'text-amber-700',   badge: 'bg-amber-100 text-amber-800',  grad: 'from-amber-500 to-orange-600' },
 };
 
@@ -4779,8 +4867,8 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
           if (!cfg) return null;
           const ac = PLAN_ACCENT[pk];
           return (
-            <div key={pk} className={`admin-plan-card bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
-              <div className={`bg-gradient-to-br ${ac.grad} p-5`}>
+            <div key={pk} className={`admin-plan-card admin-plan-card-${pk} bg-white rounded-2xl ring-2 ${ac.ring} overflow-hidden shadow-sm flex flex-col`}>
+              <div className={`admin-plan-card-header bg-gradient-to-br ${ac.grad} p-5`}>
                 <div className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{pk} plan</div>
                 <div className="flex items-end gap-2">
                   <input
@@ -4825,7 +4913,7 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                           </div>
                         );
                       })}
-                      <div className={`text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
+                      <div className={`admin-plan-hard-cap text-[10px] font-medium text-gray-400 ${ac.bg} rounded-md px-2.5 py-1.5 leading-relaxed`}>
                         Hard cap: {(cfg.limits?.blogGenerationsMonthly ?? 0).toLocaleString()} blogs &middot; {(cfg.limits?.socialPostsMonthly ?? 0).toLocaleString()} posts
                       </div>
                     </div>
@@ -4842,14 +4930,14 @@ function PlanBuilderTab({ dbPlans, loadDbPlans }) {
                             key={key}
                             type="button"
                             onClick={() => toggleFeature(pk, key)}
-                            className={`admin-plan-feature-row w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border ${on ? `${ac.bg} ${ac.ring} ${ac.text}` : 'bg-gray-50 border-gray-100'}`}
+                            className={`admin-plan-feature-row ${on ? 'admin-plan-feature-on' : 'admin-plan-feature-off'} w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all border`}
                           >
                             <div className="min-w-0">
-                              <div className={`text-xs font-black truncate ${on ? ac.text : 'text-gray-500'}`}>{label}</div>
+                              <div className={`text-xs font-black truncate ${on ? 'text-[#163A24]' : 'text-gray-500'}`}>{label}</div>
                               <div className="text-[9px] text-gray-400 truncate">{help}</div>
                             </div>
                             <div
-                              className={`admin-plan-toggle ${on ? `admin-plan-toggle-on bg-gradient-to-r ${ac.grad}` : 'admin-plan-toggle-off bg-gray-200'} h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all`}
+                              className={`admin-plan-toggle ${on ? 'admin-plan-toggle-on' : 'admin-plan-toggle-off'} h-4 w-7 rounded-full flex items-center flex-shrink-0 transition-all`}
                               style={isDark ? {
                                 background: on ? '#10b981' : '#111827',
                                 backgroundImage: 'none',
@@ -5140,7 +5228,7 @@ function SuperAdminMailCenter() {
   if (loadingAudience) return <Loader />;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-mail-center-page space-y-6">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-start justify-between gap-4">
@@ -5203,7 +5291,7 @@ function SuperAdminMailCenter() {
                     key={option.key}
                     type="button"
                     onClick={() => handleAudienceChange(option.key)}
-                    className={`rounded-2xl border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson bg-brand-pink/30 shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-brand-crimson/20 hover:bg-white'}`}
+                    className={`admin-mail-audience-card ${active ? 'admin-mail-audience-card-active' : 'admin-mail-audience-card-idle'} rounded-2xl border px-4 py-4 text-left transition-all ${active ? 'border-brand-crimson bg-brand-pink/30 shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-brand-crimson/20 hover:bg-white'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className={`text-sm font-black ${active ? 'text-brand-crimson' : 'text-gray-800'}`}>{option.label}</div>
@@ -5232,7 +5320,7 @@ function SuperAdminMailCenter() {
                         key={item._id}
                         type="button"
                         onClick={() => toggleRecipient(item._id)}
-                        className={`rounded-xl border px-3 py-3 text-left transition-all ${checked ? 'border-brand-crimson bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-brand-crimson/20'}`}
+                        className={`admin-mail-recipient-card ${checked ? 'admin-mail-recipient-card-active' : 'admin-mail-recipient-card-idle'} rounded-xl border px-3 py-3 text-left transition-all ${checked ? 'border-brand-crimson bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-brand-crimson/20'}`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -5318,7 +5406,7 @@ function SuperAdminMailCenter() {
                 <MailPreviewBody message={previewMessage} />
                 {form.ctaUrl.trim() ? (
                   <div>
-                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(209,18,67,0.18)]">
+                    <span className="inline-flex items-center rounded-2xl bg-brand-crimson px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(22,58,36,0.18)]">
                       {form.ctaLabel.trim() || 'Open link'}
                     </span>
                   </div>
@@ -5767,7 +5855,7 @@ function SystemSettingsTab() {
     }));
   }, []);
   return (
-    <div className="space-y-5 font-sans">
+    <div className="admin-system-settings-page space-y-5 font-sans">
       <div className="overflow-hidden rounded-2xl border border-ink-100/70 bg-white shadow-card">
         <div className="border-b border-ink-100/70 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -5802,7 +5890,7 @@ function SystemSettingsTab() {
                   key={section.key}
                   type="button"
                   onClick={() => setActiveSection(section.key)}
-                  className={`inline-flex min-h-[38px] min-w-[132px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[148px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                  className={`inline-flex min-h-[38px] min-w-[132px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[148px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(22,58,36,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                 >
                   <Icon size={15} />
                   <span className="truncate">{section.label}</span>
@@ -5841,7 +5929,7 @@ function SystemSettingsTab() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveAiTab(tab.key)}
-                    className={`inline-flex min-h-[38px] min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[170px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(209,18,67,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
+                    className={`inline-flex min-h-[38px] min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[11px] font-black transition-all sm:min-h-[40px] sm:min-w-[170px] sm:text-[12px] ${active ? 'bg-brand-crimson text-white shadow-[0_10px_20px_rgba(22,58,36,0.18)]' : 'bg-transparent text-ink-500 hover:bg-white hover:text-ink-800'}`}
                   >
                     <Icon size={15} />
                     <span className="truncate">{tab.label}</span>
@@ -5938,7 +6026,8 @@ function SystemSettingsTab() {
                           step="0.05"
                           value={config.temperature ?? 0}
                           onChange={(e) => updateStudioAi(section.key, 'temperature', Number(e.target.value))}
-                          className="w-full accent-brand-crimson"
+                          className="admin-temperature-range w-full accent-brand-crimson"
+                          style={{ '--range-progress': `${Math.max(0, Math.min(100, Number(config.temperature ?? 0) * 100))}%` }}
                         />
                       </label>
                       <label className="block">

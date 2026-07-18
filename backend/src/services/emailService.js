@@ -175,10 +175,10 @@ function buildPasswordResetEmail({ name, resetUrl, expiresMinutes }) {
   ].join('\n');
 
   const html = `
-    <div style="margin:0;padding:24px;background:#faf0f2;font-family:Roboto,Arial,sans-serif;color:#111827;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid rgba(209,18,67,0.08);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(209,18,67,0.08);">
-        <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#d11243 0%,#8f0b2f 100%);color:#ffffff;">
-          <div style="font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;opacity:0.8;">Security</div>
+    <div style="margin:0;padding:24px;background:#FAFBF7;font-family:Roboto,Arial,sans-serif;color:#111827;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #D8DED2;border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,0.04);">
+        <div style="padding:28px 28px 20px;background:#163A24;color:#ffffff;">
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#F9C416;">Security</div>
           <h1 style="margin:12px 0 0;font-size:28px;line-height:1.15;font-weight:900;">Password reset request</h1>
         </div>
         <div style="padding:28px;">
@@ -186,11 +186,11 @@ function buildPasswordResetEmail({ name, resetUrl, expiresMinutes }) {
           <p style="margin:0 0 16px;font-size:15px;line-height:1.7;">We received a request to reset the password for your ${escapeHtml(brandName)} account.</p>
           <p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Use the secure link below to choose a new password.</p>
           <div style="margin:24px 0;">
-            <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:12px;background:linear-gradient(135deg,#d11243 0%,#8f0b2f 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Reset Password</a>
+            <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:12px;background:#163A24;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Reset Password</a>
           </div>
           <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4b5563;">This link expires in ${safeMinutes} minutes.</p>
           <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4b5563;">If the button does not work, copy and paste this link into your browser:</p>
-          <p style="margin:0 0 16px;word-break:break-all;font-size:13px;line-height:1.7;color:#d11243;">${safeUrl}</p>
+          <p style="margin:0 0 16px;word-break:break-all;font-size:13px;line-height:1.7;color:#163A24;">${safeUrl}</p>
           <p style="margin:0 0 10px;font-size:13px;line-height:1.7;color:#6b7280;">If you did not request a password reset, no action is required.</p>
           <p style="margin:0;font-size:13px;line-height:1.7;color:#6b7280;">${safeSupportLine}</p>
         </div>

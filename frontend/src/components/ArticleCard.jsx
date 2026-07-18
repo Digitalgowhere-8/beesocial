@@ -93,7 +93,7 @@ function ArticleCard({
   const region = item.region || '';
   const compactMetaPillClass = 'article-meta-pill inline-flex min-w-0 items-center gap-1.5 rounded-xl bg-[#f8fafc] px-3 py-2 text-[11px] font-black uppercase tracking-wider text-[#6b7280] ring-1 ring-[#e8edf3]';
   const compactCardShell = compact
-    ? `${equalHeight ? 'h-full min-h-[464px]' : ''} rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,249,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4`
+    ? `${equalHeight ? 'h-full min-h-[464px]' : ''} rounded-[26px] bg-[linear-gradient(180deg,rgba(255,248,250,0.96)_0%,rgba(255,255,255,0.98)_52%,rgba(243,255,229,0.94)_100%)] px-4 pb-4 pt-3 xl:px-5 xl:pb-5 xl:pt-4`
     : 'rounded-[22px] bg-white p-4 sm:p-5';
   const source = item.source || sourceHost(item.url) || 'Unknown source';
   const host = sourceHost(item.url);
@@ -155,7 +155,7 @@ function ArticleCard({
       ].join(' ')}
       style={{
         boxShadow: selected
-          ? '0 10px 30px rgba(15,23,42,0.06), inset 0 0 0 2px rgba(209,18,67,0.38)'
+          ? '0 10px 30px rgba(15,23,42,0.06), inset 0 0 0 2px rgba(22,58,36,0.38)'
           : '0 10px 30px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.06)',
         contentVisibility: 'auto',
         containIntrinsicSize: compact ? '320px' : '380px',
