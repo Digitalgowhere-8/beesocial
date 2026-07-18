@@ -95,7 +95,7 @@ export default function Register() {
   const titleColor = isDark ? 'text-white' : 'text-gray-900';
   const bodyTextColor = isDark ? 'text-slate-400' : 'text-gray-400';
   const labelColor = isDark ? 'text-slate-400' : 'text-gray-500';
-  const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
+  const logoSrc = isDark ? '/logo-white.png?v=20260718' : '/logo.png?v=20260718';
 
   return (
     <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={shellStyle}>
@@ -119,7 +119,7 @@ export default function Register() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/logo-white.png" style={{ height: '68px', width: 'auto' }} alt=" Logo- White" />
+          <img src="/logo-white.png?v=20260718" style={{ height: '68px', width: 'auto' }} alt=" Logo- White" />
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col justify-center gap-3 xl:gap-4 fade-in max-w-[720px] pl-4 pr-6 xl:pl-8 xl:pr-8 pb-8 pt-0 -mt-8" style={{ animationDelay: '0.1s' }}>

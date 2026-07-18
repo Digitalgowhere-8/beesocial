@@ -85,7 +85,7 @@ function inferBrandLogoUrl() {
   if (!frontendUrl) return '';
 
   try {
-    return new URL('/logo.png', frontendUrl).toString();
+    return new URL('/logo.png?v=20260718', frontendUrl).toString();
   } catch {
     return '';
   }

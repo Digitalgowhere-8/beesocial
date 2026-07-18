@@ -5391,7 +5391,7 @@ function SuperAdminMailCenter() {
               <div className="h-1.5 bg-gradient-to-r from-brand-pink/80 via-brand-crimson/80 to-brand-hoverred/90" />
               <div className="border-b border-[#efe4e8] bg-gradient-to-b from-white to-[#faf5f7] px-6 py-6">
                 <div className="min-w-0">
-                  <img src={isDark ? '/logo-white.png' : '/logo.png'} alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
+                  <img src={isDark ? '/logo-white.png?v=20260718' : '/logo.png?v=20260718'} alt="Brand logo" className="h-8 w-auto max-w-[170px] object-contain" />
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <div className="inline-flex items-center rounded-full border border-[#f0d3dd] bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-crimson/80">Admin update</div>
                   </div>

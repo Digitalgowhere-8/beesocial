@@ -384,7 +384,7 @@ export default function Layout({ children, headerActions = null }) {
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
+  const logoSrc = isDark ? '/logo-white.png?v=20260718' : '/logo.png?v=20260718';
 
   const [collapsed, setCollapsed] = useState(() => {
     try {

@@ -87,7 +87,7 @@ export default function Login() {
     boxShadow: 'none',
     fontFamily: robotoFont
   };
-  const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
+  const logoSrc = isDark ? '/logo-white.png?v=20260718' : '/logo.png?v=20260718';
 
   return (
     <div className="min-h-screen lg:h-screen flex overflow-hidden" style={shellStyle}>
@@ -111,7 +111,7 @@ export default function Login() {
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full pointer-events-none" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />
 
         <div className="relative z-10 fade-in">
-          <img src="/logo-white.png" style={{ height: '75px', width: 'auto' }} alt="Logo-white" />
+          <img src="/logo-white.png?v=20260718" style={{ height: '75px', width: 'auto' }} alt="Logo-white" />
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col justify-center gap-4 fade-in max-w-[760px] pl-6 pr-8 xl:pl-10 xl:pr-10 pb-10 pt-0 -mt-14" style={{ animationDelay: '0.1s' }}>
