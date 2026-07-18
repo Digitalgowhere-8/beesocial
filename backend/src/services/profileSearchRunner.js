@@ -1,7 +1,7 @@
 const tavilyService = require('./tavilyService');
 const aiService = require('./aiService');
 const { getSystemSettings } = require('./systemSettings');
-const { hashUrl, normalizeUrl } = require('../utils/hash');
+const { hashUrl } = require('../utils/hash');
 const { CATEGORIES } = require('../config/categories');
 const { canonicalCountry, defaultSourceDomainsForCountry } = require('../config/fetchSources');
 const { evaluateTopicArticle } = require('./articleTopicRules');
@@ -16,17 +16,14 @@ const OPPORTUNITY_TYPE = {
   competitor: 'competitor',
   evergreen: 'evergreen'
 };
-const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(10, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 9) || 9));
+const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(10, Number(process.env.MAX_SEARCH_VARIANTS_PER_TOPIC || 5) || 5));
 const DEFAULT_TARGET_PER_CATEGORY = 10;
 const DEFAULT_TARGET_PER_TOPIC = 100;
 const MAX_TARGET_PER_TOPIC = 100;
-const DEFAULT_TAVILY_MAX_RESULTS = 10;
-const MAX_TAVILY_MAX_RESULTS = 10;
-const MAX_AI_CANDIDATES_PER_TOPIC = Math.max(1, Math.min(30, Number(process.env.MAX_AI_CANDIDATES_PER_TOPIC || 8) || 8));
-const DEFAULT_MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 60) || 60));
-const MIN_FETCH_CONTENT_CHARS = Math.max(200, Math.min(2000, Number(process.env.MIN_FETCH_CONTENT_CHARS || 450) || 450));
-const MIN_RAW_CONTENT_CHARS = Math.max(300, Math.min(3000, Number(process.env.MIN_RAW_CONTENT_CHARS || 700) || 700));
-const MIN_SUMMARY_CHARS = Math.max(180, Math.min(1200, Number(process.env.MIN_SUMMARY_CHARS || 350) || 350));
+const DEFAULT_TAVILY_MAX_RESULTS = 5;
+const MAX_TAVILY_MAX_RESULTS = 5;
+const DEFAULT_MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
+const BROAD_DISCOVERY_MAX_RESULTS = Math.max(1, Math.min(5, Number(process.env.BROAD_DISCOVERY_MAX_RESULTS || 3) || 3));
 
 function text(value, fallback = '') {
   return String(value ?? fallback).trim();
@@ -140,30 +137,12 @@ function cleanDomain(value) {
     .toLowerCase();
 }
 
-function compactRawData(value = {}, fallback = {}) {
-  const source = value && typeof value === 'object' ? value : {};
-  return {
-    sourceQuery: text(source.sourceQuery || source.source_query || fallback.sourceQuery),
-    queryCategory: text(source.queryCategory || fallback.queryCategory),
-    allowedDomains: Array.isArray(source.allowedDomains)
-      ? source.allowedDomains
-      : Array.isArray(source.includeDomains)
-        ? source.includeDomains
-        : Array.isArray(fallback.allowedDomains)
-          ? fallback.allowedDomains
-          : [],
-    tavilyScore: source.tavilyScore || source.tavily_score || fallback.tavilyScore || null,
-    snippet: text(source.snippet || fallback.snippet).slice(0, 4000)
-  };
-}
-
 function isValidParsedDate(date) {
   return date instanceof Date && !Number.isNaN(date.getTime());
 }
 
 function parseDateCandidate(value) {
-  const cleaned = text(value).replace(/\b\d{1,2}:\d{2}\s*(?:am|pm)?\s*,?\s*/i, '').trim();
-  const parsed = new Date(cleaned || value);
+  const parsed = new Date(value);
   return isValidParsedDate(parsed) ? parsed : null;
 }
 
@@ -172,36 +151,10 @@ function extractTextDates(value = '') {
   if (!source) return [];
 
   const patterns = [
-    /\b(?:last\s+updated?|last\s+update|updated?|published|published\s+on|written\s+by|posted|effective(?:\s+date)?|as\s+of)\b[^A-Za-z0-9]{0,25}(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/gi,
-    /\b(?:last\s+updated?|last\s+update|updated?|published|published\s+on|written\s+by|posted|effective(?:\s+date)?|as\s+of)\b[^A-Za-z0-9]{0,25}([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})/gi,
-    /\b(?:last\s+updated?|last\s+update|updated?|published|published\s+on|written\s+by|posted|effective(?:\s+date)?|as\s+of)\b[^A-Za-z0-9]{0,45}(?:\d{1,2}:\d{2}\s*(?:am|pm)?\s*,?\s*)?(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/gi,
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/gi,
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})/gi,
     /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})/gi,
-    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{4})/gi,
-    /\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b/g
-  ];
-
-  const dates = [];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(source)) !== null) {
-      const parsed = parseDateCandidate(match[1]);
-      if (parsed) dates.push(parsed);
-    }
-  }
-
-  return dates;
-}
-
-function extractLabelledTextDates(value = '') {
-  const source = text(value).replace(/\s+/g, ' ').trim();
-  if (!source) return [];
-
-  const label = String.raw`(?:article|date|last\s+updated?|last\s+update|updated?|published|published\s+on|written\s+by|posted|effective(?:\s+date)?|as\s+of)`;
-  const patterns = [
-    new RegExp(String.raw`\b${label}\b[^A-Za-z0-9]{0,45}(?:\d{1,2}:\d{2}\s*(?:am|pm)?\s*,?\s*)?(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})`, 'gi'),
-    new RegExp(String.raw`\b${label}\b[^A-Za-z0-9]{0,45}(?:\d{1,2}:\d{2}\s*(?:am|pm)?\s*,?\s*)?([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})`, 'gi'),
-    new RegExp(String.raw`\b${label}\b\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})`, 'gi'),
-    new RegExp(String.raw`\b${label}\b\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{4})`, 'gi')
+    /\b(?:last\s+updated?|last\s+update|updated?|published|effective(?:\s+date)?|as\s+of)\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{4})/gi
   ];
 
   const dates = [];
@@ -217,18 +170,6 @@ function extractLabelledTextDates(value = '') {
 }
 
 function inferResultDate(row = {}) {
-  const labelledDates = [
-    ...extractLabelledTextDates(row?.title),
-    ...extractLabelledTextDates(row?.snippet),
-    ...extractLabelledTextDates(row?.rawContent),
-    ...extractLabelledTextDates(row?.summary),
-    ...extractLabelledTextDates(row?.content)
-  ].filter(isValidParsedDate);
-
-  if (labelledDates.length) {
-    return labelledDates.sort((a, b) => b.getTime() - a.getTime())[0];
-  }
-
   const explicitDate = parseDateCandidate(row?.publishedAt || row?.published_date || row?.publishedDate || row?.date);
   if (explicitDate) return explicitDate;
 
@@ -244,38 +185,16 @@ function inferResultDate(row = {}) {
   return candidates.sort((a, b) => b.getTime() - a.getTime())[0];
 }
 
-function resultArticleDate(row = {}, options = {}) {
-  const inferredDate = inferResultDate(row);
-  if (inferredDate) return inferredDate;
-  if (!options.fallbackToNow) return null;
-  return new Date();
+function resultArticleDate(row = {}) {
+  return inferResultDate(row);
 }
 
-function isDateInsideWindow(date, maxAgeDays = 30) {
-  if (!isValidParsedDate(date)) return true;
-  const ageMs = Date.now() - date.getTime();
+function resultMatchesDayWindow(row, maxAgeDays = 30) {
+  const publishedAt = resultArticleDate(row);
+  if (!publishedAt) return false;
+  const ageMs = Date.now() - publishedAt.getTime();
   if (ageMs < 0) return true;
   return ageMs <= Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
-}
-
-function hasOnlyOldYearSignal(row = {}, maxAgeDays = 30) {
-  const currentYear = new Date().getFullYear();
-  const source = [
-    row.title,
-    row.url,
-    row.snippet,
-    row.rawContent,
-    row.summary,
-    row.content
-  ].map((value) => text(value)).filter(Boolean).join(' ');
-  const years = [...source.matchAll(/\b(20\d{2})\b/g)]
-    .map((match) => Number(match[1]))
-    .filter((year) => year >= 2000 && year <= currentYear);
-  if (!years.length) return false;
-  if (years.some((year) => year === currentYear)) return false;
-  const newestMentioned = Math.max(...years);
-  if (maxAgeDays > 370 && newestMentioned >= currentYear - 1) return false;
-  return newestMentioned < currentYear;
 }
 
 function isGovernmentHost(host) {
@@ -335,11 +254,6 @@ function sourceTypeForTopic(topic) {
   return 'news';
 }
 
-function sourceTypesForTopic(topic) {
-  if (topic === 'evergreen') return ['news', 'govt', 'competitor'];
-  return [sourceTypeForTopic(topic)];
-}
-
 function domainsForSourceType(profile, type) {
   const selectedCountry = canonicalCountry(profile.country || defaultCountry());
   const topicsForType = ALLOWED_TOPICS.filter((topic) => sourceTypeForTopic(topic) === type);
@@ -353,12 +267,7 @@ function domainsForSourceType(profile, type) {
   return unique([...configured, ...defaults, ...fallback].map(cleanDomain).filter(Boolean));
 }
 
-function domainsForTopic(profile, topic) {
-  return unique(sourceTypesForTopic(topic).flatMap((type) => domainsForSourceType(profile, type)));
-}
-
 function excludeDomainsForTopic(profile, topic) {
-  if (topic === 'evergreen') return [];
   const sourceType = sourceTypeForTopic(topic);
   const excludedTypes = ['news', 'govt', 'competitor'].filter((type) => type !== sourceType);
   const domains = unique(excludedTypes.flatMap((type) => domainsForSourceType(profile, type)));
@@ -374,14 +283,11 @@ function resultMatchesTopicSourceType(url, topic, profile = {}) {
   if (topic === 'govt') {
     return isGovernmentHost(host) || isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
   }
-  if (topic === 'evergreen') {
-    return isAllowedSourceResult(url, domainsForTopic(profile, 'evergreen'));
-  }
-  if (topic === 'news') {
-    return isAllowedSourceResult(url, domainsForTopic(profile, 'news'));
+  if (topic === 'news' || topic === 'evergreen') {
+    return !isGovernmentHost(host) && !isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
   }
   if (topic === 'competitor') {
-    return isAllowedSourceResult(url, domainsForTopic(profile, 'competitor'));
+    return !isAllowedSourceResult(url, domainsForSourceType(profile, 'govt'));
   }
   return true;
 }
@@ -451,7 +357,7 @@ function isEvergreenResult({ title, url, summary }) {
 }
 
 function normalizedUrl(value) {
-  return normalizeUrl(text(value)).toLowerCase().replace(/^https?:\/\/www\./, 'https://');
+  return text(value).toLowerCase().replace(/\/$/, '');
 }
 
 function normalizedTitle(value) {
@@ -472,50 +378,6 @@ function articleIdentityHash({ url, title }) {
 
 function articleUrlHash(url) {
   return hashUrl(normalizedUrl(url));
-}
-
-function isStaticResultPage({ title = '', url = '' } = {}) {
-  const normalized = normalizedTitle(title);
-  if (normalized === 'home' || normalized.startsWith('home ')) return true;
-  if (normalized.includes('newsletter') || normalized.includes('acraconnect')) return true;
-  try {
-    const parsed = new URL(url);
-    const path = parsed.pathname.replace(/\/+/g, '/').replace(/\/$/, '').toLowerCase();
-    const staticPathTerms = [
-      '/account',
-      '/accounts',
-      '/auth',
-      '/login',
-      '/register',
-      '/registration',
-      '/sign-in',
-      '/signin',
-      '/sign-up',
-      '/signup',
-      '/subscribe',
-      '/newsletter',
-      '/newsletters',
-      '/events',
-      '/event',
-      '/webinar',
-      '/search',
-      '/sitemap'
-    ];
-    return (
-      !path ||
-      path === '/home' ||
-      path === '/en' ||
-      path === '/en/home' ||
-      path === '/web/home' ||
-      staticPathTerms.some((term) => path === term || path.startsWith(`${term}/`))
-    );
-  } catch (_err) {
-    return false;
-  }
-}
-
-function requiresFreshPublishedDate(topic) {
-  return ['news', 'govt', 'competitor', 'evergreen'].includes(text(topic).toLowerCase());
 }
 
 function sourceIdFromHost(host) {
@@ -541,26 +403,15 @@ function articleSimilarityKey(article = {}) {
 }
 
 function filterStats() {
-  const stats = {
+  return {
     missing: 0,
     date: 0,
-    content: 0,
     source: 0,
     type: 0,
     score: 0,
     pdf: 0,
-    sponsored: 0,
     topic: 0
   };
-  Object.defineProperty(stats, 'samples', {
-    enumerable: false,
-    value: {
-      rejected: [],
-      aiIgnored: [],
-      matched: []
-    }
-  });
-  return stats;
 }
 
 function minStoreScoreForProfile(profile = {}) {
@@ -570,43 +421,11 @@ function minStoreScoreForProfile(profile = {}) {
   );
 }
 
-function sampleCandidate(row = {}, reason = '') {
-  return {
-    reason,
-    title: text(row.title).slice(0, 180),
-    url: text(row.url).slice(0, 500),
-    source: hostFromUrl(row.url || row.sourceType || row.source || ''),
-    date: text(row.publishedAt || row.published_date || row.date).slice(0, 80),
-    query: text(row.sourceQuery || row.source_query).slice(0, 260)
-  };
-}
-
-function pushSample(samples = [], sample = {}, limit = 10) {
-  if (!sample || samples.length >= limit) return;
-  samples.push(sample);
-}
-
-function rejectCandidate(stats, reason, sample = null) {
+function rejectCandidate(stats, reason) {
   if (stats && Object.prototype.hasOwnProperty.call(stats, reason)) {
     stats[reason] += 1;
   }
-  if (stats?.samples?.rejected && sample) {
-    pushSample(stats.samples.rejected, sample);
-  }
   return null;
-}
-
-function hasEnoughGenerationContext({ title = '', summary = '', rawContent = '' } = {}) {
-  const cleanTitle = text(title).replace(/\s+/g, ' ');
-  const cleanSummary = text(summary).replace(/\s+/g, ' ');
-  const cleanRaw = text(rawContent).replace(/\s+/g, ' ');
-  const combined = [cleanTitle, cleanSummary, cleanRaw].filter(Boolean).join(' ').trim();
-
-  return (
-    cleanRaw.length >= MIN_RAW_CONTENT_CHARS ||
-    cleanSummary.length >= MIN_SUMMARY_CHARS ||
-    combined.length >= MIN_FETCH_CONTENT_CHARS
-  );
 }
 
 function normalizeProfileInput(incoming = {}) {
@@ -674,12 +493,11 @@ function normalizeProfileInput(incoming = {}) {
 function domainsForTopic(profile, topic) {
   const topicDomains = unique(list(profile.sourceDomainsByTopic?.[topic]));
   const configuredDefaults = unique(list(profile.defaultDomainsByTopic?.[topic]));
-  const selectedCountry = canonicalCountry(profile.country || defaultCountry());
   const fallbackDefaults = unique(
-    sourceTypesForTopic(topic)
-      .flatMap((type) => defaultSourceDomainsForCountry(selectedCountry, type))
-      .map(cleanDomain)
-      .filter(Boolean)
+    defaultSourceDomainsForCountry(
+      canonicalCountry(profile.country || defaultCountry()),
+      topic === 'govt' ? 'govt' : topic === 'competitor' ? 'competitor' : 'news'
+    ).map(cleanDomain).filter(Boolean)
   );
   const defaultDomains = configuredDefaults.length ? configuredDefaults : fallbackDefaults;
   const excludedDomains = new Set(excludeDomainsForTopic(profile, topic));
@@ -687,11 +505,45 @@ function domainsForTopic(profile, topic) {
   const filteredTopicDomains = topicDomains.filter((domain) => !excludedDomains.has(cleanDomain(domain)));
   // Keep fetches locked to the configured source lists so results stay inside
   // the known domain set for the selected country/topic.
-  return unique([...filteredTopicDomains, ...filteredDefaults].map(cleanDomain).filter(Boolean));
+  if (filteredDefaults.length) return filteredDefaults;
+  return filteredTopicDomains;
 }
 
 function tavilyTopicForProfileTopic(topic) {
   return topic === 'news' ? 'news' : 'general';
+}
+
+function sourceFallbackQuery(profile, topic) {
+  if (topic === 'govt') {
+    return [
+      profile.country,
+      profile.region,
+      profile.category,
+      'official government regulation policy circular announcement tax employment licensing company registry compliance'
+    ].map((part) => text(part)).filter(Boolean).join(' ');
+  }
+
+  return [
+    profile.country,
+    profile.region,
+    profile.category,
+    profile.subcategory,
+    topic === 'evergreen' ? 'guide checklist requirements' : 'latest update announcement news policy compliance tax business economy',
+    topic === 'competitor' ? list(profile.competitors).join(' ') : '',
+    'professional services'
+  ].map((part) => text(part)).filter(Boolean).join(' ');
+}
+
+function broadDiscoveryQuery(profile, topic, category) {
+  return [
+    profile.country,
+    profile.region,
+    category,
+    topic === 'evergreen'
+      ? 'guide requirements checklist'
+      : 'latest announcement update regulation compliance business news',
+    topic === 'competitor' ? list(profile.competitors).join(' ') : ''
+  ].map((part) => text(part)).filter(Boolean).join(' ');
 }
 
 function selectQueryEntries(variants = [], categories = [], maxQueries = MAX_TOPIC_QUERY_LIMIT, profile = {}) {
@@ -770,45 +622,78 @@ function buildTopicQueries(profile, topic) {
     category: entry.category || profile.categories[variantIndex] || profile.category,
     variantIndex,
     includeDomainsOverride: includeDomains.length ? includeDomains : [],
-    searchDepth: 'advanced'
+    searchDepth: topic === 'govt' ? 'advanced' : 'basic'
   }));
 
-  return baseRequests.slice(0, MAX_TOPIC_QUERY_LIMIT);
+  const sourceFallbackRequests = includeDomains.length
+    ? [{
+        profile: {
+          ...profile,
+          category: profile.categories[0] || profile.category
+        },
+        topic,
+        variantIndex: baseRequests.length,
+        type: topic,
+        opportunityType: OPPORTUNITY_TYPE[topic] || 'market_news',
+        sourceQuery: sourceFallbackQuery(profile, topic),
+        minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 0) || 0)),
+        tavilyOptions: {
+          topic: tavilyTopicForProfileTopic(topic),
+          searchDepth: topic === 'govt' ? 'advanced' : 'basic',
+          maxResults,
+          timeRange: daysToTimeRange(profile.days),
+          includeRawContent: true,
+          timeoutMs: 30000,
+          includeDomains,
+          excludeDomains: excludeDomainsForTopic(profile, topic)
+        }
+      }]
+    : [];
+
+  const broadDiscoveryRequests = [];
+
+  const interleaved = [];
+  const broadByCategory = new Map(broadDiscoveryRequests.map((request) => [request.profile.category, request]));
+  const usedBroad = new Set();
+  for (const request of baseRequests) {
+    interleaved.push(request);
+    const broad = broadByCategory.get(request.profile.category);
+    if (broad && !usedBroad.has(request.profile.category)) {
+      interleaved.push(broad);
+      usedBroad.add(request.profile.category);
+    }
+  }
+
+  for (const request of broadDiscoveryRequests) {
+    if (!usedBroad.has(request.profile.category)) interleaved.push(request);
+  }
+
+  return [...interleaved.slice(0, MAX_TOPIC_QUERY_LIMIT), ...sourceFallbackRequests];
 }
 
 function articleFromResult(row, request, stats) {
   const title = text(row.title);
-  const url = normalizeUrl(text(row.url));
+  const url = text(row.url);
   const snippet = text(row.snippet || row.content || row.summary);
   const rawContent = text(row.rawContent || row.raw_content);
-  const summary = (snippet || rawContent).trim();
-  const inferredArticleDate = resultArticleDate(row, { fallbackToNow: false });
-  const articleDate = inferredArticleDate || (requiresFreshPublishedDate(request.topic) ? null : new Date());
-  const dateFallbackUsed = !inferredArticleDate && Boolean(articleDate);
-  const sampleRow = { ...row, title, url, sourceQuery: request.sourceQuery };
-  if (!title || !url) return rejectCandidate(stats, 'missing', sampleCandidate(sampleRow, 'missing-title-or-url'));
-  if (isStaticResultPage({ title, url })) return rejectCandidate(stats, 'topic', sampleCandidate(sampleRow, 'static-homepage'));
-  if (!articleDate) return rejectCandidate(stats, 'date', sampleCandidate(sampleRow, 'missing-date'));
-  if (inferredArticleDate && !isDateInsideWindow(inferredArticleDate, request.profile?.days || 30)) {
-    return rejectCandidate(stats, 'date', sampleCandidate(sampleRow, 'old-date'));
-  }
-  if (!inferredArticleDate && hasOnlyOldYearSignal(row, request.profile?.days || 30)) {
-    return rejectCandidate(stats, 'date', sampleCandidate(sampleRow, 'old-year-signal'));
+  const summary = [snippet, rawContent].filter(Boolean).join('\n\n').trim();
+  const articleDate = resultArticleDate(row);
+  if (!title || !url) return rejectCandidate(stats, 'missing');
+  if (!articleDate) return rejectCandidate(stats, 'date');
+  if (!resultMatchesDayWindow(row, request.profile?.days || 30)) {
+    return rejectCandidate(stats, 'date');
   }
   if (
     shouldEnforcePostSourceFilter(request.topic) &&
     !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])
   ) {
-    return rejectCandidate(stats, 'source', sampleCandidate(sampleRow, 'source-not-allowed'));
+    return rejectCandidate(stats, 'source');
   }
   if (!resultMatchesTopicSourceType(url, request.topic, request.profile || {})) {
-    return rejectCandidate(stats, 'type', sampleCandidate(sampleRow, 'wrong-topic-source-type'));
+    return rejectCandidate(stats, 'type');
   }
   if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
-    return rejectCandidate(stats, 'source', sampleCandidate(sampleRow, 'govt-source-not-allowed'));
-  }
-  if (!hasEnoughGenerationContext({ title, summary, rawContent })) {
-    return rejectCandidate(stats, 'content', sampleCandidate(sampleRow, 'insufficient-content'));
+    return rejectCandidate(stats, 'source');
   }
   const topicRule = evaluateTopicArticle({
     title,
@@ -819,16 +704,10 @@ function articleFromResult(row, request, stats) {
     source: hostFromUrl(url)
   }, {
     topic: request.topic,
-    profile: request.profile || {},
-    precheckOnly: true
+    profile: request.profile || {}
   });
   if (!topicRule.keep) {
-    const rejectReason = topicRule.reason === 'pdf' ? 'pdf' : topicRule.reason === 'sponsored' ? 'sponsored' : 'topic';
-    return rejectCandidate(
-      stats,
-      rejectReason,
-      sampleCandidate(sampleRow, topicRule.reason || rejectReason)
-    );
+    return rejectCandidate(stats, topicRule.reason === 'pdf' ? 'pdf' : 'topic');
   }
   const tavilyScore = typeof row.score === 'number' ? row.score : 50;
 
@@ -858,7 +737,7 @@ function articleFromResult(row, request, stats) {
     summary: summary.slice(0, 3000),
     aiSummary: summary.slice(0, 3000),
     rawContent: rawContent.slice(0, 20000),
-    blogContext: '',
+    blogContext: [rawContent, snippet].filter(Boolean).join('\n\n').slice(0, 12000),
     tavilyScore,
     relevanceScore: tavilyScore,
     relevance_score: tavilyScore,
@@ -874,8 +753,8 @@ function articleFromResult(row, request, stats) {
     sourceQuery: request.sourceQuery,
     fetched_at: new Date().toISOString(),
     publishedAt: articleDate.toISOString(),
-    dateFallbackUsed,
     rawData: {
+      rawContent: rawContent.slice(0, 20000),
       snippet: snippet.slice(0, 4000),
       sourceQuery: request.sourceQuery,
       allowedDomains: request.tavilyOptions?.includeDomains || [],
@@ -933,26 +812,7 @@ function workflowProfile(profile = {}) {
 }
 
 function bestCategory(articleCategory, ai) {
-  const category = text(ai?.category);
-  return CATEGORIES[category] ? category : '';
-}
-
-function topCandidatesForAi(articles = []) {
-  return [...articles]
-    .sort((a, b) => {
-      const scoreDiff = Number(b.tavilyScore || b.relevanceScore || 0) - Number(a.tavilyScore || a.relevanceScore || 0);
-      if (scoreDiff) return scoreDiff;
-      return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''));
-    })
-    .slice(0, MAX_AI_CANDIDATES_PER_TOPIC);
-}
-
-function bestSubcategory(category, ai) {
-  return normalizeSubcategory(
-    category,
-    ai?.subcategory || ai?.sub_category || ai?.subCategory || ai?.['sub-category'] || ai?.['sub category'],
-    ''
-  );
+  return normalizeCategory(ai?.category, articleCategory);
 }
 
 function resultFromArticle(article, topic, ai = {}) {
@@ -961,7 +821,11 @@ function resultFromArticle(article, topic, ai = {}) {
     Math.min(100, parseInt(ai.relevance_score ?? article.relevanceScore ?? article.tavilyScore, 10) || 0)
   );
   const category = bestCategory(article.category || article.profile?.category, ai);
-  const subcategory = bestSubcategory(category, ai);
+  const subcategory = normalizeSubcategory(
+    category,
+    ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+    article.subcategory
+  );
 
   return {
     profile: workflowProfile(article.profile),
@@ -971,7 +835,7 @@ function resultFromArticle(article, topic, ai = {}) {
     url: article.url,
     urlHash: article.urlHash,
     type: topic,
-    category: category || 'IGNORE',
+    category,
     subcategory,
     source: article.source || 'dynamic-search',
     sourceId: article.sourceId || article.source || 'dynamic-search',
@@ -986,50 +850,58 @@ function resultFromArticle(article, topic, ai = {}) {
     relevanceReason: ai.relevance_reason || '',
     relevance_reason: ai.relevance_reason || '',
     aiSummary: ai.summary || article.aiSummary || '',
-    blogContext: article.blogContext || '',
+    blogContext: article.blogContext || article.rawContent || article.summary || '',
     sourceQuery: article.sourceQuery || '',
-    rawData: compactRawData(article.rawData, {
+    rawData: article.rawData || {
+      rawContent: article.rawContent || '',
       sourceQuery: article.sourceQuery || '',
       allowedDomains: article.allowedDomains || [],
       tavilyScore: article.tavilyScore || null
-    }),
+    },
     fetched_at: article.fetched_at || new Date().toISOString(),
     publishedAt: article.publishedAt || ''
   };
 }
 
-async function runTopic(profile, topic, onProgress) {
-  const emptyTopicRun = (reason = '') => ({
-    results: [],
-    stats: {
-      rawCandidates: 0,
-      passedFilters: 0,
-      outputCount: 0,
-      duplicates: 0,
-      rejected: filterStats(),
-      aiIgnored: 0,
-      categoryRejected: 0,
-      scoreRejected: 0,
-      searchErrors: 0,
-      skippedReason: reason
-    }
-  });
+function selectedCategoriesForProfile(profile = {}) {
+  const selected = unique(
+    list(profile.categories).map((category) => normalizeCategory(category)).filter(Boolean)
+  );
+  if (selected.length) return selected;
+  return [normalizeCategory(profile.category)].filter(Boolean);
+}
 
-  if (!profile.topicEnabled?.[topic]) {
-    return emptyTopicRun('topic-disabled');
-  }
+function selectedSubcategoryForProfile(profile = {}, category = '') {
+  const selected = cleanSubcategory(profile.subcategory);
+  if (!selected) return '';
+  return normalizeSubcategory(category || normalizeCategory(profile.category), selected, selected);
+}
+
+function articleMatchesSelection(profile = {}, ai = {}, article = {}) {
+  const aiCategory = normalizeCategory(ai.category, article.category || profile.category);
+  const allowedCategories = selectedCategoriesForProfile(profile);
+  if (allowedCategories.length && !allowedCategories.includes(aiCategory)) return false;
+
+  const selectedSubcategory = selectedSubcategoryForProfile(profile, aiCategory);
+  if (!selectedSubcategory) return true;
+
+  const aiSubcategory = normalizeSubcategory(
+    aiCategory,
+    ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+    article.subcategory || profile.subcategory
+  );
+  return aiSubcategory === selectedSubcategory;
+}
+
+async function runTopic(profile, topic, onProgress) {
+  if (!profile.topicEnabled?.[topic]) return [];
   const systemSettings = await getSystemSettings();
   const aiConfig = { model: systemSettings.aiModel };
 
   const requests = buildTopicQueries(profile, topic);
-  const domainSweepCount = requests.filter((request) => (
-    Array.isArray(request.tavilyOptions?.includeDomains)
-    && request.tavilyOptions.includeDomains.length === 1
-  )).length;
-  const allowedDomains = unique(requests.flatMap((request) => list(request.tavilyOptions?.includeDomains)));
   onProgress?.({
     step: `topic:${topic}:queries`,
-    message: `${topic} topic: built ${requests.length} search request${requests.length === 1 ? '' : 's'} using ${allowedDomains.length} allowed domain${allowedDomains.length === 1 ? '' : 's'}${allowedDomains.length ? `: ${allowedDomains.slice(0, 12).join(', ')}${allowedDomains.length > 12 ? ` +${allowedDomains.length - 12} more` : ''}` : ' (no default/custom domains found)'}${domainSweepCount ? `; ${domainSweepCount} single-domain request${domainSweepCount === 1 ? '' : 's'}` : ''}`
+    message: `${topic} topic: built ${requests.length} query variant${requests.length === 1 ? '' : 's'}`
   });
   const articles = [];
   let searchErrors = 0;
@@ -1039,7 +911,7 @@ async function runTopic(profile, topic, onProgress) {
     const request = requests[i];
     onProgress?.({
       step: `topic:${topic}:search`,
-      message: `${topic} topic: searching variant ${i + 1}/${requests.length}: ${request.sourceQuery}`
+      message: `${topic} topic: searching variant ${i + 1}/${requests.length}`
     });
     let rows = [];
     try {
@@ -1065,7 +937,7 @@ async function runTopic(profile, topic, onProgress) {
 
   onProgress?.({
     step: `topic:${topic}:process`,
-    message: `${topic} topic: processed ${rawCandidates} domain candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed hardcoded garbage checks; rejected missing:${rejected.missing}, date:${rejected.date}, content:${rejected.content}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}, pdf:${rejected.pdf}, sponsored:${rejected.sponsored}, static/topic:${rejected.topic}`
+    message: `${topic} topic: processed ${rawCandidates} Tavily candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed filters; rejected missing:${rejected.missing}, date:${rejected.date}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}, pdf:${rejected.pdf}, topic:${rejected.topic}`
   });
 
   const deduped = dedupeArticlesForAi(articles);
@@ -1076,25 +948,15 @@ async function runTopic(profile, topic, onProgress) {
     });
   }
 
-  const aiCandidates = topCandidatesForAi(deduped.articles);
-  const aiCandidateSkipped = Math.max(0, deduped.articles.length - aiCandidates.length);
-  if (aiCandidateSkipped) {
-    onProgress?.({
-      step: `topic:${topic}:ai:limit`,
-      message: `${topic} topic: kept top ${aiCandidates.length} candidate${aiCandidates.length === 1 ? '' : 's'} for AI and skipped ${aiCandidateSkipped} lower-ranked candidate${aiCandidateSkipped === 1 ? '' : 's'} to reduce token use`
-    });
-  }
-
   onProgress?.({
     step: `topic:${topic}:ai`,
-    message: `${topic} topic: sending ${aiCandidates.length} unique candidate${aiCandidates.length === 1 ? '' : 's'} to AI for business relevance, fixed category, sub-category, score, and summary`
+    message: `${topic} topic: enriching ${deduped.articles.length} unique candidate${deduped.articles.length === 1 ? '' : 's'} and checking selected category fit`
   });
   const output = [];
-  let aiIgnored = 0;
   let categoryRejected = 0;
   let scoreRejected = 0;
   const minStoreScore = minStoreScoreForProfile(profile);
-  for (const article of aiCandidates) {
+  for (const article of deduped.articles) {
     let ai = {};
     try {
       ai = await aiService.classifyProfileRelevance({ article, profile, topic, aiConfig });
@@ -1103,31 +965,18 @@ async function runTopic(profile, topic, onProgress) {
     }
 
     if (ai.decision === 'IGNORE' || ai.category === 'IGNORE' || ai.subcategory === 'IGNORE') {
-      aiIgnored += 1;
-      pushSample(rejected.samples.aiIgnored, {
-        reason: ai.relevance_reason || ai.reason || 'AI returned IGNORE',
-        title: article.title,
-        url: article.url,
-        source: article.sourceType || article.source,
-        score: Number(ai.relevance_score ?? ai.relevanceScore ?? 0),
-        query: article.sourceQuery || ''
-      });
       continue;
     }
 
     const resolvedCategory = bestCategory(article.category || article.profile?.category, ai);
-    const resolvedSubcategory = bestSubcategory(resolvedCategory, ai);
-    if (!resolvedCategory || !resolvedSubcategory) {
+    const resolvedSubcategory = normalizeSubcategory(
+      resolvedCategory,
+      ai.subcategory || ai.sub_category || ai.subCategory || ai['sub-category'] || ai['sub category'],
+      article.subcategory || profile.subcategory
+    );
+
+    if (!articleMatchesSelection(profile, { category: resolvedCategory, subcategory: resolvedSubcategory }, article)) {
       categoryRejected += 1;
-      pushSample(rejected.samples.rejected, {
-        reason: 'invalid-ai-category-or-subcategory',
-        title: article.title,
-        url: article.url,
-        source: article.sourceType || article.source,
-        category: ai.category || '',
-        subcategory: ai.subcategory || ai.sub_category || '',
-        query: article.sourceQuery || ''
-      });
       continue;
     }
 
@@ -1148,50 +997,17 @@ async function runTopic(profile, topic, onProgress) {
 
     if (Number(result.relevanceScore || result.relevance_score || 0) < minStoreScore) {
       scoreRejected += 1;
-      pushSample(rejected.samples.rejected, {
-        reason: `low-score-below-${minStoreScore}`,
-        title: result.title,
-        url: result.url,
-        source: result.sourceType || result.source,
-        score: result.relevanceScore || result.relevance_score || 0,
-        category: result.category,
-        subcategory: result.subcategory,
-        query: result.sourceQuery || ''
-      });
       continue;
     }
 
-    pushSample(rejected.samples.matched, {
-      reason: result.relevanceReason || 'AI STORE',
-      title: result.title,
-      url: result.url,
-      source: result.sourceType || result.source,
-      score: result.relevanceScore || result.relevance_score || 0,
-      category: result.category,
-      subcategory: result.subcategory,
-      query: result.sourceQuery || ''
-    });
     output.push(result);
   }
 
   onProgress?.({
     step: `topic:${topic}:done`,
-    message: `${topic} topic: kept ${output.length} result${output.length === 1 ? '' : 's'} after domain, duplicate, category, and score checks${aiIgnored ? `; ${aiIgnored} AI ignore${aiIgnored === 1 ? '' : 's'}` : ''}${categoryRejected ? `; ${categoryRejected} category mismatch reject${categoryRejected === 1 ? '' : 's'}` : ''}${scoreRejected ? `; ${scoreRejected} low-score reject${scoreRejected === 1 ? '' : 's'} (<${minStoreScore})` : ''}${searchErrors ? `; ${searchErrors} query variant${searchErrors === 1 ? '' : 's'} failed` : ''}`
+    message: `${topic} topic: kept ${output.length} result${output.length === 1 ? '' : 's'} after domain, duplicate, category, and score checks${categoryRejected ? `; ${categoryRejected} category mismatch reject${categoryRejected === 1 ? '' : 's'}` : ''}${scoreRejected ? `; ${scoreRejected} low-score reject${scoreRejected === 1 ? '' : 's'} (<${minStoreScore})` : ''}${searchErrors ? `; ${searchErrors} query variant${searchErrors === 1 ? '' : 's'} failed` : ''}`
   });
-  return {
-    results: output,
-    stats: {
-      rawCandidates,
-      passedFilters: articles.length,
-      outputCount: output.length,
-      duplicates: deduped.duplicates,
-      rejected,
-      aiIgnored,
-      categoryRejected,
-      scoreRejected,
-      searchErrors
-    }
-  };
+  return output;
 }
 
 function buildBackendCallback(profile, topicItems) {
@@ -1235,13 +1051,14 @@ function buildBackendCallback(profile, topicItems) {
       relevanceReason: d.relevanceReason || d.relevance_reason || '',
       relevance_reason: d.relevance_reason || d.relevanceReason || '',
       aiSummary: d.aiSummary || d.summary || '',
-      blogContext: d.blogContext || '',
+      blogContext: d.blogContext || d.rawContent || d.summary || '',
       sourceQuery: d.sourceQuery || '',
-      rawData: compactRawData(d.rawData || d.raw, {
+      rawData: d.rawData || d.raw || {
+        rawContent: d.rawContent || '',
         sourceQuery: d.sourceQuery || '',
         allowedDomains: d.allowedDomains || [],
         tavilyScore: d.tavilyScore || d.tavily_score || null
-      }),
+      },
       fetched_at: d.fetched_at || new Date().toISOString(),
       publishedAt: d.publishedAt || ''
     };
@@ -1288,61 +1105,6 @@ function buildBackendCallback(profile, topicItems) {
   };
 }
 
-function mergeTopicStats(topicRuns = []) {
-  const stats = {
-    rawCandidates: 0,
-    passedFilters: 0,
-    outputCount: 0,
-    duplicates: 0,
-    rejected: filterStats(),
-    aiIgnored: 0,
-    categoryRejected: 0,
-    scoreRejected: 0,
-    searchErrors: 0,
-    debugSamples: {
-      rejected: [],
-      aiIgnored: [],
-      matched: []
-    },
-    byTopic: {}
-  };
-
-  for (const run of topicRuns) {
-    const topic = run.topic || 'unknown';
-    const row = run.stats || {};
-    const rejected = row.rejected || {};
-    stats.rawCandidates += Number(row.rawCandidates || 0);
-    stats.passedFilters += Number(row.passedFilters || 0);
-    stats.outputCount += Number(row.outputCount || 0);
-    stats.duplicates += Number(row.duplicates || 0);
-    stats.aiIgnored += Number(row.aiIgnored || 0);
-    stats.categoryRejected += Number(row.categoryRejected || 0);
-    stats.scoreRejected += Number(row.scoreRejected || 0);
-    stats.searchErrors += Number(row.searchErrors || 0);
-    for (const key of Object.keys(stats.rejected)) {
-      stats.rejected[key] += Number(rejected[key] || 0);
-    }
-    for (const key of ['rejected', 'aiIgnored', 'matched']) {
-      for (const sample of rejected.samples?.[key] || []) {
-        pushSample(stats.debugSamples[key], { topic, ...sample }, 10);
-      }
-    }
-    stats.byTopic[topic] = {
-      rawCandidates: Number(row.rawCandidates || 0),
-      passedFilters: Number(row.passedFilters || 0),
-      outputCount: Number(row.outputCount || 0),
-      duplicates: Number(row.duplicates || 0),
-      rejected,
-      aiIgnored: Number(row.aiIgnored || 0),
-      categoryRejected: Number(row.categoryRejected || 0),
-      scoreRejected: Number(row.scoreRejected || 0),
-      searchErrors: Number(row.searchErrors || 0)
-    };
-  }
-
-  return stats;
-}
-
 async function runProfileSearch(incoming = {}, options = {}) {
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const isCancelled = typeof options.isCancelled === 'function' ? options.isCancelled : () => false;
@@ -1358,7 +1120,7 @@ async function runProfileSearch(incoming = {}, options = {}) {
   const profile = normalizeProfileInput(incoming.body || incoming);
   const selectedTopics = ALLOWED_TOPICS.filter((topic) => profile.topicEnabled?.[topic]);
   onProgress?.({ step: 'search', message: `Starting ${selectedTopics.length} selected topic${selectedTopics.length === 1 ? '' : 's'} one by one` });
-  const topicRuns = [];
+  const topicResults = [];
   for (let i = 0; i < selectedTopics.length; i += 1) {
     throwIfCancelled();
     const topic = selectedTopics[i];
@@ -1366,9 +1128,9 @@ async function runProfileSearch(incoming = {}, options = {}) {
       step: `topic:${topic}:start`,
       message: `Starting ${topic} topic (${i + 1}/${selectedTopics.length})`
     });
-    const topicRun = await runTopic(profile, topic, onProgress);
+    const results = await runTopic(profile, topic, onProgress);
     throwIfCancelled();
-    topicRuns.push({ topic, ...topicRun });
+    topicResults.push(results);
     onProgress?.({
       step: `topic:${topic}:complete`,
       message: `Completed ${topic} topic (${i + 1}/${selectedTopics.length})`
@@ -1376,13 +1138,10 @@ async function runProfileSearch(incoming = {}, options = {}) {
   }
   throwIfCancelled();
   onProgress?.({ step: 'merge', message: 'Merging, deduplicating and applying per-topic limits' });
-  const searchStats = mergeTopicStats(topicRuns);
-  const payload = buildBackendCallback(profile, topicRuns.flatMap((run) => run.results || []));
-  payload.searchStats = searchStats;
-  payload.totalFetched = searchStats.rawCandidates;
+  const payload = buildBackendCallback(profile, topicResults.flat());
   onProgress?.({
     step: 'payload',
-    message: `Prepared ${payload.resultCount} final result${payload.resultCount === 1 ? '' : 's'} for saving from ${searchStats.rawCandidates} fetched candidate${searchStats.rawCandidates === 1 ? '' : 's'} (${payload.mergeStats.unique} unique after removing ${payload.mergeStats.duplicates} merge duplicate${payload.mergeStats.duplicates === 1 ? '' : 's'})`
+    message: `Prepared ${payload.resultCount} final result${payload.resultCount === 1 ? '' : 's'} for saving (${payload.mergeStats.unique} unique after removing ${payload.mergeStats.duplicates} merge duplicate${payload.mergeStats.duplicates === 1 ? '' : 's'})`
   });
   return payload;
 }

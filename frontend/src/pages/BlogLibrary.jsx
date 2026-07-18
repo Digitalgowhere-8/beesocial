@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { APP_EVENT_CONTENT_CHANGED } from '../utils/appEvents';
 import useInfiniteScroll from '../hooks/useInfiniteScroll';
-import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Sparkles, Square, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BookOpenText, CalendarDays, Check, CheckSquare, Copy, FileText, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Square, Tag, Trash2, X } from 'lucide-react';
 
 const LIBRARY_MODES = [
   { key: 'blogs', label: 'Blog', desktopLabel: 'Blog', icon: BookOpenText },
@@ -81,16 +80,6 @@ function renderInlineMarkdownHtml(text = '') {
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
 }
 
-function sopHeadingMeta(heading = '') {
-  const key = String(heading || '').trim().toLowerCase();
-  if (key === 'banner') return { label: 'CREATIVE BRIEF', color: '#0369a1', border: '#bae6fd', bg: '#f0f9ff' };
-  if (key === 'cta' || key === 'recommended next step') return { label: 'CONVERSION', color: '#047857', border: '#a7f3d0', bg: '#ecfdf5' };
-  if (key === 'keywords/tags' || key === 'keywords' || key === 'tags') return { label: 'SEO', color: '#b45309', border: '#fde68a', bg: '#fffbeb' };
-  if (key.includes('meta') || key === 'social media copy') return { label: 'DISTRIBUTION', color: '#7c3aed', border: '#ddd6fe', bg: '#f5f3ff' };
-  if (key === 'resources') return { label: 'ATTRIBUTION', color: '#7c3aed', border: '#ddd6fe', bg: '#f5f3ff' };
-  return null;
-}
-
 function stripInlineMarkdown(text = '') {
   return String(text || '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -140,39 +129,6 @@ function parseMarkdownTableRow(line = '') {
     .replace(/\|$/, '')
     .split('|')
     .map((cell) => cell.trim());
-}
-
-function sopSectionTone(heading = '') {
-  const key = String(heading || '').trim().toLowerCase();
-  if (key === 'banner') {
-    return {
-      eyebrow: 'Creative Brief',
-      className: 'content-repo-sop-banner content-repo-sop-banner-creative',
-      labelClassName: 'content-repo-sop-eyebrow'
-    };
-  }
-  if (key === 'cta' || key === 'recommended next step') {
-    return {
-      eyebrow: 'Conversion',
-      className: 'content-repo-sop-banner content-repo-sop-banner-conversion',
-      labelClassName: 'content-repo-sop-eyebrow'
-    };
-  }
-  if (key === 'keywords/tags' || key === 'keywords' || key === 'tags') {
-    return {
-      eyebrow: 'SEO',
-      className: 'content-repo-sop-banner content-repo-sop-banner-seo',
-      labelClassName: 'content-repo-sop-eyebrow'
-    };
-  }
-  if (key.includes('meta') || key === 'social media copy' || key === 'resources') {
-    return {
-      eyebrow: key === 'resources' ? 'Attribution' : 'Distribution',
-      className: 'content-repo-sop-banner content-repo-sop-banner-distribution',
-      labelClassName: 'content-repo-sop-eyebrow'
-    };
-  }
-  return null;
 }
 
 function markdownToPlainText(bodyMarkdown = '', title = '') {
@@ -244,18 +200,7 @@ function markdownToHtml(bodyMarkdown = '', title = '') {
     }
 
     if (/^##\s+/.test(line)) {
-      const heading = line.replace(/^##\s+/, '');
-      const sopMeta = sopHeadingMeta(heading);
-      if (sopMeta) {
-        blocks.push(
-          `<div style="border:1px solid ${sopMeta.border};background:${sopMeta.bg};padding:12px 16px;margin:28px 0 12px;border-radius:10px;">` +
-          `<div style="font-size:10px;letter-spacing:1.8px;font-weight:700;color:${sopMeta.color};">${sopMeta.label}</div>` +
-          `<h2 style="margin:4px 0 0;color:#111827;font-size:20px;">${renderInlineMarkdownHtml(heading === 'Recommended next step' ? 'CTA' : heading)}</h2>` +
-          `</div>`
-        );
-      } else {
-        blocks.push(`<h2>${renderInlineMarkdownHtml(heading)}</h2>`);
-      }
+      blocks.push(`<h2>${renderInlineMarkdownHtml(line.replace(/^##\s+/, ''))}</h2>`);
       i += 1;
       continue;
     }
@@ -322,137 +267,6 @@ function markdownToHtml(bodyMarkdown = '', title = '') {
   return blocks.join('');
 }
 
-function parseSopSections(bodyMarkdown = '', title = '') {
-  const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
-  const sections = [];
-  let current = { heading: '', lines: [] };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    const match = line.trim().match(/^##\s+(.+)$/);
-    if (match) {
-      if (current.heading || current.lines.some((item) => item.trim())) sections.push(current);
-      current = { heading: match[1].trim(), lines: [] };
-      continue;
-    }
-    current.lines.push(line);
-  }
-
-  if (current.heading || current.lines.some((item) => item.trim())) sections.push(current);
-  return sections;
-}
-
-function sectionKey(heading = '') {
-  return String(heading || '').trim().toLowerCase();
-}
-
-function sectionText(lines = []) {
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function isMetaSection(heading = '') {
-  const key = sectionKey(heading);
-  return [
-    'banner',
-    'keywords/tags',
-    'keywords',
-    'tags',
-    'seo / meta title',
-    'seo/meta title',
-    'seo meta title',
-    'meta title',
-    'meta description',
-    'social media copy',
-    'resources',
-    'cta',
-    'recommended next step'
-  ].includes(key);
-}
-
-function isFaqSection(heading = '') {
-  const key = sectionKey(heading);
-  return key === 'faq' || key === 'faqs';
-}
-
-function findSopSection(sections = [], names = []) {
-  const keys = names.map(sectionKey);
-  return sections.find((section) => keys.includes(sectionKey(section.heading)));
-}
-
-function headingHtml(label = '') {
-  return `<p style="margin:18px 0 8px;font-weight:700;color:#111827;">${escapeHtml(label)}</p>`;
-}
-
-function wordRowHtml(label = '', content = '', options = {}) {
-  const verticalAlign = options.verticalAlign || 'top';
-  return [
-    '<tr>',
-    `<td style="border:1px solid #111;padding:10px 12px;width:18%;vertical-align:${verticalAlign};font-weight:700;color:#111;">${escapeHtml(label)}</td>`,
-    `<td style="border:1px solid #111;padding:14px 16px;vertical-align:${verticalAlign};color:#111;">${content}</td>`,
-    '</tr>'
-  ].join('');
-}
-
-function buildWordCopyPayload({ title = '', excerpt = '', bodyMarkdown = '' }) {
-  const sections = parseSopSections(bodyMarkdown, title);
-  const keywordsSection = findSopSection(sections, ['Keywords/Tags', 'Keywords', 'Tags']);
-  const metaTitleSection = findSopSection(sections, ['SEO / Meta Title', 'SEO Meta Title', 'Meta Title']);
-  const metaDescriptionSection = findSopSection(sections, ['Meta Description']);
-  const socialSection = findSopSection(sections, ['Social Media Copy']);
-  const resourcesSection = findSopSection(sections, ['Resources']);
-  const ctaSection = findSopSection(sections, ['CTA', 'Recommended next step']);
-  const faqSection = findSopSection(sections, ['FAQ', 'FAQs']);
-  const contentSections = sections.filter((section) => !isMetaSection(section.heading) && !isFaqSection(section.heading));
-  const contentMarkdown = contentSections
-    .map((section) => section.heading ? `## ${section.heading}\n${sectionText(section.lines)}` : sectionText(section.lines))
-    .filter(Boolean)
-    .join('\n\n');
-
-  const keywordsText = keywordsSection ? markdownToPlainText(sectionText(keywordsSection.lines)) : '';
-  const metaTitleText = metaTitleSection ? markdownToPlainText(sectionText(metaTitleSection.lines)) : '';
-  const metaDescriptionText = metaDescriptionSection ? markdownToPlainText(sectionText(metaDescriptionSection.lines)) : '';
-  const socialText = socialSection ? markdownToPlainText(sectionText(socialSection.lines)) : '';
-  const resourcesText = resourcesSection ? markdownToPlainText(sectionText(resourcesSection.lines)) : '';
-  const ctaLines = ctaSection ? sectionText(ctaSection.lines).split('\n').map((line) => line.trim()).filter(Boolean) : [];
-  const ctaTitle = ctaLines[0] || '';
-  const ctaButton = ctaLines.find((line) => /advisor|contact|book|speak|learn|download/i.test(line)) || '';
-  const ctaDescription = ctaLines.filter((line) => line !== ctaTitle && line !== ctaButton).join('\n');
-
-  const plainParts = [
-    keywordsText ? `Keywords\n${keywordsText}` : '',
-    `Title\n${stripInlineMarkdown(title)}`,
-    `Content\n${[stripInlineMarkdown(excerpt), markdownToPlainText(contentMarkdown, title)].filter(Boolean).join('\n\n')}`,
-    ctaTitle || ctaDescription || ctaButton
-      ? ['CTA Title : ' + ctaTitle, ctaDescription, ctaButton ? `Button: ${ctaButton}` : ''].filter(Boolean).join('\n')
-      : '',
-    metaTitleText ? `Meta Title\n${metaTitleText}` : '',
-    metaDescriptionText ? `Meta Description\n${metaDescriptionText}` : '',
-    socialText ? `Social Copy\n${socialText}` : '',
-    resourcesText ? `Resource\n${resourcesText}` : ''
-  ].filter(Boolean);
-
-  const faqText = faqSection ? markdownToPlainText(sectionText(faqSection.lines)) : '';
-  const faqHtml = faqSection ? markdownToHtml(sectionText(faqSection.lines)) : '';
-  const htmlRows = [
-    keywordsText ? wordRowHtml('Keywords', markdownToHtml(sectionText(keywordsSection.lines))) : '',
-    wordRowHtml('Title', `<div style="font-size:30px;line-height:1.18;font-weight:700;color:#000;">${escapeHtml(title)}</div>`, { verticalAlign: 'middle' }),
-    wordRowHtml('Content', `${excerpt ? `<p>${renderInlineMarkdownHtml(excerpt)}</p>` : ''}${markdownToHtml(contentMarkdown, title)}`),
-    faqHtml ? wordRowHtml('FAQs', faqHtml) : '',
-    ctaTitle || ctaDescription || ctaButton
-      ? wordRowHtml('CTA', `${ctaTitle ? `<p><strong>CTA Title :</strong> ${escapeHtml(ctaTitle)}</p>` : ''}${ctaDescription ? `<p>${renderInlineMarkdownHtml(ctaDescription)}</p>` : ''}${ctaButton ? `<p><strong>Button:</strong> ${escapeHtml(ctaButton)}</p>` : ''}`)
-      : '',
-    metaTitleText ? wordRowHtml('Meta Title', `<p>${renderInlineMarkdownHtml(metaTitleText)}</p>`) : '',
-    metaDescriptionText ? wordRowHtml('Meta Description', `<p>${renderInlineMarkdownHtml(metaDescriptionText)}</p>`) : '',
-    socialText ? wordRowHtml('Social Copy', `<p>${renderInlineMarkdownHtml(socialText).replace(/\n/g, '<br />')}</p>`) : '',
-    resourcesText ? wordRowHtml('Resource', `<p>${renderInlineMarkdownHtml(resourcesText).replace(/\n/g, '<br />')}</p>`) : ''
-  ].filter(Boolean);
-
-  return {
-    plainText: plainParts.join('\n\n').trim(),
-    htmlBody: `<table style="border-collapse:collapse;width:100%;border:1px solid #111;">${htmlRows.join('')}</table>`
-  };
-}
-
 function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
   const lines = normalizePreviewMarkdown(bodyMarkdown, title).split('\n');
   const blocks = [];
@@ -495,20 +309,6 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
         continue;
       }
 
-      const sopTone = sopSectionTone(heading);
-      if (sopTone) {
-        blocks.push(
-          <div key={`sop-${i}`} className={`mt-10 rounded-2xl border px-5 py-4 ${sopTone.className}`}>
-            <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${sopTone.labelClassName}`}>{sopTone.eyebrow}</div>
-            <h3 className="mt-1 text-xl font-black tracking-tight">
-              {heading === 'Recommended next step' ? 'CTA' : heading}
-            </h3>
-          </div>
-        );
-        i += 1;
-        continue;
-      }
-
       blocks.push(
         <h3 key={`h2-${i}`} className="mt-10 text-2xl font-black tracking-tight text-gray-900">
           {heading}
@@ -528,12 +328,12 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
       }
 
       blocks.push(
-        <div key={`table-${i}`} className="my-7 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-100">
+        <div key={`table-${i}`} className="my-7 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-            <thead className="bg-gray-50/90">
+            <thead className="bg-gray-50">
               <tr>
                 {headers.map((header, index) => (
-                  <th key={`${header}-${index}`} className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-gray-600">
+                  <th key={`${header}-${index}`} className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-gray-500">
                     {renderInlineMarkdown(header)}
                   </th>
                 ))}
@@ -618,8 +418,6 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
 
 export default function BlogLibrary() {
   const { isAdmin, user } = useAuth();
-  const location = useLocation();
-  const inboundState = location.state || {};
   const cacheKey = useMemo(
     () => `blog_library_cache:${LIBRARY_CACHE_VERSION}:${user?._id || 'guest'}`,
     [user?._id]
@@ -628,7 +426,7 @@ export default function BlogLibrary() {
     () => safeSessionGet(cacheKey, null),
     [cacheKey]
   );
-  const [mode, setMode] = useState(() => inboundState.mode || cachedLibraryState?.mode || 'blogs');
+  const [mode, setMode] = useState(() => cachedLibraryState?.mode || 'blogs');
   const [items, setItems] = useState(cachedLibraryState?.items || []);
   const [socialItems, setSocialItems] = useState(cachedLibraryState?.socialItems || []);
   const [selected, setSelected] = useState(cachedLibraryState?.selected || null);
@@ -646,60 +444,14 @@ export default function BlogLibrary() {
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const [blogFeedback, setBlogFeedback] = useState('');
-  const [socialFeedback, setSocialFeedback] = useState('');
-  const [blogComment, setBlogComment] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
-  const [deletingCommentId, setDeletingCommentId] = useState('');
-  const [revisingBlog, setRevisingBlog] = useState(false);
-  const [revisingSocial, setRevisingSocial] = useState(false);
-  const [savingRevision, setSavingRevision] = useState(false);
-  const [unsavedConfirm, setUnsavedConfirm] = useState(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
   const loading = mode === 'blogs' ? loadingBlogs : loadingSocial;
-  const savedSelectedBlog = useMemo(
-    () => items.find((blog) => blog._id === selected?._id) || null,
-    [items, selected?._id]
-  );
-  const savedSelectedSocial = useMemo(
-    () => socialItems.find((post) => post._id === selectedSocial?._id) || null,
-    [selectedSocial?._id, socialItems]
-  );
-  const blogDraftDirty = Boolean(selected?._id && savedSelectedBlog && (
-    selected.title !== savedSelectedBlog.title ||
-    selected.excerpt !== savedSelectedBlog.excerpt ||
-    selected.bodyMarkdown !== savedSelectedBlog.bodyMarkdown
-  ));
-  const socialDraftDirty = Boolean(selectedSocial?._id && savedSelectedSocial && (
-    selectedSocial.selectedTopic !== savedSelectedSocial.selectedTopic ||
-    selectedSocial.postText !== savedSelectedSocial.postText ||
-    JSON.stringify(selectedSocial.hashtags || []) !== JSON.stringify(savedSelectedSocial.hashtags || [])
-  ));
-  const hasUnsavedRevision = blogDraftDirty || socialDraftDirty;
-
-  const confirmUnsavedLeave = useCallback((action, message = 'You have unsaved changes. Discard them and continue, or keep editing.') => {
-    if (!hasUnsavedRevision) {
-      action();
-      return;
-    }
-    setUnsavedConfirm({
-      message,
-      onDiscard: () => {
-        setUnsavedConfirm(null);
-        if (blogDraftDirty && savedSelectedBlog) setSelected(savedSelectedBlog);
-        if (socialDraftDirty && savedSelectedSocial) setSelectedSocial(savedSelectedSocial);
-        setBlogFeedback('');
-        setSocialFeedback('');
-        action();
-      }
-    });
-  }, [blogDraftDirty, hasUnsavedRevision, savedSelectedBlog, savedSelectedSocial, socialDraftDirty]);
 
   const loadBlogs = useCallback(async ({ page = 1, reset = false } = {}) => {
     setLoadingBlogs(true);
     setError('');
     try {
-      const params = { status: 'review,published', limit: LIBRARY_PAGE_SIZE, page };
+      const params = { status: 'published', limit: LIBRARY_PAGE_SIZE, page };
       if (query) params.q = query;
       const { data } = await api.get('/blogs', { params });
       const nextBlogs = data.items || [];
@@ -707,8 +459,6 @@ export default function BlogLibrary() {
         reset ? nextBlogs : [...prev, ...nextBlogs.filter((item) => !prev.some((existing) => existing._id === item._id))]
       ));
       setSelected((prev) => {
-        const targetId = inboundState.selectedBlogId;
-        if (targetId) return nextBlogs.find((item) => item._id === targetId) || prev || nextBlogs[0] || null;
         if (prev?._id) {
           return nextBlogs.find((item) => item._id === prev._id) || prev;
         }
@@ -721,7 +471,7 @@ export default function BlogLibrary() {
     } finally {
       setLoadingBlogs(false);
     }
-  }, [inboundState.selectedBlogId, query]);
+  }, [query]);
 
   const loadSocial = useCallback(async ({ page = 1, reset = false } = {}) => {
     setLoadingSocial(true);
@@ -735,8 +485,6 @@ export default function BlogLibrary() {
         reset ? nextSocial : [...prev, ...nextSocial.filter((item) => !prev.some((existing) => existing._id === item._id))]
       ));
       setSelectedSocial((prev) => {
-        const targetId = inboundState.selectedSocialId;
-        if (targetId) return nextSocial.find((item) => item._id === targetId) || prev || nextSocial[0] || null;
         if (prev?._id) {
           return nextSocial.find((item) => item._id === prev._id) || prev;
         }
@@ -749,7 +497,7 @@ export default function BlogLibrary() {
     } finally {
       setLoadingSocial(false);
     }
-  }, [inboundState.selectedSocialId, query]);
+  }, [query]);
 
   useEffect(() => {
     if (mode === 'blogs') {
@@ -758,16 +506,6 @@ export default function BlogLibrary() {
     }
     loadSocial({ page: 1, reset: true });
   }, [loadBlogs, loadSocial, mode]);
-
-  useEffect(() => {
-    if (inboundState.selectedBlogId || inboundState.selectedSocialId) {
-      setMobileReaderOpen(true);
-    }
-  }, [inboundState.selectedBlogId, inboundState.selectedSocialId]);
-
-  useEffect(() => {
-    setBlogComment('');
-  }, [selected?._id]);
 
   useEffect(() => {
     safeSessionSet(cacheKey, {
@@ -786,7 +524,6 @@ export default function BlogLibrary() {
   useEffect(() => {
     const handleContentChanged = (event) => {
       const scope = event.detail?.scope || '';
-      if (hasUnsavedRevision) return;
       if (!scope || scope === 'blogs') {
         loadBlogs({ page: 1, reset: true });
       }
@@ -797,7 +534,7 @@ export default function BlogLibrary() {
 
     window.addEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
     return () => window.removeEventListener(APP_EVENT_CONTENT_CHANGED, handleContentChanged);
-  }, [hasUnsavedRevision, loadBlogs, loadSocial]);
+  }, [loadBlogs, loadSocial]);
 
   const blogLoadMoreRef = useInfiniteScroll({
     enabled: mode === 'blogs',
@@ -885,37 +622,33 @@ export default function BlogLibrary() {
     }
   };
 
-  const updateBlogItem = useCallback((item) => {
-    if (!item?._id) return;
-    setSelected(item);
-    setItems((prev) => prev.map((blog) => blog._id === item._id ? item : blog));
-  }, []);
-
   const copyBlogPost = useCallback(async () => {
     if (!selected) return;
-    const wordPayload = buildWordCopyPayload({
-      title: selected.title || '',
-      excerpt: selected.excerpt || '',
-      bodyMarkdown: selected.bodyMarkdown || ''
-    });
-    const plainText = wordPayload.plainText;
+    const plainParts = [
+      selected.title || '',
+      selected.excerpt || '',
+      markdownToPlainText(selected.bodyMarkdown || '', selected.title || '')
+    ].filter(Boolean);
+    const plainText = plainParts.join('\n\n');
     const html = `
       <article>
         <style>
-          article { color: #111; font-family: Georgia, "Times New Roman", serif; line-height: 1.25; margin: 0 auto; max-width: 820px; }
+          article { color: #1f2937; font-family: Arial, sans-serif; line-height: 1.7; }
           h1 { color: #111827; font-size: 30px; line-height: 1.2; margin: 0 0 18px; }
-          h2 { color: #111; font-size: 24px; line-height: 1.12; margin: 26px 0 10px; }
-          h3 { color: #111; font-size: 19px; margin: 20px 0 8px; }
-          p { margin: 10px 0; }
-          blockquote { border-left: 4px solid #163A24; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
+          h2 { color: #111827; font-size: 22px; margin: 30px 0 12px; }
+          h3 { color: #111827; font-size: 18px; margin: 24px 0 10px; }
+          p { margin: 12px 0; }
+          blockquote { border-left: 4px solid #D11243; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
           ul, ol { margin: 12px 0 18px 24px; padding: 0; }
           li { margin: 6px 0; }
           table { border-collapse: collapse; margin: 18px 0; width: 100%; }
           th, td { border: 1px solid #d1d5db; padding: 9px 12px; text-align: left; vertical-align: top; }
           th { background: #f3f4f6; color: #374151; font-weight: 700; }
-          a { color: #163A24; }
+          a { color: #D11243; }
         </style>
-        ${wordPayload.htmlBody}
+        ${selected.title ? `<h1>${escapeHtml(selected.title)}</h1>` : ''}
+        ${selected.excerpt ? `<blockquote>${renderInlineMarkdownHtml(selected.excerpt)}</blockquote>` : ''}
+        ${markdownToHtml(selected.bodyMarkdown || '', selected.title || '')}
       </article>
     `;
 
@@ -951,131 +684,12 @@ export default function BlogLibrary() {
     }
   }, [selectedSocial]);
 
-  const improveSelectedBlog = useCallback(async () => {
-    const feedback = blogFeedback.trim();
-    if (!selected?._id || !feedback || revisingBlog) return;
-    setRevisingBlog(true);
-    setError('');
-    try {
-      const { data } = await api.post(`/blogs/${selected._id}/revise`, { feedback, previewOnly: true });
-      const item = data.item;
-      if (item) {
-        setSelected(item);
-        setBlogFeedback('');
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not improve blog post');
-    } finally {
-      setRevisingBlog(false);
-    }
-  }, [blogFeedback, revisingBlog, selected?._id]);
-
-  const improveSelectedSocial = useCallback(async () => {
-    const feedback = socialFeedback.trim();
-    if (!selectedSocial?._id || !feedback || revisingSocial) return;
-    setRevisingSocial(true);
-    setError('');
-    try {
-      const { data } = await api.post(`/blogs/social-posts/${selectedSocial._id}/revise`, { feedback, previewOnly: true });
-      const item = data.item;
-      if (item) {
-        setSelectedSocial(item);
-        setSocialFeedback('');
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not improve social post');
-    } finally {
-      setRevisingSocial(false);
-    }
-  }, [revisingSocial, selectedSocial?._id, socialFeedback]);
-
-  const saveBlogRevision = useCallback(async () => {
-    if (!selected?._id || savingRevision) return;
-    setSavingRevision(true);
-    setError('');
-    try {
-      const { data } = await api.patch(`/blogs/${selected._id}`, {
-        title: selected.title || '',
-        excerpt: selected.excerpt || '',
-        bodyMarkdown: selected.bodyMarkdown || ''
-      });
-      const item = data.item;
-      if (item) {
-        updateBlogItem(item);
-        window.dispatchEvent(new CustomEvent(APP_EVENT_CONTENT_CHANGED, { detail: { scope: 'blogs' } }));
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not save blog edits');
-    } finally {
-      setSavingRevision(false);
-    }
-  }, [savingRevision, selected, updateBlogItem]);
-
-  const submitBlogComment = useCallback(async () => {
-    const text = blogComment.trim();
-    if (!selected?._id || !text || submittingComment) return;
-    setSubmittingComment(true);
-    setError('');
-    try {
-      const { data } = await api.post(`/blogs/${selected._id}/comments`, { text });
-      if (data.item) {
-        updateBlogItem(data.item);
-        setBlogComment('');
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not save comment');
-    } finally {
-      setSubmittingComment(false);
-    }
-  }, [blogComment, selected?._id, submittingComment, updateBlogItem]);
-
-  const deleteBlogComment = useCallback(async (commentId) => {
-    if (!selected?._id || !commentId || deletingCommentId) return;
-    const confirmed = window.confirm('Delete this comment?');
-    if (!confirmed) return;
-
-    setDeletingCommentId(commentId);
-    setError('');
-    try {
-      const { data } = await api.delete(`/blogs/${selected._id}/comments/${commentId}`);
-      if (data.item) updateBlogItem(data.item);
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not delete comment');
-    } finally {
-      setDeletingCommentId('');
-    }
-  }, [deletingCommentId, selected?._id, updateBlogItem]);
-
-  const saveSocialRevision = useCallback(async () => {
-    if (!selectedSocial?._id || savingRevision) return;
-    setSavingRevision(true);
-    setError('');
-    try {
-      const { data } = await api.patch(`/blogs/social-posts/${selectedSocial._id}`, {
-        selectedTopic: selectedSocial.selectedTopic || '',
-        postText: selectedSocial.postText || '',
-        hashtags: selectedSocial.hashtags || []
-      });
-      const item = data.item;
-      if (item) {
-        setSelectedSocial(item);
-        setSocialItems((prev) => prev.map((post) => post._id === item._id ? item : post));
-        window.dispatchEvent(new CustomEvent(APP_EVENT_CONTENT_CHANGED, { detail: { scope: 'social' } }));
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Could not save social post edits');
-    } finally {
-      setSavingRevision(false);
-    }
-  }, [savingRevision, selectedSocial]);
-
   const openReaderOnSmallScreens = () => {
     if (window.matchMedia('(max-width: 1279px)').matches) setMobileReaderOpen(true);
   };
 
   const activeMode = LIBRARY_MODES.find((item) => item.key === mode) || LIBRARY_MODES[0];
   const ActiveModeIcon = activeMode.icon;
-  const contentRevisionLocked = revisingBlog || revisingSocial || savingRevision;
 
   const headerActions = (
     <>
@@ -1089,7 +703,7 @@ export default function BlogLibrary() {
       <div className="ml-auto flex items-center gap-2 sm:hidden">
         <button
           type="button"
-          onClick={() => confirmUnsavedLeave(() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true }))}
+          onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })}
           className="app-refresh-button inline-flex h-[42px] min-w-[42px] items-center justify-center rounded-2xl border px-3 shadow-sm transition-all"
           aria-label="Refresh content repository"
         >
@@ -1110,7 +724,6 @@ export default function BlogLibrary() {
           <input
             className="h-11 w-full rounded-2xl border border-gray-200 bg-white py-0 pl-10 pr-4 text-sm font-medium leading-normal text-gray-700 shadow-sm transition-all placeholder:text-gray-400 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40"
             value={query}
-            disabled={hasUnsavedRevision}
             onChange={(e) => {
               setQuery(e.target.value);
               setMobileReaderOpen(false);
@@ -1119,12 +732,12 @@ export default function BlogLibrary() {
           />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <div className="content-header-segmented grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="grid grid-cols-2 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
             {LIBRARY_MODES.map((item) => {
               const Icon = item.icon;
               const active = mode === item.key;
               return (
-                <button type="button" key={item.key} onClick={() => confirmUnsavedLeave(() => { setMode(item.key); setQuery(''); setMobileReaderOpen(false); })} className={`content-header-tab ${active ? 'content-header-tab-active' : 'content-header-tab-idle'} flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                <button type="button" key={item.key} onClick={() => { setMode(item.key); setQuery(''); setMobileReaderOpen(false); }} className={`flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-3 text-[12px] font-black transition-all sm:px-5 sm:text-[13px] ${active ? 'bg-brand-crimson text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
                   <Icon size={14} />
                   <span className="sm:hidden">{item.label}</span>
                   <span className="hidden sm:inline">{item.desktopLabel}</span>
@@ -1132,7 +745,7 @@ export default function BlogLibrary() {
               );
             })}
           </div>
-          <button type="button" onClick={() => confirmUnsavedLeave(() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true }))} className="app-refresh-button inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all">
+          <button type="button" onClick={() => mode === 'blogs' ? loadBlogs({ page: 1, reset: true }) : loadSocial({ page: 1, reset: true })} className="app-refresh-button inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border px-5 text-[13px] font-black shadow-sm transition-all">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
@@ -1166,12 +779,10 @@ export default function BlogLibrary() {
             <button
               type="button"
               onClick={() => {
-                confirmUnsavedLeave(() => {
-                  setMode('blogs');
-                  setQuery('');
-                  setMobileReaderOpen(false);
-                  setMobileModeMenuOpen(false);
-                });
+                setMode('blogs');
+                setQuery('');
+                setMobileReaderOpen(false);
+                setMobileModeMenuOpen(false);
               }}
               className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${mode === 'blogs' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
             >
@@ -1184,12 +795,10 @@ export default function BlogLibrary() {
             <button
               type="button"
               onClick={() => {
-                confirmUnsavedLeave(() => {
-                  setMode('linkedin');
-                  setQuery('');
-                  setMobileReaderOpen(false);
-                  setMobileModeMenuOpen(false);
-                });
+                setMode('linkedin');
+                setQuery('');
+                setMobileReaderOpen(false);
+                setMobileModeMenuOpen(false);
               }}
               className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${mode === 'linkedin' ? 'border border-brand-crimson/15 bg-brand-pink/20 text-brand-crimson' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
             >
@@ -1208,21 +817,6 @@ export default function BlogLibrary() {
 
   return (
     <Layout headerActions={headerActions}>
-      {contentRevisionLocked ? (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/45 backdrop-blur-[2px]">
-          <div className="mx-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-white px-5 py-4 text-sm font-black text-emerald-800 shadow-[0_22px_60px_rgba(15,23,42,0.16)]">
-            <Loader2 size={18} className="animate-spin" />
-            {savingRevision ? 'Saving edits...' : revisingBlog ? 'Improving blog...' : 'Improving post...'}
-          </div>
-        </div>
-      ) : null}
-      {unsavedConfirm ? (
-        <UnsavedEditsModal
-          message={unsavedConfirm.message}
-          onCancel={() => setUnsavedConfirm(null)}
-          onDiscard={unsavedConfirm.onDiscard}
-        />
-      ) : null}
       <div className="content-repo-page flex h-full min-h-[calc(100vh-64px)] -m-3 flex-col gap-4 p-3 mesh-bg sm:-m-5 sm:gap-5 sm:p-5 lg:-m-6 lg:p-6">
         <div className="sm:hidden">
           <div className="relative min-w-0 max-w-xl flex-1">
@@ -1230,7 +824,6 @@ export default function BlogLibrary() {
             <input
               className="relative h-11 w-full rounded-2xl border border-gray-200 bg-white py-0 pl-10 pr-4 text-sm font-medium leading-normal text-gray-700 shadow-sm transition-all placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-crimson/20 focus:border-brand-crimson/40 hover:border-gray-300"
               value={query}
-              disabled={hasUnsavedRevision}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setMobileReaderOpen(false);
@@ -1246,7 +839,7 @@ export default function BlogLibrary() {
             <button type="button" onClick={toggleSelectAllSocial} className="content-repo-action-button rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedSocialIds.length === socialItems.length ? 'Unselect All' : 'Select All'}
             </button>
-            <button type="button" onClick={() => confirmUnsavedLeave(() => deleteSocialPosts(selectedSocialIds))} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+            <button type="button" onClick={() => deleteSocialPosts(selectedSocialIds)} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
               Delete
             </button>
@@ -1262,7 +855,7 @@ export default function BlogLibrary() {
             <button type="button" onClick={toggleSelectAllBlogs} className="content-repo-action-button rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:border-gray-300">
               {selectedIds.length === items.length ? 'Unselect All' : 'Select All'}
             </button>
-            <button type="button" onClick={() => confirmUnsavedLeave(() => deletePosts(selectedIds))} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
+            <button type="button" onClick={() => deletePosts(selectedIds)} disabled={deleting} className="content-repo-action-button inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
               Delete
             </button>
@@ -1278,8 +871,8 @@ export default function BlogLibrary() {
           </div>
         )}
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]">
-          <section className={`content-repo-list-panel ${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:py-4 sm:pl-4 sm:pr-5 xl:h-[calc(100vh-96px)]`}>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-4 animate-fade-in-up stagger-2 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
+          <section className={`content-repo-list-panel ${mobileReaderOpen ? 'hidden xl:block' : 'block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.92))] p-3 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar sm:p-4`}>
             {loading && ((mode === 'blogs' && !items.length) || (mode === 'linkedin' && !socialItems.length)) ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
@@ -1307,7 +900,7 @@ export default function BlogLibrary() {
                     <div
                       key={post._id}
                       className={`content-repo-list-card w-full rounded-[22px] border p-4 text-left transition-all duration-300 relative overflow-hidden ${
-                        isSelected ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(22,58,36,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
+                        isSelected ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' : 'border-white/50 bg-white/72 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
                       {isSelected && (
@@ -1327,18 +920,13 @@ export default function BlogLibrary() {
                         <button
                           type="button"
                           onClick={() => {
-                            confirmUnsavedLeave(() => {
-                              setSelectedSocial(post);
-                              setSocialFeedback('');
-                              openReaderOnSmallScreens();
-                            });
+                            setSelectedSocial(post);
+                            openReaderOnSmallScreens();
                           }}
                           className="min-w-0 flex-1 text-left"
                         >
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                              <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm">LinkedIn</span>
-                            </div>
+                            <span className="rounded-full border border-brand-crimson/10 bg-brand-pink/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-brand-crimson shadow-sm">LinkedIn</span>
                             <span className="text-[10px] font-bold text-gray-400">{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</span>
                           </div>
                           <div className="line-clamp-2 text-sm font-black leading-snug text-gray-900">{post.selectedTopic || 'Saved LinkedIn post'}</div>
@@ -1364,7 +952,7 @@ export default function BlogLibrary() {
                       key={blog._id}
                       className={`content-repo-list-card w-full text-left transition-all duration-300 rounded-[22px] p-4 border relative overflow-hidden group ${
                         isSelected 
-                          ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(22,58,36,0.12)]' 
+                          ? 'content-repo-list-card-selected border-brand-crimson/35 bg-white shadow-[0_18px_36px_rgba(209,18,67,0.12)]' 
                           : 'border-white/50 bg-white/72 hover:bg-white hover:border-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]'
                       }`}
                     >
@@ -1385,28 +973,11 @@ export default function BlogLibrary() {
                         <button
                           type="button"
                           onClick={() => {
-                            confirmUnsavedLeave(() => {
-                              setSelected(blog);
-                              setBlogFeedback('');
-                              openReaderOnSmallScreens();
-                            });
+                            setSelected(blog);
+                            openReaderOnSmallScreens();
                           }}
                           className="min-w-0 flex-1 text-left"
                         >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest shadow-sm ${
-                                isSelected
-                                  ? 'border-brand-crimson/20 bg-brand-pink/20 text-brand-crimson'
-                                  : 'border-brand-crimson/10 bg-brand-pink/50 text-brand-crimson'
-                              }`}>
-                                Blog
-                              </span>
-                            </div>
-                            <span className="shrink-0 text-[10px] font-bold text-gray-400">
-                              {(blog.publishedAt || blog.updatedAt || blog.createdAt) ? new Date(blog.publishedAt || blog.updatedAt || blog.createdAt).toLocaleDateString() : ''}
-                            </span>
-                          </div>
                           <div className={`mb-2 text-base font-black leading-snug ${isSelected ? 'text-gray-900' : 'text-gray-800 group-hover:text-gray-900'}`}>
                             {blog.title}
                           </div>
@@ -1432,11 +1003,11 @@ export default function BlogLibrary() {
             )}
           </section>
 
-          <article className={`content-repo-reader ${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:h-[calc(100vh-96px)] xl:p-10`}>
+          <article className={`content-repo-reader ${mobileReaderOpen ? 'block' : 'hidden xl:block'} min-h-0 overflow-y-auto rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.98))] p-4 shadow-[0_24px_50px_rgba(15,23,42,0.08)] backdrop-blur custom-scrollbar relative sm:p-8 xl:p-10`}>
             <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-gray-100 bg-white/96 px-4 py-3 backdrop-blur xl:hidden">
               <button
                 type="button"
-                onClick={() => confirmUnsavedLeave(() => setMobileReaderOpen(false))}
+                onClick={() => setMobileReaderOpen(false)}
                 className="content-repo-back-button inline-flex min-h-[42px] items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-gray-800 shadow-sm transition-all hover:border-brand-crimson/30 hover:text-brand-crimson"
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-brand-crimson shadow-sm">
@@ -1447,7 +1018,7 @@ export default function BlogLibrary() {
             </div>
             {mode === 'linkedin' ? (
               selectedSocial ? (
-                <div className="mx-auto max-w-6xl animate-fade-in-up">
+                <div className="max-w-3xl mx-auto animate-fade-in-up">
                   <div className="content-repo-toolbar mb-5 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
@@ -1455,64 +1026,38 @@ export default function BlogLibrary() {
                       {selectedSocial.framework && <Pill icon={Tag}>{selectedSocial.framework}</Pill>}
                       {selectedSocial.createdAt && <Pill icon={CalendarDays}>{new Date(selectedSocial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</Pill>}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={copySocialPost}
-                        className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
-                          copied
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
-                        }`}
-                      >
-                        {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={copySocialPost}
+                      className={`content-repo-copy-button inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] shadow-sm transition-all ${
+                        copied
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-brand-crimson/15 bg-brand-pink/35 text-brand-crimson hover:border-brand-crimson/30 hover:bg-brand-pink/50'
+                      }`}
+                    >
+                      {copied ? <CheckSquare size={14} /> : <Copy size={14} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
-                    <div className="min-w-0">
-                      <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
-                      <div className="content-repo-social-preview rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-4">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
-                          <div>
-                            <div className="text-sm font-black text-gray-900">Admin</div>
-                            <div className="text-xs font-semibold text-gray-400">LinkedIn post</div>
-                          </div>
-                        </div>
-                        <div className="whitespace-pre-wrap text-[15px] font-medium leading-loose text-gray-800">{selectedSocial.postText}</div>
-                        {Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length ? (
-                          <div className="mt-4 break-words text-sm font-bold leading-relaxed text-brand-crimson">{selectedSocial.hashtags.join(' ')}</div>
-                        ) : null}
+                  <h2 className="mb-5 text-3xl font-black leading-tight text-gray-900 text-gradient">{selectedSocial.selectedTopic || 'Saved LinkedIn post'}</h2>
+                  <div className="content-repo-social-preview rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-crimson text-xs font-black text-white">A</div>
+                      <div>
+                        <div className="text-sm font-black text-gray-900">Admin</div>
+                        <div className="text-xs font-semibold text-gray-400">LinkedIn post</div>
                       </div>
                     </div>
-                    {isAdmin ? (
-                      <aside className="order-last lg:order-none">
-                        <div className="lg:sticky lg:top-4">
-                          <ImproveFeedbackPanel
-                            value={socialFeedback}
-                            onChange={setSocialFeedback}
-                            onSubmit={improveSelectedSocial}
-                            loading={revisingSocial}
-                            title="Improve with feedback"
-                            description="Ask AI to revise this same draft while keeping the post useful and source grounded."
-                            placeholder="Example: Make the hook sharper, reduce hype, add a clearer advisory CTA."
-                          buttonLabel="Improve Post"
-                          loadingLabel="Improving Post..."
-                          dirty={socialDraftDirty}
-                          onSave={saveSocialRevision}
-                          saving={savingRevision}
-                        />
-                        </div>
-                      </aside>
+                    <div className="whitespace-pre-wrap text-[15px] font-medium leading-loose text-gray-800">{selectedSocial.postText}</div>
+                    {Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length ? (
+                      <div className="mt-4 break-words text-sm font-bold leading-relaxed text-brand-crimson">{selectedSocial.hashtags.join(' ')}</div>
                     ) : null}
                   </div>
                 </div>
               ) : <Empty large />
             ) : selected ? (
-              <div className="mx-auto max-w-6xl animate-fade-in-up">
+              <div className="max-w-3xl mx-auto animate-fade-in-up">
                 <div className="content-repo-toolbar mb-6 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2.5">
@@ -1534,53 +1079,21 @@ export default function BlogLibrary() {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="min-w-0">
-                    <h2 className="text-3xl sm:text-4xl font-black leading-tight text-gray-900 mb-6 font-display tracking-tight text-gradient">{selected.title}</h2>
-                    
-                    {selected.excerpt && (
-                      <div className="pl-4 border-l-4 border-brand-crimson/30 mb-8 py-1">
-                        <p className="text-lg font-medium leading-relaxed text-gray-600 italic">
-                          {selected.excerpt}
-                        </p>
-                      </div>
-                    )}
-                    
-                    <div className="max-w-none">
-                      <div className="text-gray-800">
-                        <MarkdownArticle bodyMarkdown={selected.bodyMarkdown} title={selected.title} />
-                      </div>
-                    </div>
+                
+                <h2 className="text-3xl sm:text-4xl font-black leading-tight text-gray-900 mb-6 font-display tracking-tight text-gradient">{selected.title}</h2>
+                
+                {selected.excerpt && (
+                  <div className="pl-4 border-l-4 border-brand-crimson/30 mb-8 py-1">
+                    <p className="text-lg font-medium leading-relaxed text-gray-600 italic">
+                      {selected.excerpt}
+                    </p>
                   </div>
-                  <aside className="order-last lg:order-none">
-                    <div className="lg:sticky lg:top-4">
-                      {isAdmin ? (
-                        <ImproveFeedbackPanel
-                          value={blogFeedback}
-                          onChange={setBlogFeedback}
-                          onSubmit={improveSelectedBlog}
-                          loading={revisingBlog}
-                          title="Improve with feedback"
-                          description="Ask AI to revise this same draft while keeping the SOP format and source grounding."
-                          placeholder="Example: Make the intro stronger, reduce repetition, add practical steps, and keep the CTA advisory."
-                          buttonLabel="Improve Blog"
-                          loadingLabel="Improving Blog..."
-                          dirty={blogDraftDirty}
-                          onSave={saveBlogRevision}
-                          saving={savingRevision}
-                        />
-                      ) : null}
-                      <ReviewCommentsPanel
-                        comments={selected.reviewComments || []}
-                        value={blogComment}
-                        onChange={setBlogComment}
-                        onSubmit={submitBlogComment}
-                        onDelete={deleteBlogComment}
-                        loading={submittingComment}
-                        deletingCommentId={deletingCommentId}
-                      />
-                    </div>
-                  </aside>
+                )}
+                
+                <div className="max-w-none">
+                  <div className="text-gray-800">
+                    <MarkdownArticle bodyMarkdown={selected.bodyMarkdown} title={selected.title} />
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1593,197 +1106,15 @@ export default function BlogLibrary() {
   );
 }
 
-function ImproveFeedbackPanel({
-  value,
-  onChange,
-  onSubmit,
-  loading = false,
-  title = 'Improve with feedback',
-  description = '',
-  placeholder = '',
-  buttonLabel = 'Improve Post',
-  loadingLabel = 'Improving...',
-  dirty = false,
-  onSave,
-  saving = false
-}) {
-  return (
-    <div className="content-repo-improve-panel mb-7 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 shadow-sm">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-emerald-700">{title}</div>
-          {description ? (
-            <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-900/70">{description}</p>
-          ) : null}
-        </div>
-        <Sparkles size={18} className="shrink-0 text-emerald-700" />
-      </div>
-      <textarea
-        className="content-repo-improve-input input min-h-[96px] resize-y rounded-xl bg-white text-sm transition-colors hover:border-emerald-200 focus:border-emerald-500"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-      />
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={loading || !String(value || '').trim()}
-        className="content-repo-improve-button mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white py-3 text-sm font-black text-emerald-700 transition-all hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-        {loading ? loadingLabel : buttonLabel}
-      </button>
-      {dirty ? (
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving || loading}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson py-3 text-sm font-black text-white transition-all hover:bg-brand-hoverred disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-          {saving ? 'Saving...' : 'Save Edits'}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function ReviewCommentsPanel({
-  comments = [],
-  value,
-  onChange,
-  onSubmit,
-  onDelete,
-  loading = false,
-  deletingCommentId = ''
-}) {
-  const sortedComments = [...comments].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-  return (
-    <div className="content-repo-comments-panel rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-gray-700">Review Comments</div>
-          <p className="mt-1 text-xs font-semibold leading-relaxed text-gray-500">Leave notes for the reviewer or content team.</p>
-        </div>
-        <MessageSquareText size={18} className="shrink-0 text-gray-500" />
-      </div>
-      <textarea
-        className="input min-h-[86px] resize-y rounded-xl bg-gray-50 text-sm transition-colors hover:border-gray-200 focus:border-brand-crimson/50"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="Write a review comment..."
-      />
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={loading || !String(value || '').trim()}
-        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-crimson py-3 text-sm font-black text-white transition-all hover:bg-brand-hoverred disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquareText size={16} />}
-        {loading ? 'Saving Comment...' : 'Add Comment'}
-      </button>
-      <div className="mt-4 space-y-3">
-        {sortedComments.length ? sortedComments.map((comment) => (
-          <div key={comment._id || `${comment.createdAt}-${comment.text}`} className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-xs font-black text-gray-800">{comment.authorName || 'Reviewer'}</span>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : ''}
-                </span>
-                {comment._id ? (
-                  <button
-                    type="button"
-                    onClick={() => onDelete?.(comment._id)}
-                    disabled={Boolean(deletingCommentId)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500 transition-all hover:border-red-200 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Delete comment"
-                    aria-label="Delete comment"
-                  >
-                    {deletingCommentId === comment._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-600">{comment.text}</p>
-          </div>
-        )) : (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-4 text-center text-xs font-bold text-gray-400">
-            No review comments yet.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function UnsavedEditsModal({
-  title = 'Discard unsaved edits?',
-  message = 'You have unsaved changes. Discard them and continue, or keep editing.',
-  onCancel,
-  onDiscard
-}) {
-  return (
-    <div data-unsaved-edits-modal className="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-950/60 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-[420px] rounded-[26px] border border-gray-200 bg-white p-5 shadow-[0_28px_80px_rgba(15,23,42,0.30)] sm:p-6">
-        <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
-            <FileText size={18} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-base font-black text-gray-900">{title}</div>
-            <p className="mt-2 text-sm font-semibold leading-relaxed text-gray-500">{message}</p>
-          </div>
-        </div>
-        <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
-          >
-            Keep Editing
-          </button>
-          <button
-            type="button"
-            onClick={onDiscard}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-crimson px-4 text-sm font-black text-white shadow-sm ring-2 ring-brand-crimson ring-offset-2 transition-all hover:bg-brand-hoverred"
-          >
-            Discard Changes
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Pill({ icon: Icon, children, highlight = false }) {
   return (
     <span className={`content-repo-pill ${highlight ? 'content-repo-pill-highlight' : ''} inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border shadow-sm transition-all ${
       highlight 
-        ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(22,58,36,0.18)]' 
+        ? 'border-brand-hoverred bg-brand-crimson text-white shadow-[0_10px_24px_rgba(209,18,67,0.18)]' 
         : 'border-gray-200 bg-white text-gray-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]'
     }`}>
       <Icon size={12} />
       {children}
-    </span>
-  );
-}
-
-function contentStatusLabel(status) {
-  if (status === 'published') return 'Published';
-  if (status === 'archived') return 'Archived';
-  return 'Review';
-}
-
-function StatusPill({ status }) {
-  return (
-    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-      status === 'published' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' :
-      ['review', 'draft'].includes(status) ? 'border-amber-200 bg-amber-50 text-amber-600' :
-      'border-gray-200 bg-gray-50 text-gray-500'
-    }`}>
-      {contentStatusLabel(status)}
     </span>
   );
 }

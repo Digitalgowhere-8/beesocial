@@ -44,8 +44,8 @@ export default function Register() {
   const update = (k, v) => setForm({ ...form, [k]: v });
 
   const inputStyle = {
-    background: isDark ? 'rgba(7,14,25,0.96)' : '#ffffff',
-    border: isDark ? '1px solid rgba(148,163,184,0.18)' : '1px solid #D8DED2',
+    background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
+    border: isDark ? '1px solid rgba(148,163,184,0.18)' : '1px solid #e5e7eb',
     borderRadius: '12px',
     padding: '12px 14px',
     fontSize: '14px',
@@ -53,44 +53,44 @@ export default function Register() {
     width: '100%',
     outline: 'none',
     transition: 'all 0.2s',
-    boxShadow: 'none',
+    boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.02)',
     fontFamily: robotoFont
   };
 
   const handleFocus = (e) => {
-    e.target.style.borderColor = isDark ? '#D11243' : '#CBD5E1';
+    e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
       ? 'none'
-      : '0 0 0 3px rgba(148,163,184,0.18)';
+      : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const handleBlur = (e) => {
-    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
     e.target.style.boxShadow = 'none';
   };
 
   const shellStyle = {
     fontFamily: robotoFont,
-    background: isDark ? '#070d17' : '#FAFBF7',
+    background: isDark ? '#070d17' : '#FAF0F2',
     color: isDark ? '#f8fafc' : '#111827'
   };
   const formPanelStyle = {
     background: isDark
       ? '#070d17'
-      : '#FAFBF7'
+      : '#FAF0F2'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
       ? 'none'
-      : '0 1px 2px rgba(15,23,42,0.04)',
-    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid #D8DED2'
+      : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
   };
   const optionButtonClass = [
     'group flex w-full items-start gap-4 rounded-2xl border p-5 text-left transition-all duration-300',
     isDark
       ? 'border-slate-700/40 bg-slate-950/45 hover:border-[#D11243] hover:bg-[#D11243]/10'
-      : 'border-[#D8DED2] bg-white hover:border-[#B7D89D] hover:bg-[#FAFBF7]'
+      : 'border-gray-100 bg-gray-50/50 hover:border-[#D11243]/45 hover:bg-[#D11243]/10'
   ].join(' ');
   const titleColor = isDark ? 'text-white' : 'text-gray-900';
   const bodyTextColor = isDark ? 'text-slate-400' : 'text-gray-400';
@@ -101,7 +101,7 @@ export default function Register() {
     <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={shellStyle}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-10 xl:px-12 pt-10 xl:pt-12 pb-0"
-        style={{ background: isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : 'linear-gradient(135deg, #163A24 0%, #07180E 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
       >
         <div
           className="absolute inset-0 opacity-10 pointer-events-none"
@@ -169,11 +169,11 @@ export default function Register() {
                     className={optionButtonClass}
                     style={{ transition: 'all 0.25s ease', fontFamily: robotoFont }}
                   >
-                    <div className="auth-choice-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition-colors duration-200" style={{ background: isDark ? '#D11243' : '#163A24' }}>
+                    <div className="auth-choice-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D11243] text-white transition-colors duration-200">
                       <UserPlus size={20} />
                     </div>
                     <div className="flex-1">
-                      <h3 className={`text-sm font-bold transition-colors ${isDark ? 'text-slate-100 group-hover:text-[#D11243]' : 'text-gray-800 group-hover:text-[#163A24]'}`}>I am a new user</h3>
+                      <h3 className={`text-sm font-bold transition-colors group-hover:text-[#D11243] ${isDark ? 'text-slate-100' : 'text-gray-800'}`}>I am a new user</h3>
                       <p className={`${bodyTextColor} mt-1 text-xs leading-normal`}>Request a new admin dashboard account. Super admin approval is required before access is granted.</p>
                     </div>
                   </button>
@@ -185,11 +185,11 @@ export default function Register() {
                     className={optionButtonClass}
                     style={{ transition: 'all 0.25s ease', fontFamily: robotoFont }}
                   >
-                    <div className="auth-choice-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition-colors duration-200" style={{ background: isDark ? '#D11243' : '#163A24' }}>
+                    <div className="auth-choice-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D11243] text-white transition-colors duration-200">
                       <KeyRound size={20} />
                     </div>
                     <div className="flex-1">
-                      <h3 className={`text-sm font-bold transition-colors ${isDark ? 'text-slate-100 group-hover:text-[#D11243]' : 'text-gray-800 group-hover:text-[#163A24]'}`}>I already have an account</h3>
+                      <h3 className={`text-sm font-bold transition-colors group-hover:text-[#D11243] ${isDark ? 'text-slate-100' : 'text-gray-800'}`}>I already have an account</h3>
                       <p className={`${bodyTextColor} mt-1 text-xs leading-normal`}>Sign in securely using your credentials and jump straight to the console.</p>
                     </div>
                   </button>
@@ -200,7 +200,7 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={() => setStage('select')}
-                  className={`group mb-4 inline-flex items-center gap-1.5 text-xs font-semibold transition-colors ${isDark ? 'hover:text-[#D11243]' : 'hover:text-[#163A24]'} ${bodyTextColor}`}
+                  className={`group mb-4 inline-flex items-center gap-1.5 text-xs font-semibold transition-colors hover:text-[#D11243] ${bodyTextColor}`}
                   style={{ fontFamily: robotoFont }}
                 >
                   <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform duration-200" /> Back
@@ -240,7 +240,7 @@ export default function Register() {
                   </div>
 
                   {error && (
-                    <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#b91c1c', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(185,28,28,0.15)' }}>
+                    <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#D11243', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(209,18,67,0.15)' }}>
                       {error}
                     </div>
                   )}
@@ -257,7 +257,7 @@ export default function Register() {
 
                 <p className={`mt-5 text-center text-xs ${bodyTextColor}`}>
                   Already have an account?{' '}
-                  <button type="button" onClick={() => navigate('/login')} className="font-bold hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
+                  <button type="button" onClick={() => navigate('/login')} className="font-bold hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                     Sign in
                   </button>
                 </p>

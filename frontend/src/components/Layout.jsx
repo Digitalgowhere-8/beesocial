@@ -10,8 +10,8 @@ import {
   LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, PenLine, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
 } from 'lucide-react';
 
-const CRIMSON = '#163A24';
-const DARK_RED = '#0E2618';
+const CRIMSON = '#D11243';
+const DARK_RED = '#8F0B2F';
 const SUPER_ADMIN_SECTIONS = [
   { key: 'platform', label: 'Overview', icon: Crown },
   { key: 'articles', label: 'Articles', icon: FileText },
@@ -57,7 +57,7 @@ function SideNavItem({
         }`
       }
       style={({ isActive }) => ({
-        background: isActive ? 'rgba(8,59,18,0.06)' : undefined,
+        background: isActive ? 'rgba(209,18,67,0.06)' : undefined,
         color: isActive ? CRIMSON : undefined,
         fontWeight: isActive ? '700' : '500',
         fontSize: '13px',
@@ -888,13 +888,13 @@ export default function Layout({ children, headerActions = null }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden xl:h-screen xl:flex-row xl:overflow-hidden" style={{ fontFamily: '"Roboto", system-ui, sans-serif' }}>
-      <header className="mobile-app-header fixed inset-x-0 top-0 z-50 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(22,58,36,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(243,255,229,0.97)_100%)] px-0 pb-0 pt-0 backdrop-blur xl:hidden">
-        <div className="mobile-app-header-card overflow-visible rounded-none border-x-0 border-t-0 border-b border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(243,255,229,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
-        <div className="mobile-app-header-glow pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(22,58,36,0.10),rgba(255,255,255,0),rgba(249,196,22,0.10))] blur-2xl" />
+      <header className="mobile-app-header fixed inset-x-0 top-0 z-50 shrink-0 border-b border-gray-100/70 bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(255,247,249,0.97)_100%)] px-0 pb-0 pt-0 backdrop-blur xl:hidden">
+        <div className="mobile-app-header-card overflow-visible rounded-none border-x-0 border-t-0 border-b border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,250,251,0.94)_100%)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+        <div className="mobile-app-header-glow pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[linear-gradient(90deg,rgba(209,18,67,0.10),rgba(255,255,255,0),rgba(209,18,67,0.06))] blur-2xl" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="mobile-app-logo-tile relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(243,255,229,0.98)_100%)] shadow-[0_8px_18px_rgba(22,58,36,0.10)] ring-1 ring-gray-200">
-              <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(249,196,22,0.16),transparent_55%)]" />
+            <div className="mobile-app-logo-tile relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(253,242,246,0.98)_100%)] shadow-[0_8px_18px_rgba(209,18,67,0.10)] ring-1 ring-gray-200">
+              <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(209,18,67,0.14),transparent_55%)]" />
               <img src={logoSrc} className="relative h-6 object-contain" alt="BeeSocial Logo" />
             </div>
             <div className="min-w-0">
@@ -992,10 +992,10 @@ export default function Layout({ children, headerActions = null }) {
         {/* Collapse toggle / logo */}
         <div className={`${collapsed ? 'relative justify-center px-2' : 'justify-between px-4'} flex h-[72px] items-center border-b border-gray-100 shrink-0 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]`}>
           {!collapsed ? (
-            <div className="flex-1 flex justify-center">
+            <div className="flex-1 flex justify-start pl-2">
               <img 
                 src={logoSrc} 
-                className="h-12 w-32 cursor-pointer object-contain" 
+                className="h-10 cursor-pointer object-contain" 
                 onClick={() => navigateIfNeeded(isSuperAdmin ? '/admin' : '/dashboard')} 
                 alt="BeeSocial Logo" 
               />
@@ -1004,10 +1004,10 @@ export default function Layout({ children, headerActions = null }) {
             <button
               type="button"
               title="Open sidebar"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-crimson/10 bg-white shadow-[0_10px_24px_rgba(22,58,36,0.14)] ring-4 ring-brand-pink/40 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-[0_14px_28px_rgba(22,58,36,0.18)]"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-crimson/10 bg-white shadow-[0_10px_24px_rgba(209,18,67,0.14)] ring-4 ring-brand-pink/40 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-crimson/20 hover:shadow-[0_14px_28px_rgba(209,18,67,0.18)]"
               onClick={() => setCollapsed(false)}
             >
-              <img src={logoSrc} className="h-8 w-8 object-contain" alt="BeeSocial Logo" />
+              <img src="/favicon.png" className="h-8 w-8 object-contain" alt="BeeSocial Logo" />
             </button>
           )}
           {!collapsed ? (
@@ -1048,7 +1048,7 @@ export default function Layout({ children, headerActions = null }) {
                       onClick={() => navigateAndCollapseSidebar(`/admin?section=${key}`)}
                       className={`side-nav-item grid h-11 w-full grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-xl px-3 text-left transition-all duration-150 group ${active ? 'side-nav-item-active bg-brand-pink/60 text-brand-crimson font-bold shadow-sm' : 'side-nav-item-idle text-gray-500 hover:bg-brand-pink/20 hover:text-gray-800'}`}
                       style={{
-                        background: active ? 'rgba(8,59,18,0.06)' : undefined,
+                        background: active ? 'rgba(209,18,67,0.06)' : undefined,
                         color: active ? CRIMSON : undefined,
                         fontWeight: active ? '700' : '500',
                         fontSize: '13px',
@@ -1133,7 +1133,7 @@ export default function Layout({ children, headerActions = null }) {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden pt-[132px] xl:pt-0">
         {/* Top Header */}
         <header className="hidden h-[72px] shrink-0 bg-white border-b border-gray-100 items-center justify-between gap-4 px-4 xl:flex xl:px-6"
-          style={{ boxShadow: '0 1px 0 rgba(8,59,18,0.06)' }}>
+          style={{ boxShadow: '0 1px 0 rgba(209,18,67,0.06)' }}>
           <div className="min-w-0 flex items-center gap-3">
             <span className="truncate text-base font-bold text-gray-800">{getPageTitle()}</span>
           </div>

@@ -34,73 +34,6 @@ function includesAny(haystack, terms = []) {
   return terms.some((term) => haystack.includes(term));
 }
 
-const MARKET_SERVICE_ANGLE_TERMS = [
-  'listing rules',
-  'listing requirements',
-  'prospectus',
-  'disclosure requirement',
-  'corporate governance',
-  'regulatory approval',
-  'compliance',
-  'tax',
-  'fund administration',
-  'corporate advisory',
-  'market entry',
-  'company incorporation',
-  'company registration',
-  'business registration',
-  'foreign entity registration',
-  'transfer of registration',
-  're domiciliation',
-  'redomiciliation',
-  'cross border',
-  'foreign investment',
-  'fdi'
-];
-
-const ACTIONABLE_SERVICE_ANGLE_TERMS = [
-  'aml',
-  'anti money laundering',
-  'business registration',
-  'company incorporation',
-  'company registration',
-  'company secretary',
-  'corporate governance',
-  'disclosure requirement',
-  'employment pass',
-  'filing requirement',
-  'foreign entity registration',
-  'gst',
-  'immigration',
-  'kyc',
-  'labour law',
-  'licensing requirement',
-  'listing requirements',
-  'payroll',
-  'policy update',
-  'regulatory approval',
-  'regulatory compliance',
-  'regulatory requirement',
-  'regulatory update',
-  'statutory filing',
-  'tax filing',
-  'tax incentive',
-  'tax refund',
-  'transfer of registration',
-  'work pass'
-];
-
-const WEAK_SERVICE_TERMS = new Set([
-  'acquisition',
-  'business',
-  'business expansion',
-  'company',
-  'corporate',
-  'corporate services',
-  'market entry',
-  'market expansion'
-]);
-
 function selectedCategories(profile = {}) {
   const categories = []
     .concat(Array.isArray(profile.categories) ? profile.categories : [])
@@ -127,7 +60,6 @@ function serviceKeywordsForProfile(profile = {}) {
 
   const addKeyword = (value) => {
     const normalized = normalizeWords(value);
-    if (WEAK_SERVICE_TERMS.has(normalized)) return;
     if (normalized && normalized.length > 2) keywords.add(normalized);
   };
 
@@ -150,6 +82,7 @@ function serviceKeywordsForProfile(profile = {}) {
   if (!keywords.size) {
     [
       'corporate',
+      'company',
       'business',
       'tax',
       'compliance',
@@ -168,46 +101,6 @@ function serviceKeywordsForProfile(profile = {}) {
 function hasServiceMatch(body, profile = {}) {
   const keywords = serviceKeywordsForProfile(profile);
   return keywords.some((term) => body.includes(term));
-}
-
-function isMarketOnlyNoise(body) {
-  const marketOnlyTerms = [
-    'stock market',
-    'stocks',
-    'shares',
-    'equities',
-    'trading session',
-    'market rally',
-    'market selloff',
-    'roller coaster',
-    'currency',
-    'foreign exchange',
-    'forex',
-    'yen',
-    'dollar',
-    'exchange rate',
-    'bond yields',
-    'treasury yields',
-    'bumper crop of ipos',
-    'ipo pipeline',
-    'ipos'
-  ];
-  return includesAny(body, marketOnlyTerms) && !includesAny(body, MARKET_SERVICE_ANGLE_TERMS);
-}
-
-function isOfficialGovtHost(item = {}) {
-  const host = cleanDomain(hostFromUrl(item.url || item.link) || item.sourceType || item.source);
-  return (
-    host.endsWith('.gov') ||
-    host.includes('.gov.') ||
-    host.endsWith('.gov.sg') ||
-    host.endsWith('.gov.hk') ||
-    host.endsWith('.gov.uk') ||
-    host.endsWith('.gov.au') ||
-    host.endsWith('.gov.my') ||
-    host.endsWith('.gov.ph') ||
-    host.endsWith('.gov.ae')
-  );
 }
 
 function competitorMentions(textBody, competitors = [], source = '', url = '') {
@@ -249,116 +142,13 @@ function isPdfLike(item = {}) {
   );
 }
 
-function isStaticPageLike(item = {}) {
-  const title = normalizeWords(item.title);
-  if (title === 'home' || title.startsWith('home ')) return true;
-  if (title.includes('newsletter') || title.includes('acraconnect')) return true;
-  const url = text(item.url || item.link);
-  try {
-    const parsed = new URL(url);
-    const path = parsed.pathname.replace(/\/+/g, '/').replace(/\/$/, '').toLowerCase();
-    const staticPathTerms = [
-      '/account',
-      '/accounts',
-      '/auth',
-      '/login',
-      '/register',
-      '/registration',
-      '/sign-in',
-      '/signin',
-      '/sign-up',
-      '/signup',
-      '/subscribe',
-      '/newsletter',
-      '/newsletters',
-      '/events',
-      '/event',
-      '/webinar',
-      '/search',
-      '/sitemap'
-    ];
-    return (
-      !path ||
-      path === '/home' ||
-      path === '/en' ||
-      path === '/en/home' ||
-      path === '/web/home' ||
-      staticPathTerms.some((term) => path === term || path.startsWith(`${term}/`))
-    );
-  } catch (_err) {
-    return false;
-  }
-}
-
 function evaluateTopicArticle(item = {}, options = {}) {
   const topic = text(options.topic || item.type).toLowerCase();
   const profile = options.profile || {};
-  const precheckOnly = Boolean(options.precheckOnly);
   const body = buildTopicText(item);
 
   if (!body) return { keep: false, reason: 'empty-content' };
   if (isPdfLike(item)) return { keep: false, reason: 'pdf' };
-  if (isStaticPageLike(item)) return { keep: false, reason: 'static-page' };
-
-  const sponsoredTerms = [
-    'advertising partner',
-    'sponsored content',
-    'paid content',
-    'paid post',
-    'partner content',
-    'brand studio',
-    'native advertising',
-    'content has been produced by our advertising partner'
-  ];
-  if (includesAny(body, sponsoredTerms)) return { keep: false, reason: 'sponsored' };
-
-  if (precheckOnly) {
-    const boilerplateOnlyTerms = [
-      'printer icon',
-      'linkedin logo',
-      'bluesky logo',
-      'facebook logo',
-      'x logo',
-      'print article',
-      'share this article'
-    ];
-    if (includesAny(body, boilerplateOnlyTerms) && !includesAny(body, [
-      'official announcement',
-      'new law',
-      'regulation',
-      'circular',
-      'consultation',
-      'deadline',
-      'effective from',
-      'takes effect',
-      'published on',
-      'last updated'
-    ])) {
-      return { keep: false, reason: 'static-page' };
-    }
-
-    const staticPageTerms = [
-      'login',
-      'sign in',
-      'sign up',
-      'search results',
-      'site map',
-      'sitemap',
-      'newsletter archive',
-      'newsletter issue',
-      'subscribe',
-      'registration form',
-      'quick links',
-      'e service',
-      'e-service',
-      'portal homepage',
-      '404',
-      'page not found'
-    ];
-    const titleAndUrl = normalizeWords([item.title, item.url].map(text).filter(Boolean).join(' '));
-    if (includesAny(titleAndUrl, staticPageTerms)) return { keep: false, reason: 'static-page' };
-    return { keep: true };
-  }
 
   const genericReferenceTerms = [
     'faq',
@@ -373,11 +163,7 @@ function evaluateTopicArticle(item = {}, options = {}) {
   ];
 
   const unrelatedSectorTerms = [
-    'anti dumping',
-    'arbitration',
-    'battery',
     'cancer',
-    'child protection',
     'oncology',
     'tumor',
     'tumour',
@@ -390,45 +176,12 @@ function evaluateTopicArticle(item = {}, options = {}) {
     'pharma',
     'pharmaceutical',
     'biotech',
-    'healthcare treatment',
-    'construction',
-    'defence',
-    'defense',
-    'electric vehicle',
-    'energy',
-    'export control',
-    'export controls',
-    'furniture',
-    'housing',
-    'land sale',
-    'litigation',
-    'manufacturing',
-    'military',
-    'mining',
-    'oil and gas',
-    'oil & gas',
-    'patent',
-    'property',
-    'real estate',
-    'retail',
-    'sanction',
-    'sanctions',
-    'shipping',
-    'social welfare',
-    'south china sea',
-    'student housing',
-    'tourism',
-    'trade war',
-    'transport'
+    'healthcare treatment'
   ];
 
-  const serviceMatch = hasServiceMatch(body, profile) || includesAny(body, MARKET_SERVICE_ANGLE_TERMS);
-  const actionableServiceMatch = includesAny(body, ACTIONABLE_SERVICE_ANGLE_TERMS);
-  if (includesAny(body, unrelatedSectorTerms) && !actionableServiceMatch) {
+  const serviceMatch = hasServiceMatch(body, profile);
+  if (includesAny(body, unrelatedSectorTerms) && !serviceMatch) {
     return { keep: false, reason: 'irrelevant-sector' };
-  }
-  if (isMarketOnlyNoise(body)) {
-    return { keep: false, reason: 'market-only' };
   }
 
   if (topic === 'govt') {
@@ -445,15 +198,10 @@ function evaluateTopicArticle(item = {}, options = {}) {
     ];
     const positiveGovtTerms = [
       'announcement',
-      'amendment',
-      'bill',
       'circular',
       'consultation',
-      'enactment',
       'regulation',
       'regulatory update',
-      'rule',
-      'rules',
       'gazette',
       'guidelines issued',
       'new rule',
@@ -461,58 +209,30 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'press release',
       'public notice',
       'tax update',
-      'licensing update',
-      'update',
-      'requirements',
-      'steps',
-      'registration',
-      'registering',
-      'filing',
-      'application',
-      'process',
-      'transfer of registration',
-      'foreign entity',
-      're domiciliation',
-      're domiciliation',
-      'redomiciliation'
+      'licensing update'
     ];
-    const officialServiceGuideTerms = [
-      'requirements',
-      'steps',
-      'registration',
-      'registering',
-      'business registration',
-      'company registration',
-      'company incorporation',
-      'foreign entity',
-      'foreign business',
-      'transfer of registration',
-      're domiciliation',
-      're domiciliation',
-      'redomiciliation',
-      'filing',
-      'application',
-      'process',
-      'setting up a foreign business'
-    ];
-    const officialServiceGuide = isOfficialGovtHost(item) && serviceMatch && includesAny(body, officialServiceGuideTerms);
-    if (includesAny(body, blockedGovtTerms) && !officialServiceGuide) return { keep: false, reason: 'govt-static' };
+    if (includesAny(body, blockedGovtTerms)) return { keep: false, reason: 'govt-static' };
     if (!serviceMatch) return { keep: false, reason: 'govt-non-service' };
-    if (!includesAny(body, positiveGovtTerms) && !officialServiceGuide) return { keep: false, reason: 'govt-non-update' };
+    if (!includesAny(body, positiveGovtTerms)) return { keep: false, reason: 'govt-non-update' };
     return { keep: true };
   }
 
   if (topic === 'news') {
-    const evergreenOnlyTerms = ['guide', 'checklist', 'how to', 'manual'];
+    const blockedNewsTerms = [
+      ...genericReferenceTerms,
+      'guide',
+      'checklist',
+      'requirements',
+      'how to',
+      'overview',
+      'explainer',
+      'manual'
+    ];
     const positiveNewsTerms = [
+      '/news/',
       'news',
       'announced',
       'announcement',
-      'business',
-      'compliance',
-      'consultation',
-      'economy',
-      'employment',
       'reports',
       'reported',
       'launches',
@@ -523,21 +243,11 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'deal',
       'investment',
       'market update',
-      'policy',
-      'regulation',
-      'regulatory',
-      'tax',
-      'update',
       'business times',
       'reuters',
       'bloomberg'
     ];
-    if (includesAny(body, genericReferenceTerms) && !includesAny(body, positiveNewsTerms)) {
-      return { keep: false, reason: 'news-non-news' };
-    }
-    if (includesAny(body, evergreenOnlyTerms) && !includesAny(body, positiveNewsTerms)) {
-      return { keep: false, reason: 'news-non-news' };
-    }
+    if (includesAny(body, blockedNewsTerms)) return { keep: false, reason: 'news-non-news' };
     if (!serviceMatch) return { keep: false, reason: 'news-non-service' };
     if (!includesAny(body, positiveNewsTerms)) return { keep: false, reason: 'news-non-news' };
     return { keep: true };
@@ -598,7 +308,6 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'guide',
       'checklist',
       'requirements',
-      'requirement',
       'process',
       'procedure',
       'how to',
@@ -607,44 +316,17 @@ function evaluateTopicArticle(item = {}, options = {}) {
       'manual',
       'filing',
       'registration',
-      'incorporation',
       'compliance',
       'eligibility',
-      'license',
-      'licence',
-      'licensing',
-      'tax',
-      'employment',
-      'company',
-      'business',
-      'service',
-      'services',
-      'forms',
-      'information',
       'set up',
       'setup'
     ];
     const blockedEvergreenTerms = [
-      'adb sees',
-      'appeals court',
-      'businesses warned',
-      'grants tax relief',
-      'new simplified documentary',
-      'feedback on',
-      'feedback sought',
-      'forum',
-      'opinion',
-      'pending cases',
+      ...genericReferenceTerms.filter((term) => term !== 'faq' && term !== 'frequently asked questions'),
+      '/news/',
+      '/press/',
+      '/press-release',
       'press release',
-      'proposed reform',
-      'proposed reforms',
-      'proposed governance reform',
-      'proposed governance reforms',
-      'reform covering',
-      'reforms covering',
-      'seeks feedback',
-      'shuts down',
-      'warned vs',
       'announced',
       'announcement',
       'breaking news',

@@ -9,7 +9,7 @@ const progress = require('./profileRunProgress');
 const { publishGlobalEvent } = require('../utils/realtime');
 
 const TOPICS = ['news', 'govt', 'competitor', 'evergreen'];
-const ALL_CATEGORIES = Object.keys(CATEGORIES).filter((category) => category !== 'Competitor Intelligence');
+const ALL_CATEGORIES = Object.keys(CATEGORIES);
 const DEFAULT_CONFIG = {
   countries: [],
   categories: ALL_CATEGORIES,
@@ -57,6 +57,8 @@ function normalizeConfig(value = {}) {
     .filter((topic) => TOPICS.includes(topic));
   const schedule = value.schedule && typeof value.schedule === 'object' ? value.schedule : {};
 
+  const configuredCategories = unique(value.categories || [])
+    .filter((cat) => ALL_CATEGORIES.includes(cat));
   const sourceDomainsByCountry = availableCountries.reduce((out, country) => {
     const config = value.sourceDomainsByCountry?.[country];
     if (!config || typeof config !== 'object') return out;
@@ -79,7 +81,7 @@ function normalizeConfig(value = {}) {
     ...DEFAULT_CONFIG,
     ...value,
     countries,
-    categories: ALL_CATEGORIES,
+    categories: configuredCategories.length ? configuredCategories : ALL_CATEGORIES,
     topics: topics.length ? topics : DEFAULT_CONFIG.topics,
     sourceDomainsByCountry,
     days: Math.max(1, Math.min(365, Number(value.days || DEFAULT_CONFIG.days) || DEFAULT_CONFIG.days)),
@@ -204,50 +206,18 @@ async function updateLogTotals(logId, patch) {
   await FetchLog.findByIdAndUpdate(logId, { $set: patch });
 }
 
-async function appendProgressMessage(logId, update = {}) {
-  if (!update.message) return;
-  const entry = {
-    at: new Date().toISOString(),
-    step: update.step || 'running',
-    message: String(update.message).slice(0, 1000)
-  };
-  await FetchLog.findByIdAndUpdate(logId, {
-    $push: {
-      progressMessages: {
-        $each: [entry],
-        $slice: -250
-      }
-    }
-  });
-}
-
-function recordProgress(logId, update = {}) {
-  const state = progress.updateRun(logId, update);
-  appendProgressMessage(logId, update).catch(() => {});
-  return state;
-}
-
 async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = 'manual' }) {
   const startedAt = new Date();
   const categories = Object.keys(CATEGORIES);
-  const totals = { fetched: 0, matched: 0, rejected: 0, aiIgnored: 0, inserted: 0, duplicates: 0, errors: 0 };
+  const totals = { fetched: 0, inserted: 0, duplicates: 0, errors: 0 };
   const perSource = [];
-  const debugSamples = { rejected: [], aiIgnored: [], matched: [] };
-  const addDebugSamples = (samples = {}) => {
-    for (const key of Object.keys(debugSamples)) {
-      for (const sample of samples[key] || []) {
-        if (debugSamples[key].length >= 10) break;
-        debugSamples[key].push(sample);
-      }
-    }
-  };
 
   for (let i = 0; i < config.countries.length; i += 1) {
     throwIfCancelled(logId);
     const country = config.countries[i];
     const countryPrefix = `${country} (${i + 1}/${config.countries.length})`;
     const basePercent = 8 + Math.floor((i / config.countries.length) * 82);
-    recordProgress(logId, {
+    progress.updateRun(logId, {
       step: `country:${country}:start`,
       percent: basePercent,
       message: `${countryPrefix}: starting ${config.topics.length} selected topic fetch`
@@ -261,7 +231,8 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         userId: String(triggeredByUser || 'platform-scheduler'),
         trigger,
         country,
-        categories: ALL_CATEGORIES,
+        // Use only the configured categories — never fetch all categories blindly
+        categories: config.categories && config.categories.length ? config.categories : Object.keys(CATEGORIES),
         topics: config.topics,
         days: config.days,
         targetPerTopic: config.targetPerTopic,
@@ -276,7 +247,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
       });
 
       const resultPayload = await runProfileSearch(payload, {
-        onProgress: ({ step, message }) => recordProgress(logId, {
+        onProgress: ({ step, message }) => progress.updateRun(logId, {
           step,
           percent: Math.min(90, basePercent + 4),
           message: `${countryPrefix}: ${message}`
@@ -294,39 +265,23 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         global: true
       }, { skipLog: true });
 
-      const fetchedCandidates = Number(resultPayload.totalFetched || resultPayload.searchStats?.rawCandidates || resultPayload.resultCount || 0);
-      const precheckRejected = resultPayload.searchStats?.rejected
-        ? Object.values(resultPayload.searchStats.rejected).reduce((sum, count) => sum + Number(count || 0), 0)
-        : 0;
-      const aiIgnored = Number(resultPayload.searchStats?.aiIgnored || 0);
-      const categoryRejected = Number(resultPayload.searchStats?.categoryRejected || 0);
-      const scoreRejected = Number(resultPayload.searchStats?.scoreRejected || 0);
-      const rejectedTotal = precheckRejected + aiIgnored + categoryRejected + scoreRejected;
-      totals.fetched += fetchedCandidates;
-      totals.matched += Number(resultPayload.resultCount || 0);
-      totals.rejected += rejectedTotal;
-      totals.aiIgnored += aiIgnored;
+      totals.fetched += Number(resultPayload.resultCount || 0);
       totals.inserted += Number(persisted.inserted || 0);
       totals.duplicates += Number(persisted.duplicates || 0);
-      addDebugSamples(resultPayload.searchStats?.debugSamples);
       perSource.push(...resultRows(country, resultPayload, persisted));
       await updateLogTotals(logId, {
         totalFetched: totals.fetched,
-        totalMatched: totals.matched,
-        totalRejected: totals.rejected,
-        totalAiIgnored: totals.aiIgnored,
         totalInserted: totals.inserted,
         totalDuplicates: totals.duplicates,
         totalErrors: totals.errors,
         perSource,
-        debugSamples,
         resultCount: totals.inserted,
-        notes: `Platform fetch running: ${countryPrefix} complete (${fetchedCandidates} fetched, ${resultPayload.resultCount || 0} matched, ${rejectedTotal} rejected, ${aiIgnored} AI ignored)`
+        notes: `Platform fetch running: ${countryPrefix} complete`
       });
-      recordProgress(logId, {
+      progress.updateRun(logId, {
         step: `country:${country}:saved`,
         percent: Math.min(92, basePercent + Math.floor(82 / config.countries.length)),
-        message: `${countryPrefix}: fetched ${fetchedCandidates}, matched ${resultPayload.resultCount || 0}, saved ${persisted.inserted} new (${persisted.duplicates} duplicate${persisted.duplicates === 1 ? '' : 's'})`
+        message: `${countryPrefix}: saved ${persisted.inserted} new result${persisted.inserted === 1 ? '' : 's'} (${persisted.duplicates} duplicate${persisted.duplicates === 1 ? '' : 's'})`
       });
     } catch (error) {
       if (error.code === 'FETCH_CANCELLED') throw error;
@@ -344,17 +299,13 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
       });
       await updateLogTotals(logId, {
         totalFetched: totals.fetched,
-        totalMatched: totals.matched,
-        totalRejected: totals.rejected,
-        totalAiIgnored: totals.aiIgnored,
         totalInserted: totals.inserted,
         totalDuplicates: totals.duplicates,
         totalErrors: totals.errors,
         perSource,
-        debugSamples,
         notes: `Platform fetch error for ${country}: ${error.message}`
       });
-      recordProgress(logId, {
+      progress.updateRun(logId, {
         step: `country:${country}:error`,
         message: `${countryPrefix}: failed: ${error.message}`
       });
@@ -370,16 +321,12 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
       finishedAt,
       durationMs: finishedAt.getTime() - startedAt.getTime(),
       totalFetched: totals.fetched,
-      totalMatched: totals.matched,
-      totalRejected: totals.rejected,
-      totalAiIgnored: totals.aiIgnored,
       totalInserted: totals.inserted,
       totalDuplicates: totals.duplicates,
       totalErrors: totals.errors,
       perSource,
-      debugSamples,
       resultCount: totals.inserted,
-      notes: `Platform fetch ${status}: ${totals.fetched} fetched candidates, ${totals.matched} matched, ${totals.rejected} rejected, ${totals.inserted} new, ${totals.duplicates} duplicate, ${totals.errors} error`
+      notes: `Platform fetch ${status}: ${totals.inserted} new, ${totals.duplicates} duplicate, ${totals.errors} error`
     }
   });
 
@@ -388,11 +335,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
     step: 'complete',
     processed: totals.inserted,
     resultCount: totals.fetched,
-    message: `Platform fetch ${status}: ${totals.fetched} fetched candidate${totals.fetched === 1 ? '' : 's'}, ${totals.inserted} new result${totals.inserted === 1 ? '' : 's'} saved`
-  });
-  await appendProgressMessage(logId, {
-    step: 'complete',
-    message: `Platform fetch ${status}: ${totals.fetched} fetched candidate${totals.fetched === 1 ? '' : 's'}, ${totals.matched} matched, ${totals.rejected} rejected, ${totals.inserted} new saved`
+    message: `Platform fetch ${status}: ${totals.inserted} new result${totals.inserted === 1 ? '' : 's'} saved`
   });
 
   if (trigger === 'schedule') {
@@ -438,12 +381,7 @@ async function triggerPlatformFetch({ triggeredByUser, config, trigger = 'manual
     country: normalized.countries.join(', '),
     sector: 'platform intelligence',
     query: `${normalized.countries.length} countries, ${normalized.topics.join(', ')}`,
-    notes: 'Platform fetch queued by super admin',
-    progressMessages: [{
-      at: new Date().toISOString(),
-      step: 'queued',
-      message: 'Platform fetch queued'
-    }]
+    notes: 'Platform fetch queued by super admin'
   });
 
   running = true;
@@ -469,10 +407,6 @@ async function triggerPlatformFetch({ triggeredByUser, config, trigger = 'manual
             percent: 100,
             message: 'Platform fetch cancelled.'
           });
-          appendProgressMessage(runningLogId, {
-            step: 'cancelled',
-            message: 'Platform fetch cancelled.'
-          }).catch(() => {});
           return;
         }
         await FetchLog.findByIdAndUpdate(log._id, {
@@ -490,10 +424,6 @@ async function triggerPlatformFetch({ triggeredByUser, config, trigger = 'manual
           error: error.message,
           message: `Platform fetch failed: ${error.message}`
         });
-        appendProgressMessage(runningLogId, {
-          step: 'failed',
-          message: `Platform fetch failed: ${error.message}`
-        }).catch(() => {});
       })
       .finally(() => {
         running = false;
@@ -522,10 +452,6 @@ async function cancelPlatformFetch() {
   const logId = runningLogId;
   cancelRequested = true;
   progress.cancelRun(logId, 'Platform fetch cancellation requested by user');
-  appendProgressMessage(logId, {
-    step: 'cancelled',
-    message: 'Platform fetch cancellation requested by user'
-  }).catch(() => {});
   await FetchLog.findByIdAndUpdate(logId, {
     $set: {
       status: 'cancelled',

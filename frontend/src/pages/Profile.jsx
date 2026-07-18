@@ -240,7 +240,7 @@ export default function Profile() {
               type="button"
               onClick={() => navigate('/admin')}
               data-tour="profile-admin-controls"
-              className="profile-secondary-action profile-admin-controls-button inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
+              className="profile-secondary-action inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 text-[13px] font-black text-gray-900 shadow-sm transition-all hover:border-brand-crimson/20 hover:bg-gray-50"
             >
               Admin Controls
             </button>

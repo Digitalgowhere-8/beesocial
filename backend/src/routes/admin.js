@@ -721,8 +721,7 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
             email: '$user.email',
             company: '$user.company',
             role: '$user.role',
-            subscriptionPlan: '$user.subscriptionPlan',
-            avatar: '$user.avatar'
+            subscriptionPlan: '$user.subscriptionPlan'
           }
         }
       }
@@ -730,8 +729,8 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
     FetchLog.find({})
       .sort({ startedAt: -1 })
       .limit(8)
-      .populate('userId', 'name email company subscriptionPlan role avatar')
-      .populate('triggeredByUser', 'name email company subscriptionPlan role avatar')
+      .populate('userId', 'name email company subscriptionPlan role')
+      .populate('triggeredByUser', 'name email company subscriptionPlan role')
       .lean()
   ]);
 

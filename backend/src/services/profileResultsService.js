@@ -2,15 +2,17 @@ const mongoose = require('mongoose');
 const FetchLog = require('../models/FetchLog');
 const Article = require('../models/Article');
 const UserResult = require('../models/UserResult');
-const { hashUrl, normalizeUrl } = require('../utils/hash');
+const { hashUrl } = require('../utils/hash');
 const { publishGlobalEvent, publishTenantEvent } = require('../utils/realtime');
 const { CATEGORIES } = require('../config/categories');
 const {
+  applyGovernmentIntakeRules,
   articleWindowEnd,
   articleWindowStart,
   buildContentFingerprint,
   choosePreferredGovernmentItem
 } = require('./articleIntakePolicy');
+const { evaluateTopicArticle } = require('./articleTopicRules');
 const { canonicalCountry, isAllowedDomainForCountry } = require('../config/fetchSources');
 
 function cleanLogId(value) {
@@ -23,7 +25,7 @@ function dedupeResultItems(items = []) {
   const deduped = [];
 
   for (const item of items) {
-    const url = normalizeUrl(String(item?.url || item?.link || '').trim());
+    const url = String(item?.url || item?.link || '').trim();
     const normalizedTitle = String(item?.title || '')
       .toLowerCase()
       .replace(/&/g, ' and ')
@@ -56,29 +58,6 @@ function normalizeDomain(value) {
     .toLowerCase();
 }
 
-function hostFromUrl(value) {
-  try {
-    return new URL(value).hostname.replace(/^www\./i, '').toLowerCase();
-  } catch (_err) {
-    return normalizeDomain(value);
-  }
-}
-
-function normalizeTitle(value) {
-  return cleanText(value)
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function titleHostKey(title, host) {
-  const normalizedTitle = normalizeTitle(title);
-  const normalizedHost = normalizeDomain(host);
-  return normalizedTitle && normalizedHost ? `${normalizedHost}|${normalizedTitle}` : '';
-}
-
 function resultAllowedDomains(item = {}) {
   const rawAllowed = item.allowedDomains
     || item.includeDomains
@@ -92,18 +71,6 @@ function resultAllowedDomains(item = {}) {
     return rawAllowed.split(',').map((value) => cleanText(value)).filter(Boolean);
   }
   return [];
-}
-
-function compactRawDataForArticle(item = {}, body = {}) {
-  const rawData = item.rawData && typeof item.rawData === 'object' ? item.rawData : {};
-  const raw = item.raw && typeof item.raw === 'object' ? item.raw : {};
-  return {
-    sourceQuery: item.source_query || item.sourceQuery || rawData.sourceQuery || raw.sourceQuery || body.query || '',
-    queryCategory: item.queryCategory || rawData.queryCategory || raw.queryCategory || '',
-    tavilyScore: item.tavilyScore || item.tavily_score || rawData.tavilyScore || raw.tavilyScore || null,
-    allowedDomains: resultAllowedDomains(item),
-    snippet: String(item.snippet || item.content || rawData.snippet || raw.snippet || '').slice(0, 4000)
-  };
 }
 
 function validSubcategoriesForCategory(category) {
@@ -212,6 +179,25 @@ function minStoreScore(body = {}) {
   return Math.max(0, Math.min(100, Number(body.minStoreScore ?? fallback) || fallback));
 }
 
+function maxAgeDays(body = {}) {
+  return Math.max(1, Math.min(365, Number(body.days || body.maxAgeDays || 30) || 30));
+}
+
+function parseItemPublishedAt(item = {}) {
+  const raw = item.publishedAt || item.published_at || item.date || item.rawData?.publishedAt || item.rawData?.published_date;
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isInsideDateAge(item = {}, body = {}) {
+  const publishedAt = parseItemPublishedAt(item);
+  if (!publishedAt) return false;
+  const ageMs = Date.now() - publishedAt.getTime();
+  if (ageMs < 0) return true;
+  return ageMs <= maxAgeDays(body) * 24 * 60 * 60 * 1000;
+}
+
 async function persistProfileResults(body = {}, options = {}) {
   const rawItems = Array.isArray(body.results) ? body.results : [];
   const dedupedItems = dedupeResultItems(rawItems);
@@ -230,13 +216,12 @@ async function persistProfileResults(body = {}, options = {}) {
   };
 
   const articleHashForItem = (item) => {
-    const url = normalizeUrl(String(item.url || item.link || '').trim());
-    const rawHash = url
-      ? hashUrl(url)
-      : item.urlHash || item.hash || hashUrl(`${item.title || 'untitled'}:${item.source || item.sourceId || ''}:${item.publishedAt || ''}`);
+    const url = String(item.url || item.link || '').trim();
+    const rawHash = item.urlHash || item.hash || (url ? hashUrl(url) : hashUrl(`${item.title || 'untitled'}:${body.userId || ''}:${Date.now()}`));
+    const tenantKey = userObjectId ? String(userObjectId) : 'global';
     return {
       rawHash,
-      storedHash: rawHash
+      storedHash: hashUrl(`${tenantKey}:${rawHash}`)
     };
   };
 
@@ -250,8 +235,33 @@ async function persistProfileResults(body = {}, options = {}) {
     }
     const topicType = normalizeArticleType(item);
     item.type = topicType;
+    if (!isInsideDateAge(item, body)) {
+      filteredCounts.stale += 1;
+      continue;
+    }
     if (isCrossCountySource(item, body)) {
       filteredCounts.crossCountyDomain += 1;
+      continue;
+    }
+    const topicRule = evaluateTopicArticle({
+      ...item,
+      type: topicType
+    }, {
+      topic: topicType,
+      profile: {
+        competitors: Array.isArray(body.competitors) ? body.competitors : []
+      }
+    });
+    if (!topicRule.keep) {
+      filteredCounts.topicRejected += 1;
+      continue;
+    }
+
+    const intake = applyGovernmentIntakeRules(item);
+    if (!intake.keep) {
+      if (intake.reason === 'blocked-domain') filteredCounts.blockedDomain += 1;
+      else if (intake.reason === 'static-government-page') filteredCounts.staticPage += 1;
+      else if (intake.reason === 'stale-government-update') filteredCounts.stale += 1;
       continue;
     }
 
@@ -319,71 +329,30 @@ async function persistProfileResults(body = {}, options = {}) {
         finalItems.push(item);
         continue;
       }
-      filteredCounts.existingDuplicate += 1;
+      const preferred = choosePreferredGovernmentItem(existing, item);
+      if (preferred === item) {
+        try {
+          await Article.deleteOne({ _id: existing._id });
+        } catch {
+          // If cleanup misses, the preferred version will still be upserted.
+        }
+        finalItems.push(item);
+      } else {
+        filteredCounts.existingDuplicate += 1;
+      }
     }
     filteredItems.length = 0;
     filteredItems.push(...finalItems);
   }
 
-  let items = filteredItems;
-  if (items.length) {
-    const identityRows = items.map((item) => {
-      const url = normalizeUrl(String(item.url || item.link || '').trim());
-      const sourceHost = normalizeDomain(item.sourceType || item.source_type || item.domain || hostFromUrl(url));
-      return {
-        item,
-        url,
-        normalizedUrl: normalizeUrl(url),
-        urlHash: articleHashForItem(item).storedHash,
-        sourceHost,
-        titleHostKey: titleHostKey(item.title, sourceHost)
-      };
-    });
-    const urlHashes = [...new Set(identityRows.map((row) => row.urlHash).filter(Boolean))];
-    const urls = [...new Set(identityRows.flatMap((row) => [row.url, row.normalizedUrl]).filter(Boolean))];
-    const titles = [...new Set(identityRows.map((row) => cleanText(row.item.title)).filter(Boolean))];
-    const sourceHosts = [...new Set(identityRows.map((row) => row.sourceHost).filter(Boolean))];
-    const existingArticles = await Article.find({
-      $or: [
-        urlHashes.length ? { urlHash: { $in: urlHashes } } : null,
-        urls.length ? { url: { $in: urls } } : null,
-        titles.length && sourceHosts.length ? { title: { $in: titles }, sourceType: { $in: sourceHosts } } : null
-      ].filter(Boolean)
-    }).select('_id title url urlHash sourceType').lean();
-    const existingHashes = new Set(existingArticles.map((article) => String(article.urlHash || '')).filter(Boolean));
-    const existingUrls = new Set(
-      existingArticles
-        .flatMap((article) => [article.url, normalizeUrl(article.url || '')])
-        .map((url) => String(url || ''))
-        .filter(Boolean)
-    );
-    const existingTitleHosts = new Set(
-      existingArticles
-        .map((article) => titleHostKey(article.title, article.sourceType || hostFromUrl(article.url || '')))
-        .filter(Boolean)
-    );
-    const nextItems = [];
-    for (const row of identityRows) {
-      if (
-        existingHashes.has(row.urlHash)
-        || existingUrls.has(row.url)
-        || existingUrls.has(row.normalizedUrl)
-        || existingTitleHosts.has(row.titleHostKey)
-      ) {
-        filteredCounts.existingDuplicate += 1;
-        continue;
-      }
-      nextItems.push(row.item);
-    }
-    items = nextItems;
-  }
+  const items = filteredItems;
 
   const ops = items.map((item) => {
-    const url = normalizeUrl(String(item.url || item.link || '').trim());
+    const url = String(item.url || item.link || '').trim();
     const { rawHash, storedHash } = articleHashForItem(item);
     const articleType = normalizeArticleType(item);
     const rawContent = String(item.rawContent || item.raw_content || item.rawData?.rawContent || item.raw?.rawContent || '').slice(0, 20000);
-    const blogContext = String(item.blog_context || item.blogContext || item.rawData?.blogContext || item.raw?.blogContext || '').slice(0, 12000);
+    const blogContext = String(item.blog_context || item.blogContext || item.rawData?.blogContext || item.raw?.blogContext || rawContent || '').slice(0, 12000);
     const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.rawData?.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 4000);
     const category = normalizeCategory(item.category, body.category);
     const subcategory = normalizeSubcategory(category, item.sub_category || item.subcategory, body.subcategory || body.sub_category);
@@ -391,29 +360,7 @@ async function persistProfileResults(body = {}, options = {}) {
       updateOne: {
         filter: { urlHash: storedHash },
         update: {
-          $setOnInsert: {
-            title: String(item.title || '').slice(0, 500),
-            summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
-            url,
-            type: articleType,
-            source: item.source || item.sourceName || 'profile-search',
-            sourceId: item.sourceId || item.source || 'profile-search',
-            sourceType: item.sourceType || '',
-            category,
-            subcategory,
-            country: item.country || body.country || defaultCountry(),
-            region: item.region || '',
-            sector: item.sector || '',
-            opportunityType: item.opportunityType || item.opportunity_type || 'market_news',
-            language: item.language || item.lang || 'en',
-            aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
-            rawContent,
-            blogContext,
-            tavilyAnswer,
-            rawData: compactRawDataForArticle(item, body),
-            publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
-            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
-            sourceQuery: String(item.source_query || item.sourceQuery || body.query || '').slice(0, 300),
+          $set: {
             relevanceScore: Number(item.relevance_score ?? item.relevanceScore ?? 0),
             relevanceReason: String(item.relevance_reason || item.relevanceReason || '').slice(0, 500),
             matchedInterests: Array.isArray(item.matched_terms)
@@ -433,6 +380,38 @@ async function persistProfileResults(body = {}, options = {}) {
             urlHash: storedHash,
             userId: userObjectId || undefined,
             savedSearchId: savedSearchObjectId || undefined
+          },
+          $setOnInsert: {
+            title: String(item.title || '').slice(0, 500),
+            summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
+            url,
+            type: articleType,
+            source: item.source || item.sourceName || 'profile-search',
+            sourceId: item.sourceId || item.source || 'profile-search',
+            sourceType: item.sourceType || '',
+            category,
+            subcategory,
+            country: item.country || body.country || defaultCountry(),
+            region: item.region || '',
+            sector: item.sector || '',
+            opportunityType: item.opportunityType || item.opportunity_type || 'market_news',
+            language: item.language || item.lang || 'en',
+            aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
+            rawContent,
+            blogContext,
+            tavilyAnswer,
+            rawData: item.rawData || item.raw || {
+              sourceQuery: item.source_query || item.sourceQuery || body.query || '',
+              queryCategory: item.queryCategory || '',
+              tavilyScore: item.tavilyScore || item.tavily_score || null,
+              allowedDomains: item.allowedDomains || item.includeDomains || item.include_domains || [],
+              rawContent,
+              blogContext,
+              tavilyAnswer
+            },
+            publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
+            fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),
+            sourceQuery: String(item.source_query || item.sourceQuery || body.query || '').slice(0, 300)
           }
         },
         upsert: true
@@ -445,20 +424,13 @@ async function persistProfileResults(body = {}, options = {}) {
     writeResult = await Article.bulkWrite(ops, { ordered: false });
   }
   const inserted = Number(writeResult?.upsertedCount || 0);
-  const upsertedIds = writeResult?.upsertedIds || {};
-  const insertedIndexes = new Set(
-    Object.keys(upsertedIds)
-      .map((index) => Number(index))
-      .filter((index) => Number.isInteger(index))
-  );
   const duplicates = Math.max(0, items.length - inserted) + filteredCounts.incomingDuplicate + filteredCounts.existingDuplicate;
 
-  if (userObjectId && insertedIndexes.size) {
-    const insertedItems = items.filter((_item, index) => insertedIndexes.has(index));
-    const hashes = insertedItems.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
+  if (userObjectId && items.length) {
+    const hashes = items.map((item) => articleHashForItem(item).storedHash).filter(Boolean);
     const articles = await Article.find({ urlHash: { $in: hashes } }, { _id: 1, urlHash: 1 }).lean();
     const articleByHash = new Map(articles.map((article) => [article.urlHash, article]));
-    const resultOps = insertedItems.map((item) => {
+    const resultOps = items.map((item) => {
       const urlHash = articleHashForItem(item).storedHash;
       const article = articleByHash.get(urlHash);
       if (!article) return null;
@@ -477,7 +449,7 @@ async function persistProfileResults(body = {}, options = {}) {
             savedSearchId: savedSearchObjectId || undefined
           },
           update: {
-            $setOnInsert: {
+            $set: {
               userId: userObjectId,
               articleId: article._id,
               savedSearchId: savedSearchObjectId || undefined,

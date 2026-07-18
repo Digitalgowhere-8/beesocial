@@ -22,14 +22,14 @@ export default function ResetPassword() {
   const hasToken = useMemo(() => token.trim().length > 0, [token]);
 
   const inputFocus = (e) => {
-    e.target.style.borderColor = isDark ? '#D11243' : '#CBD5E1';
+    e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
       ? 'none'
-      : '0 0 0 3px rgba(148,163,184,0.18)';
+      : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const inputBlur = (e) => {
-    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
     e.target.style.boxShadow = 'none';
   };
 
@@ -74,23 +74,23 @@ export default function ResetPassword() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-14 sm:p-10 transition-colors duration-300"
-      style={{ background: isDark ? '#070d17' : '#FAFBF7', fontFamily: robotoFont }}
+      style={{ background: isDark ? '#070d17' : '#FAF0F2', fontFamily: robotoFont }}
     >
       <div className="w-full max-w-[480px]">
         <div
           className="rounded-2xl p-5 transition-colors duration-300 sm:p-8 lg:p-9"
           style={{
             background: isDark ? '#111827' : '#ffffff',
-            boxShadow: isDark ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
-            border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid #D8DED2'
+            boxShadow: isDark ? 'none' : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+            border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
           }}
         >
           <div className="mb-6 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-white" style={{ background: isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : 'linear-gradient(135deg, #163A24 0%, #07180E 100%)' }}>
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-white" style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}>
               <KeyRound size={18} />
             </span>
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: isDark ? '#D11243' : '#163A24' }}>Security</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#D11243' }}>Security</div>
               <h1 className={`text-[1.45rem] font-black leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Create New Password</h1>
             </div>
           </div>
@@ -100,7 +100,7 @@ export default function ResetPassword() {
           </p>
 
           {!hasToken ? (
-            <div className="rounded-lg px-3 py-3 text-sm font-medium" style={{ background: '#FFF0F3', color: '#163A24', border: '1px solid rgba(22,58,36,0.15)' }}>
+            <div className="rounded-lg px-3 py-3 text-sm font-medium" style={{ background: '#FFF0F3', color: '#D11243', border: '1px solid rgba(209,18,67,0.15)' }}>
               This reset link is incomplete or expired. Request a new one to continue.
             </div>
           ) : null}
@@ -135,7 +135,7 @@ export default function ResetPassword() {
             )}
 
             {error && (
-              <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: '#FFF0F3', color: '#163A24', border: '1px solid rgba(22,58,36,0.15)' }}>
+              <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: '#FFF0F3', color: '#D11243', border: '1px solid rgba(209,18,67,0.15)' }}>
                 {error}
               </div>
             )}
@@ -145,8 +145,8 @@ export default function ResetPassword() {
               disabled={loading || !hasToken}
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white transition-all duration-300"
               style={{
-                background: loading || !hasToken ? (isDark ? '#e88' : '#CBD5C5') : (isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : '#163A24'),
-                boxShadow: 'none',
+                background: loading || !hasToken ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
+                boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
                 fontFamily: robotoFont
               }}
             >
@@ -155,7 +155,7 @@ export default function ResetPassword() {
           </form>
 
           <div className="mt-5 text-center">
-            <Link to="/login" className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
+            <Link to="/login" className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
               <ArrowLeft size={14} />
               Back to Login
             </Link>
@@ -178,8 +178,8 @@ function PasswordField({ label, value, visible, onToggle, onChange, onFocus, onB
           placeholder="Enter your new password"
           className="w-full rounded-xl border px-4 py-3 pr-10 text-sm shadow-sm outline-none transition-all duration-200 placeholder:text-gray-400"
           style={{
-            background: isDark ? '#0b1220' : '#ffffff',
-            borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2',
+            background: isDark ? '#0b1220' : '#FAFAFA',
+            borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb',
             color: isDark ? '#f8fafc' : '#1f2937',
             fontFamily: robotoFont
           }}

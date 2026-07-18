@@ -31,14 +31,9 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'mom.gov.sg',
     'edb.gov.sg',
     'mti.gov.sg',
-    'sgx.com',
     'businesstimes.com.sg',
     'straitstimes.com',
-    'channelnewsasia.com',
-    'mondaq.com',
-    'lexology.com',
-    'conventuslaw.com',
-    'asia.nikkei.com'
+    'channelnewsasia.com'
   ],
   India: [
     'economictimes.indiatimes.com',
@@ -56,11 +51,7 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'hkma.gov.hk',
     'cr.gov.hk',
     'ird.gov.hk',
-    'scmp.com',
-    'mondaq.com',
-    'lexology.com',
-    'conventuslaw.com',
-    'asia.nikkei.com'
+    'scmp.com'
   ],
   China: [
     'csrc.gov.cn',
@@ -68,11 +59,7 @@ const NEWS_SOURCE_DOMAINS_BY_COUNTRY = {
     'caixinglobal.com',
     'chinaeconomicreview.com',
     'yicaiglobal.com',
-    'chinadaily.com.cn',
-    'mondaq.com',
-    'lexology.com',
-    'conventuslaw.com',
-    'asia.nikkei.com'
+    'chinadaily.com.cn'
   ],
   Philippines: [
     'bworldonline.com',
@@ -169,7 +156,6 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'mom.gov.sg',
     'edb.gov.sg',
     'mti.gov.sg',
-    'sgx.com',
     'gov.sg',
     'mfa.gov.sg'
   ],
@@ -196,9 +182,6 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
     'ird.gov.hk',
     'labour.gov.hk',
     'investhk.gov.hk',
-    'cedb.gov.hk',
-    'fstb.gov.hk',
-    'hkex.com.hk',
     'gov.hk',
     'immd.gov.hk',
   ],
@@ -304,18 +287,12 @@ const GOVT_SOURCE_DOMAINS_BY_COUNTRY = {
 const DEFAULT_COMPETITOR_SOURCE_DOMAINS = [
   'vistra.com',
   'tricorglobal.com',
-  'intertrustgroup.com',
-  'aztecgroup.co.uk',
   'acclime.com',
   'kpmg.com',
   'pwc.com',
   'boardroomlimited.com',
   'hawksford.com',
-  'tmf-group.com',
-  'citco.com',
-  'iqeq.com',
-  'apexgroup.com',
-  'zedra.com'
+  'tmf-group.com'
 ];
 
 const COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY = {

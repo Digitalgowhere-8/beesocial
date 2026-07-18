@@ -52,48 +52,48 @@ export default function Login() {
   };
 
   const inputFocus = (e) => {
-    e.target.style.borderColor = isDark ? '#D11243' : '#CBD5E1';
+    e.target.style.borderColor = '#D11243';
     e.target.style.boxShadow = isDark
       ? 'none'
-      : '0 0 0 3px rgba(148,163,184,0.18)';
+      : '0 0 0 4px rgba(209,18,67,0.1)';
   };
 
   const inputBlur = (e) => {
-    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2';
+    e.target.style.borderColor = isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb';
     e.target.style.boxShadow = 'none';
   };
 
   const shellStyle = {
     fontFamily: robotoFont,
-    background: isDark ? '#070d17' : '#FAFBF7',
+    background: isDark ? '#070d17' : '#FAF0F2',
     color: isDark ? '#f8fafc' : '#111827'
   };
   const formPanelStyle = {
     background: isDark
       ? '#070d17'
-      : '#FAFBF7'
+      : '#FAF0F2'
   };
   const cardStyle = {
     background: isDark ? 'rgba(12, 20, 33, 0.96)' : '#ffffff',
     boxShadow: isDark
       ? 'none'
-      : '0 1px 2px rgba(15,23,42,0.04)',
-    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid #D8DED2'
+      : '0 12px 40px rgba(209,18,67,0.08), 0 1px 3px rgba(0,0,0,0.04)',
+    border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(209,18,67,0.05)'
   };
   const inputStyle = {
-    background: isDark ? 'rgba(7,14,25,0.96)' : '#ffffff',
+    background: isDark ? 'rgba(7,14,25,0.96)' : '#FAFAFA',
     color: isDark ? '#f8fafc' : '#1f2937',
-    borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#D8DED2',
+    borderColor: isDark ? 'rgba(148,163,184,0.18)' : '#e5e7eb',
     boxShadow: 'none',
     fontFamily: robotoFont
   };
   const logoSrc = isDark ? '/logo-white.png' : '/logo.png';
 
   return (
-    <div className="min-h-screen lg:h-screen flex overflow-hidden" style={shellStyle}>
+    <div className="min-h-screen lg:h-screen flex overflow-x-hidden" style={shellStyle}>
       <div
         className="hidden lg:flex lg:w-[55.5%] relative overflow-hidden flex-col justify-between px-12 pt-12 pb-0"
-        style={{ background: isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : 'linear-gradient(135deg, #163A24 0%, #07180E 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' }}
       >
         <div
           className="absolute inset-0 opacity-10 pointer-events-none"
@@ -136,23 +136,23 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-screen lg:h-screen flex items-center justify-center px-4 py-6 sm:p-10 lg:px-10 xl:px-14 relative overflow-hidden transition-colors duration-300" style={formPanelStyle}>
-        <div className="absolute left-4 top-6 sm:left-6 sm:top-8 lg:hidden">
-          <img src={logoSrc} className="h-[75px] w-auto" alt="BeeSocial Logo" />
+      <div className="flex-1 min-h-screen lg:h-screen flex items-center justify-center px-4 py-14 sm:p-10 lg:px-10 xl:px-14 relative overflow-hidden transition-colors duration-300" style={formPanelStyle}>
+        <div className="absolute top-6 left-4 sm:left-6 lg:hidden">
+          <img src={logoSrc} style={{ height: '75px', width: 'auto' }} alt="BeeSocial Logo" />
         </div>
 
-        <div className="relative z-10 w-full max-w-[460px] fade-in pt-12 sm:pt-0 lg:-mt-4" style={{ animationDelay: '0.05s' }}>
+        <div className="relative z-10 w-full max-w-[460px] fade-in lg:-mt-4" style={{ animationDelay: '0.05s' }}>
           <div
-            className="rounded-2xl p-4 transition-colors duration-300 sm:p-8 lg:p-9"
+            className="rounded-2xl p-5 transition-colors duration-300 sm:p-8 lg:p-9"
             style={cardStyle}
           >
-            <h1 className={`mb-4 text-[1.22rem] font-black leading-[1.2] tracking-tight sm:mb-5 sm:text-[1.4rem] xl:text-[1.55rem] ${isDark ? 'text-white' : 'text-gray-900'}`} style={{ fontFamily: robotoFont }}>
+            <h1 className={`mb-5 text-[1.4rem] font-black leading-[1.2] tracking-tight xl:text-[1.55rem] ${isDark ? 'text-white' : 'text-gray-900'}`} style={{ fontFamily: robotoFont }}>
               Secure sign-in to your
               <br />
               content intelligence dashboard.
             </h1>
 
-            <form onSubmit={submit} className="space-y-3 sm:space-y-4">
+            <form onSubmit={submit} className="space-y-4">
               <div>
                 <label className={`mb-2 block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Email</label>
                 <input
@@ -160,7 +160,7 @@ export default function Login() {
                   required
                   autoFocus
                   placeholder="name@company.com"
-                  className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-all duration-200 placeholder:text-gray-300 sm:py-3"
+                  className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-gray-300"
                   style={inputStyle}
                   onFocus={inputFocus}
                   onBlur={inputBlur}
@@ -172,7 +172,7 @@ export default function Login() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Password</label>
-                  <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
+                  <Link to="/forgot-password" className="text-[11px] font-bold uppercase tracking-wider hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                     Forgot Password?
                   </Link>
                 </div>
@@ -181,7 +181,7 @@ export default function Login() {
                     type={showPass ? 'text' : 'password'}
                     required
                     placeholder="Enter your password"
-                    className="w-full rounded-xl border px-4 py-2.5 pr-10 text-sm outline-none transition-all duration-200 placeholder:text-gray-300 sm:py-3"
+                    className="w-full rounded-xl border px-4 py-3 pr-10 text-sm outline-none transition-all duration-200 placeholder:text-gray-300"
                     style={inputStyle}
                     onFocus={inputFocus}
                     onBlur={inputBlur}
@@ -201,7 +201,7 @@ export default function Login() {
               )}
 
               {error && (
-                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#b91c1c', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(185,28,28,0.15)' }}>
+                <div className="rounded-lg px-3 py-2 text-xs font-medium" style={{ background: isDark ? 'rgba(127,29,29,0.35)' : '#FFF0F3', color: isDark ? '#fecdd3' : '#D11243', border: isDark ? '1px solid rgba(244,63,94,0.28)' : '1px solid rgba(209,18,67,0.15)' }}>
                   {error}
                 </div>
               )}
@@ -210,31 +210,30 @@ export default function Login() {
                 type="submit"
                 id="login-submit-btn"
                 disabled={loading}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-all duration-300 sm:mt-4 sm:py-3.5"
+                className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 mt-4"
                 style={{
-                  background: loading ? (isDark ? '#e88' : '#CBD5C5') : (isDark ? 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)' : '#163A24'),
-                  color: '#ffffff',
-                  boxShadow: 'none',
+                  background: loading ? '#e88' : 'linear-gradient(135deg, #D11243 0%, #8F0B2F 100%)',
+                  boxShadow: isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)',
                   fontFamily: robotoFont
                 }}
                 onMouseOver={(e) => {
                   if (!loading) {
                     e.currentTarget.style.transform = 'translateY(-1.5px)';
-                    e.currentTarget.style.boxShadow = 'none';
+                    e.currentTarget.style.boxShadow = isDark ? 'none' : '0 6px 20px rgba(209,18,67,0.4)';
                   }
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.boxShadow = isDark ? 'none' : '0 4px 14px rgba(209,18,67,0.3)';
                 }}
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <>Sign In <ArrowRight size={14} /></>}
               </button>
             </form>
 
-            <p className={`mt-4 text-center text-xs sm:mt-5 ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
+            <p className={`mt-5 text-center text-xs ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Need access?{' '}
-              <Link to="/register" className="font-bold hover:underline" style={{ color: isDark ? '#D11243' : '#163A24', fontFamily: robotoFont }}>
+              <Link to="/register" className="font-bold hover:underline" style={{ color: '#D11243', fontFamily: robotoFont }}>
                 Request an account
               </Link>
             </p>

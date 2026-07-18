@@ -2,35 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import api from '../api/axios';
 import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 
-const CRIMSON = '#163A24';
+const CRIMSON = '#D11243';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
 const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
-
-function parseDateValue(value) {
-  if (!value) return null;
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function todayDateKey() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getDateRangeError(filters = {}) {
-  const from = parseDateValue(filters.from);
-  const to = parseDateValue(filters.to);
-  const today = parseDateValue(todayDateKey());
-  if (filters.from && !from) return 'Enter a valid from date.';
-  if (filters.to && !to) return 'Enter a valid to date.';
-  if (from && today && from.getTime() > today.getTime()) return 'From date cannot be in the future.';
-  if (to && today && to.getTime() > today.getTime()) return 'To date cannot be in the future.';
-  if (from && to && from.getTime() > to.getTime()) return 'From date cannot be after To date.';
-  return '';
-}
 
 function visibleCategoryTree(configuredTree = {}, dataTree = {}) {
   const allowed = Object.keys(configuredTree || {}).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category));
@@ -162,7 +136,7 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
       }
     }
     setFilters(next);
-    if (!getDateRangeError(next)) onChange?.(next);
+    onChange?.(next);
   };
 
   const reset = () => {
@@ -175,8 +149,6 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
     .filter(([key]) => (showSavedFilter || key !== 'saved') && (showStatusFilter || key !== 'publishedOnly'))
     .map(([, value]) => value);
   const activeCount = visibleFilterValues.filter((v) => v !== '' && v != null).length;
-  const dateRangeError = getDateRangeError(filters);
-  const todayMax = todayDateKey();
 
   const inputBase = {
     background: 'white',
@@ -200,14 +172,14 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
       style={{
         background: 'white',
         borderRadius: '12px',
-        border: '1px solid rgba(22,58,36,0.1)',
-        boxShadow: '0 1px 8px rgba(22,58,36,0.05)',
+        border: '1px solid rgba(209,18,67,0.1)',
+        boxShadow: '0 1px 8px rgba(209,18,67,0.05)',
       }}
     >
       {/* Header toggle */}
       <header
         className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none"
-        style={{ borderBottom: open ? '1px solid rgba(22,58,36,0.08)' : 'none' }}
+        style={{ borderBottom: open ? '1px solid rgba(209,18,67,0.08)' : 'none' }}
         onClick={() => setOpen((v) => !v)}
       >
         <div className="flex items-center gap-2.5">
@@ -336,38 +308,13 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">From</label>
-              <input
-                className="intel-filter-control"
-                type="date"
-                style={{
-                  ...inputBase,
-                  borderColor: dateRangeError ? '#ef4444' : inputBase.border.split(' ').pop()
-                }}
-                value={filters.from}
-                max={filters.to && filters.to < todayMax ? filters.to : todayMax}
-                aria-invalid={dateRangeError ? 'true' : 'false'}
-                onChange={(e) => update('from', e.target.value)}
-                onFocus={handleFocus}
-                onBlur={(e) => { e.target.style.borderColor = dateRangeError ? '#ef4444' : '#e5e7eb'; }}
-              />
+              <input className="intel-filter-control" type="date" style={inputBase} value={filters.from}
+                onChange={(e) => update('from', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-1.5">To</label>
-              <input
-                className="intel-filter-control"
-                type="date"
-                style={{
-                  ...inputBase,
-                  borderColor: dateRangeError ? '#ef4444' : inputBase.border.split(' ').pop()
-                }}
-                value={filters.to}
-                min={filters.from || undefined}
-                max={todayMax}
-                aria-invalid={dateRangeError ? 'true' : 'false'}
-                onChange={(e) => update('to', e.target.value)}
-                onFocus={handleFocus}
-                onBlur={(e) => { e.target.style.borderColor = dateRangeError ? '#ef4444' : '#e5e7eb'; }}
-              />
+              <input className="intel-filter-control" type="date" style={inputBase} value={filters.to}
+                onChange={(e) => update('to', e.target.value)} onFocus={handleFocus} onBlur={handleBlur} />
             </div>
             {showSavedFilter && (
               <div>
@@ -393,11 +340,6 @@ export default function Filters({ initial = {}, onChange, showAdmin = false, sho
               </div>
             )}
           </div>
-          {dateRangeError ? (
-            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
-              {dateRangeError}
-            </div>
-          ) : null}
         </div>
       )}
     </section>
