@@ -51,9 +51,14 @@ const blogPostSchema = new mongoose.Schema(
     country: { type: String, default: '', index: true },
     region: { type: String, default: '', index: true },
     keywords: [{ type: String, trim: true }],
+    reviewComments: [{
+      text: { type: String, required: true, trim: true, maxlength: 2000 },
+      authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      authorName: { type: String, default: '', trim: true, maxlength: 120 },
+      createdAt: { type: Date, default: Date.now }
+    }],
     language: { type: String, default: 'en' },
     model: { type: String, default: '' },
-    generationPrompt: { type: String, default: '' },
     publishedAt: { type: Date }
   },
   { timestamps: true }

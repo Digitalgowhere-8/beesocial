@@ -1,12 +1,43 @@
 const { CATEGORIES } = require('../config/categories');
-const { canonicalCountry, mergeSourceDomains } = require('../config/fetchSources');
+const {
+  canonicalCountry,
+  mergeSourceDomains,
+  NEWS_SOURCE_DOMAINS_BY_COUNTRY,
+  GOVT_SOURCE_DOMAINS_BY_COUNTRY,
+  COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY
+} = require('../config/fetchSources');
+const {
+  CATEGORY_QUERY_PHRASES,
+  GOVT_CATEGORY_QUERY_PHRASES,
+  COUNTRY_CATEGORY_QUERY_PHRASES,
+  GOVT_QUERY_BUCKETS_BY_COUNTRY,
+  DEFAULT_GOVT_QUERY_BUCKETS,
+  COMPETITOR_QUERY_TEMPLATES,
+  GOVT_QUERY_TEMPLATES,
+  COUNTRY_AUTHORITY_HINTS,
+  TOPIC_QUERY_TEMPLATES
+} = require('../config/queryTemplates');
 const DEFAULT_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergreen')
   .split(',')
   .map((topic) => topic.trim().toLowerCase())
   .filter(Boolean);
 const DEFAULT_TARGET_PER_TOPIC = 150;
 const MAX_TARGET_PER_TOPIC = 150;
-const MAX_TAVILY_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_TAVILY_QUERY_LENGTH || 380) || 380));
+const MAX_TAVILY_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_TAVILY_QUERY_LENGTH || 400) || 400));
+const DEFAULT_COMPETITOR_QUERY_NAMES = [
+  'Tricor',
+  'Vistra',
+  'Intertrust',
+  'Aztec Group',
+  'Hawksford',
+  'TMF Group',
+  'BoardRoom',
+  'Citco',
+  'IQ-EQ',
+  'Apex Group',
+  'Acclime',
+  'ZEDRA'
+];
 
 function queryTermList(...groups) {
   return [...new Set(
@@ -16,391 +47,6 @@ function queryTermList(...groups) {
       .filter(Boolean)
   )].join(' ');
 }
-
-const CATEGORY_QUERY_MAP = {
-  'Corporate Services':
-    queryTermList(
-      'company incorporation',
-      'company registration',
-      'company formation',
-      'company secretary',
-      'corporate compliance',
-      'entity management',
-      'business setup',
-      'market entry',
-      'branch office',
-      'representative office',
-      'share registry',
-      'acquisition',
-      'liquidation',
-      'regulatory update'
-    ),
-  'Accounting & Tax':
-    queryTermList(
-      'corporate tax',
-      'income tax',
-      'tax filing',
-      'VAT',
-      'GST',
-      'sales tax',
-      'indirect tax',
-      'payroll tax',
-      'accounting',
-      'bookkeeping',
-      'financial reporting',
-      'tax advisory',
-      'tax incentive',
-      'government grant',
-      'budget',
-      'tax refund',
-      'compliance filing requirement',
-      'regulatory update'
-    ),
-  'Compliance & Governance':
-    queryTermList(
-      'business compliance',
-      'corporate governance',
-      'AML',
-      'KYC',
-      'risk management',
-      'beneficial ownership',
-      'licensing',
-      'regulatory filing',
-      'audit requirement',
-      'enforcement',
-      'policy circular',
-      'compliance update'
-    ),
-  'HR & Employment':
-    queryTermList(
-      'labour law',
-      'employment law',
-      'work pass',
-      'immigration',
-      'visa',
-      'payroll',
-      'social security',
-      'provident fund',
-      'employee compliance',
-      'workforce policy',
-      'hiring',
-      'regulation',
-      'HR compliance',
-      'rule change'
-    ),
-  'Fund Administration':
-    queryTermList(
-      'fund administration',
-      'fund governance',
-      'private fund',
-      'investment fund',
-      'fund manager licensing',
-      'fund compliance',
-      'investor reporting',
-      'regulatory circular',
-      'asset management',
-      'compliance update'
-    ),
-  'Financial Advisory':
-    queryTermList(
-      'M&A',
-      'merger',
-      'acquisition',
-      'corporate advisory',
-      'restructuring',
-      'valuation',
-      'transaction advisory',
-      'business consultancy',
-      'fundraising',
-      'investment deal',
-      'market entry',
-      'strategic advisory',
-      'regulatory update'
-    ),
-  'Fiduciary & Trust Services':
-    queryTermList(
-      'trust services',
-      'fiduciary services',
-      'family office',
-      'private client',
-      'wealth management',
-      'succession planning',
-      'estate planning',
-      'trustee',
-      'tax incentive',
-      'asset protection',
-      'regulatory requirement'
-    ),
-  'Cross Border & FDI':
-    queryTermList(
-      'foreign investment',
-      'FDI',
-      'market entry',
-      'cross border',
-      'business expansion',
-      'investment approval',
-      'company setup',
-      'trade policy',
-      'investment regulation',
-      'international business compliance'
-    ),
-  'Economy & Trade':
-    queryTermList(
-      'economy',
-      'trade',
-      'investment',
-      'government budget',
-      'tax incentive',
-      'business policy',
-      'industry scheme',
-      'grant',
-      'export',
-      'import',
-      'market outlook',
-      'economic update',
-      'business announcement'
-    )
-};
-
-const EVERGREEN_QUERY_MAP = {
-  'Corporate Services':
-    queryTermList(
-      'how to incorporate a company',
-      'company registration requirements',
-      'company secretary',
-      'business setup',
-      'compliance guide',
-      'entity management requirements'
-    ),
-  'Accounting & Tax':
-    queryTermList(
-      'corporate tax filing',
-      'GST',
-      'VAT',
-      'accounting compliance requirements',
-      'bookkeeping',
-      'tax incentive',
-      'tax refund guide',
-      'business tax requirements'
-    ),
-  'Compliance & Governance':
-    queryTermList(
-      'business compliance requirements',
-      'AML',
-      'KYC',
-      'corporate governance',
-      'risk management',
-      'licensing',
-      'regulatory filing guide',
-      'company compliance checklist'
-    ),
-  'HR & Employment':
-    queryTermList(
-      'employment law',
-      'payroll compliance',
-      'work pass',
-      'immigration',
-      'visa',
-      'labour law',
-      'hiring',
-      'employee compliance requirements guide'
-    ),
-  'Fund Administration':
-    queryTermList(
-      'fund administration requirements',
-      'fund governance',
-      'private fund compliance',
-      'fund manager licensing',
-      'investor reporting guide'
-    ),
-  'Financial Advisory':
-    queryTermList(
-      'M&A advisory',
-      'corporate restructuring',
-      'valuation',
-      'fundraising',
-      'transaction advisory',
-      'business consultancy',
-      'market entry guide'
-    ),
-  'Fiduciary & Trust Services':
-    queryTermList(
-      'family office setup',
-      'trust services',
-      'fiduciary services',
-      'private client',
-      'wealth management',
-      'succession planning requirements guide'
-    ),
-  'Cross Border & FDI':
-    queryTermList(
-      'foreign investment requirements',
-      'FDI',
-      'company setup',
-      'market entry',
-      'business expansion',
-      'cross border compliance guide'
-    ),
-  'Economy & Trade':
-    queryTermList(
-      'business economy trade',
-      'government incentive',
-      'grant scheme',
-      'investment policy',
-      'market opportunity guide'
-    )
-};
-
-const CATEGORY_GOVT_INTENT_MAP = {
-  'Corporate Services': queryTermList('company registration', 'incorporation', 'business regulation', 'policy', 'law', 'rule change'),
-  'Accounting & Tax': queryTermList('government budget', 'tax incentive', 'grant', 'GST', 'VAT', 'corporate tax', 'new announcement'),
-  'Compliance & Governance': queryTermList('AML compliance', 'corporate governance', 'risk regulation', 'policy circular', 'announcement'),
-  'HR & Employment': queryTermList('labour law', 'employment rule', 'work pass', 'immigration', 'social security', 'change policy'),
-  'Fund Administration': queryTermList('fund regulation', 'private equity', 'asset management', 'licensing', 'circular', 'policy update'),
-  'Financial Advisory': queryTermList('M&A', 'restructuring', 'insolvency', 'financial advisory', 'ESG regulation', 'policy announcement'),
-  'Fiduciary & Trust Services': queryTermList('family office', 'trust', 'wealth management', 'AML regulation', 'circular', 'policy announcement'),
-  'Cross Border & FDI': queryTermList('foreign investment', 'FDI', 'market entry', 'cross border business regulation', 'policy update'),
-  'Economy & Trade': queryTermList('government policy reform', 'foreign investment', 'business regulation', 'budget', 'trade update')
-};
-
-const COMPETITOR_QUERY_MAP = {
-  'Corporate Services':
-    queryTermList(
-      'company incorporation',
-      'company registration',
-      'corporate services',
-      'company secretary',
-      'entity management',
-      'competitor expansion',
-      'acquisition',
-      'partnership',
-      'new office',
-      'service launch'
-    ),
-  'Accounting & Tax':
-    queryTermList(
-      'accounting',
-      'tax advisory',
-      'bookkeeping',
-      'payroll',
-      'GST',
-      'VAT',
-      'corporate tax',
-      'competitor expansion',
-      'acquisition',
-      'partnership',
-      'new service launch',
-      'client announcement'
-    ),
-  'Compliance & Governance':
-    queryTermList(
-      'compliance governance',
-      'AML',
-      'KYC',
-      'risk management',
-      'licensing',
-      'regulatory filing',
-      'competitor expansion',
-      'acquisition',
-      'partnership',
-      'service launch',
-      'hiring'
-    ),
-  'HR & Employment':
-    queryTermList(
-      'employment law',
-      'payroll',
-      'immigration',
-      'visa',
-      'work pass',
-      'HR compliance',
-      'competitor expansion',
-      'partnership',
-      'hiring',
-      'new office',
-      'service launch'
-    ),
-  'Fund Administration':
-    queryTermList(
-      'fund administration',
-      'fund governance',
-      'private fund',
-      'asset management',
-      'competitor expansion',
-      'acquisition',
-      'partnership',
-      'fund services launch'
-    ),
-  'Financial Advisory':
-    queryTermList(
-      'M&A advisory',
-      'restructuring',
-      'valuation',
-      'transaction advisory',
-      'fundraising',
-      'competitor acquisition',
-      'partnership',
-      'deal announcement',
-      'service launch'
-    ),
-  'Fiduciary & Trust Services':
-    queryTermList(
-      'trust services',
-      'fiduciary services',
-      'family office',
-      'wealth management',
-      'competitor expansion',
-      'partnership',
-      'acquisition',
-      'service launch',
-      'senior appointment'
-    ),
-  'Cross Border & FDI':
-    queryTermList(
-      'FDI',
-      'foreign investment',
-      'market entry',
-      'cross border business expansion',
-      'competitor partnership',
-      'acquisition',
-      'new office',
-      'service launch'
-    ),
-  'Economy & Trade':
-    queryTermList(
-      'economy',
-      'trade',
-      'investment',
-      'business policy',
-      'market outlook',
-      'competitor expansion',
-      'partnership',
-      'acquisition',
-      'business announcement'
-    )
-};
-
-const COUNTRY_AUTHORITY_HINTS = {
-  'Abu Dhabi (UAE)': 'ADGM FSRA Abu Dhabi UAE',
-  Australia: 'ASIC APRA ATO Australia',
-  'British Virgin Islands': 'BVI FSC British Virgin Islands',
-  'Cayman Islands': 'CIMA Cayman Islands',
-  China: 'China MOFCOM SAMR PBOC CSRC',
-  Cyprus: 'CySEC Cyprus Registrar of Companies Tax Department',
-  'Dubai (UAE)': 'DIFC DFSA DMCC Dubai UAE FTA',
-  'Hong Kong': 'Hong Kong Companies Registry SFC HKMA IRD Labour Department',
-  India: 'India MCA CBDT CBIC SEBI RBI DPIIT',
-  Indonesia: 'Indonesia OJK BKPM OSS DGT Ministry Manpower',
-  Malaysia: 'Malaysia SSM LHDN SC BNM',
-  'Miami (United States)': 'Miami Florida SEC FINRA IRS USCIS',
-  'Montevideo (Uruguay)': 'Uruguay BCU DGI MTSS',
-  Philippines: 'Philippines SEC BIR DOLE BSP PEZA',
-  'Saint Kitts & Nevis': 'Saint Kitts Nevis FSC',
-  'Sao Paulo (Brazil)': 'Brazil CVM BACEN Receita Federal Sao Paulo',
-  Singapore: 'Singapore ACRA IRAS MOM MAS',
-  'United Kingdom': 'UK Companies House HMRC FCA PRA',
-  Vietnam: 'Vietnam MPI DICA GDT MOLISA SSC SBV'
-};
 
 function cleanText(value) {
   return String(value || '').trim();
@@ -426,6 +72,29 @@ function cleanDomain(value) {
 
 function cleanSourceDomains(value) {
   return [...new Set(cleanList(value).map(cleanDomain).filter(Boolean))];
+}
+
+function knownDomainsForCountry(country) {
+  const selected = canonicalCountry(cleanText(country));
+  return [
+    ...(NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || []),
+    ...(GOVT_SOURCE_DOMAINS_BY_COUNTRY[selected] || []),
+    ...(COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY[selected] || [])
+  ].map(cleanDomain).filter(Boolean);
+}
+
+function removeKnownOtherMarketDomains(domains = [], country = '') {
+  const selected = canonicalCountry(cleanText(country));
+  const selectedDomains = new Set(knownDomainsForCountry(selected));
+  const otherDomains = new Set(
+    Object.keys(NEWS_SOURCE_DOMAINS_BY_COUNTRY)
+      .filter((market) => market !== selected)
+      .flatMap((market) => knownDomainsForCountry(market))
+  );
+
+  return cleanSourceDomains(domains).filter((domain) => (
+    selectedDomains.has(domain) || !otherDomains.has(domain)
+  ));
 }
 
 function uniqueList(value) {
@@ -454,8 +123,25 @@ function defaultTimezone() {
 function sourceTypeForTopic(topic) {
   if (topic === 'govt') return 'govt';
   if (topic === 'competitor') return 'competitor';
-  if (topic === 'evergreen') return 'news';
   return 'news';
+}
+
+function sourceTypesForTopic(topic) {
+  if (topic === 'evergreen') return ['news', 'govt', 'competitor'];
+  return [sourceTypeForTopic(topic)];
+}
+
+function isLikelyGovernmentDomain(domain) {
+  const value = cleanDomain(domain);
+  return (
+    value.includes('.gov.') ||
+    value.endsWith('.gov') ||
+    value.endsWith('.gov.sg') ||
+    value.endsWith('.gov.hk') ||
+    value.endsWith('gov.sg') ||
+    value.endsWith('gov.hk') ||
+    ['mas.gov.sg', 'acra.gov.sg', 'iras.gov.sg', 'mom.gov.sg', 'edb.gov.sg', 'mti.gov.sg', 'sfc.hk', 'hkma.gov.hk', 'cr.gov.hk', 'ird.gov.hk'].includes(value)
+  );
 }
 
 function isAllSubcategories(value) {
@@ -514,36 +200,43 @@ function compactQuery(parts) {
   return query.slice(0, MAX_TAVILY_QUERY_LENGTH).trim();
 }
 
-function govtAnchorTerms() {
-  return 'official notification circular guideline consultation enforcement notice compliance update';
+function cleanMarketTerms(country, value) {
+  return cleanText(value).replace(/\s+/g, ' ').trim();
 }
 
-function competitorAnchorTerms() {
-  return 'expansion acquisition partnership new office service launch leadership hiring client mandate';
-}
-
-function evergreenAnchorTerms() {
-  return 'guide checklist requirements process framework compliance';
+function removeDuplicateAuthorityTerms(intent = '', authorities = '') {
+  const authorityWords = new Set(
+    cleanText(authorities)
+      .split(/\s+/)
+      .map((word) => word.toLowerCase())
+      .filter((word) => word.length > 2)
+  );
+  if (!authorityWords.size) return cleanText(intent);
+  return cleanText(intent)
+    .split(/\s+/)
+    .filter((word) => !authorityWords.has(word.toLowerCase()))
+    .join(' ');
 }
 
 function categoryQuery(category) {
   const selectedCategory = cleanText(category) || defaultCategory();
-  return CATEGORY_QUERY_MAP[selectedCategory] || CATEGORIES[selectedCategory]?.keywords?.join(' ') || selectedCategory;
+  return CATEGORIES[selectedCategory]?.keywords?.join(' ') || selectedCategory;
 }
 
-function evergreenCategoryQuery(category) {
-  const selectedCategory = cleanText(category) || defaultCategory();
-  return EVERGREEN_QUERY_MAP[selectedCategory] || categoryQuery(selectedCategory);
+function categoryQueryPhrase(category, topic = '') {
+  return topic === 'govt'
+    ? GOVT_CATEGORY_QUERY_PHRASES[cleanText(category)] || CATEGORY_QUERY_PHRASES[cleanText(category)] || categoryQuery(category)
+    : CATEGORY_QUERY_PHRASES[cleanText(category)] || categoryQuery(category);
 }
 
-function govtCategoryQuery(category) {
-  const selectedCategory = cleanText(category) || defaultCategory();
-  return CATEGORY_GOVT_INTENT_MAP[selectedCategory] || categoryQuery(selectedCategory);
-}
-
-function competitorCategoryQuery(category) {
-  const selectedCategory = cleanText(category) || defaultCategory();
-  return COMPETITOR_QUERY_MAP[selectedCategory] || compactQuery([categoryQuery(selectedCategory), 'competitor expansion partnership acquisition service launch']);
+function countryCategoryQueryPhrase(country, category, topic = '') {
+  const countryPhrase = COUNTRY_CATEGORY_QUERY_PHRASES[canonicalCountry(cleanText(country))]?.[cleanText(category)];
+  if (countryPhrase) return countryPhrase;
+  const selectedCategory = cleanText(category);
+  if (topic === 'govt') {
+    return GOVT_CATEGORY_QUERY_PHRASES[selectedCategory] || CATEGORY_QUERY_PHRASES[selectedCategory] || categoryQuery(category);
+  }
+  return CATEGORY_QUERY_PHRASES[selectedCategory] || categoryQuery(category);
 }
 
 function buildLocation(profile = {}) {
@@ -594,18 +287,11 @@ function currentIntelYear(profile = {}) {
   return Math.min(2100, Number(profile.year || profile.currentYear || new Date().getFullYear()) || new Date().getFullYear());
 }
 
-function categorySubcategoryTerms(category, limit = 5) {
-  const subcategories = Object.keys(CATEGORIES[cleanText(category)]?.subcategories || {});
-  return subcategories.slice(0, limit).join(' ');
-}
-
-function categoryKeywordTerms(category, limit = 10) {
-  const selectedCategory = cleanText(category);
-  const categoryKeywords = cleanList(CATEGORIES[selectedCategory]?.keywords).slice(0, 4);
-  const subcategoryKeywords = Object.values(CATEGORIES[selectedCategory]?.subcategories || {})
-    .flatMap((keywords) => cleanList(keywords).slice(0, 2))
-    .slice(0, limit);
-  return [...new Set([...categoryKeywords, ...subcategoryKeywords])].join(' ');
+function selectedSubcategoryQueryTerms(profile = {}, category = '') {
+  const selectedCategory = cleanText(category) || cleanText(profile.category) || defaultCategory();
+  const selectedSubcategory = cleanText(profile.subcategory);
+  if (!selectedSubcategory || isAllSubcategories(selectedSubcategory)) return '';
+  return queryTermList(selectedSubcategory, subcategoryKeywords(selectedCategory, selectedSubcategory).slice(0, 5));
 }
 
 function authorityHintsForCountry(country) {
@@ -616,24 +302,51 @@ function authorityQueryTerms(country) {
   const normalizedCountry = canonicalCountry(cleanText(country));
   const authorityHints = authorityHintsForCountry(normalizedCountry);
   if (!authorityHints) return '';
-  const lowerCountry = normalizedCountry.toLowerCase();
+  const countryWords = new Set(normalizedCountry.toLowerCase().split(/\s+/).filter(Boolean));
   return authorityHints
     .split(/\s+/)
-    .filter((term) => term && term.toLowerCase() !== lowerCountry)
+    .filter((term) => term && !countryWords.has(term.toLowerCase()))
     .join(' ');
 }
 
-function conciseTopicTerms(topic, category, competitors = []) {
-  if (topic === 'govt') return govtCategoryQuery(category);
-  if (topic === 'competitor') {
-    return compactQuery([
-      competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '',
-      'expansion acquisition partnership new office service launch market update',
-      competitorCategoryQuery(category)
-    ]);
-  }
-  if (topic === 'evergreen') return evergreenCategoryQuery(category);
-  return categoryQuery(category);
+function renderQueryTemplate(template, values = {}) {
+  return compactQuery([
+    String(template || '')
+      .replace(/\{country\}/g, values.country || '')
+      .replace(/\{year\}/g, values.year || '')
+      .replace(/\{intent\}/g, values.intent || '')
+      .replace(/\{authorities\}/g, values.authorities || '')
+      .replace(/\{competitors\}/g, values.competitors || '')
+  ]);
+}
+
+function defaultCompetitorTerms(competitors = []) {
+  return (competitors.length ? competitors : DEFAULT_COMPETITOR_QUERY_NAMES)
+    .map(quoteIfNeeded)
+    .join(' OR ');
+}
+
+function buildGovtQueryVariants(profile = {}) {
+  const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
+  const year = currentIntelYear(profile);
+  const authorities = authorityQueryTerms(country);
+  const templates = GOVT_QUERY_BUCKETS_BY_COUNTRY[country] || DEFAULT_GOVT_QUERY_BUCKETS;
+  return templates.map((template) => renderQueryTemplate(template, {
+    country,
+    year,
+    authorities
+  })).filter(Boolean);
+}
+
+function buildCompetitorQueryVariants(profile = {}) {
+  const country = canonicalCountry(cleanText(profile.country) || defaultCountry());
+  const year = currentIntelYear(profile);
+  const competitors = defaultCompetitorTerms(uniqueList(profile.competitors));
+  return COMPETITOR_QUERY_TEMPLATES.map((template) => renderQueryTemplate(template, {
+    country,
+    year,
+    competitors
+  })).filter(Boolean);
 }
 
 function buildCategoryQueryVariants(topic, category, profile = {}) {
@@ -641,42 +354,30 @@ function buildCategoryQueryVariants(topic, category, profile = {}) {
   const year = currentIntelYear(profile);
   const competitors = uniqueList(profile.competitors);
   const authorityHints = authorityQueryTerms(country);
-  const base = conciseTopicTerms(topic, category, competitors);
-  const subcategoryTerms = categorySubcategoryTerms(category);
-  const keywordTerms = categoryKeywordTerms(category);
-  const competitorTerms = competitors.length ? competitors.map(quoteIfNeeded).join(' OR ') : '';
-
-  if (topic === 'news') {
-    return [
-      compactQuery([country, base, 'business news market update latest', year]),
-      compactQuery([country, category, subcategoryTerms, keywordTerms, 'business news regulation market update', year])
-    ].filter(Boolean);
-  }
-
   if (topic === 'govt') {
-    return [
-      compactQuery([country, authorityHints, govtCategoryQuery(category), govtAnchorTerms(), year]),
-      compactQuery([country, authorityHints, category, keywordTerms, 'government policy regulation licensing company registry', year])
-    ].filter(Boolean);
+    return GOVT_QUERY_TEMPLATES.map((template) => renderQueryTemplate(template, {
+      country,
+      year,
+      authorities: authorityHints,
+      intent: cleanMarketTerms(country, removeDuplicateAuthorityTerms(
+        countryCategoryQueryPhrase(country, category, topic),
+        authorityHints
+      ))
+    })).filter(Boolean);
   }
-
-  if (topic === 'competitor') {
-    return [
-      compactQuery([country, competitorTerms, competitorCategoryQuery(category), year]),
-      compactQuery([country, competitorTerms, category, subcategoryTerms, 'competitor business update', year])
-    ].filter(Boolean);
-  }
-
-  if (topic === 'evergreen') {
-    return [
-      compactQuery([country, evergreenCategoryQuery(category), evergreenAnchorTerms(), year]),
-      compactQuery([country, category, subcategoryTerms, keywordTerms, 'guide checklist requirements', year])
-    ].filter(Boolean);
-  }
-
+  const intent = cleanMarketTerms(country, countryCategoryQueryPhrase(country, category, topic));
+  const selectedSubcategoryTerms = cleanMarketTerms(country, selectedSubcategoryQueryTerms(profile, category));
+  const topicIntent = cleanMarketTerms(country, [intent, selectedSubcategoryTerms].filter(Boolean).join(' '));
+  const competitorTerms = defaultCompetitorTerms(competitors);
+  const template = TOPIC_QUERY_TEMPLATES[topic] || TOPIC_QUERY_TEMPLATES.default;
   return [
-    compactQuery([country, base, year]),
-    compactQuery([country, category, subcategoryTerms, keywordTerms, year])
+    renderQueryTemplate(template, {
+      country,
+      year,
+      intent: topicIntent,
+      authorities: authorityHints,
+      competitors: competitorTerms
+    })
   ].filter(Boolean);
 }
 
@@ -688,14 +389,21 @@ function buildTopicQueryVariants(profile = {}) {
   const queries = {};
 
   for (const topic of topics) {
-    const categoryVariants = categories.flatMap((category) => (
-      buildCategoryQueryVariants(topic, category, { ...profile, competitors })
-    )).filter(Boolean);
+    let categoryVariants = [];
+    if (topic === 'govt') {
+      categoryVariants = buildGovtQueryVariants(profile);
+    } else if (topic === 'competitor') {
+      categoryVariants = buildCompetitorQueryVariants({ ...profile, competitors });
+    } else {
+      categoryVariants = categories.flatMap((category) => (
+        buildCategoryQueryVariants(topic, category, { ...profile, competitors })
+      )).filter(Boolean);
+    }
     // Only send category-specific queries — no broad generic fallback
     // that could bring in unrelated articles from outside the configured categories.
     queries[topic] = customQueryOverride
       ? [customQueryOverride]
-      : categoryVariants.filter(Boolean);
+      : [...new Set(categoryVariants.filter(Boolean))];
   }
 
   return queries;
@@ -706,15 +414,30 @@ function buildTopicQueryCategories(profile = {}) {
   const customQueryOverride = cleanText(profile.customQueryOverride || profile.custom_query_override || profile.query);
   const categories = selectedCategories(profile);
   return Object.fromEntries(
-    topics.map((topic) => [
-      topic,
-      customQueryOverride
-        ? [categories[0] || defaultCategory()]
-        : [
-            ...(categories.length > 1 ? [categories[0] || defaultCategory()] : []),
-            ...categories.flatMap((category) => buildCategoryQueryVariants(topic, category, profile).map(() => category))
-          ]
-    ])
+    topics.map((topic) => {
+      if (topic === 'govt') {
+        return [
+          topic,
+          customQueryOverride
+            ? [categories[0] || defaultCategory()]
+            : buildGovtQueryVariants(profile).map(() => categories[0] || defaultCategory())
+        ];
+      }
+      if (topic === 'competitor') {
+        return [
+          topic,
+          customQueryOverride
+            ? [categories[0] || defaultCategory()]
+            : buildCompetitorQueryVariants(profile).map(() => 'Competitor Intelligence')
+        ];
+      }
+      return [
+        topic,
+        customQueryOverride
+          ? [categories[0] || defaultCategory()]
+          : categories.flatMap((category) => buildCategoryQueryVariants(topic, category, profile).map(() => category))
+      ];
+    })
   );
 }
 
@@ -727,13 +450,13 @@ function buildProfileSearchPayload(profile = {}, extra = {}) {
     1,
     Math.min(MAX_TARGET_PER_TOPIC, Number(profile.targetPerTopic || profile.maxPerTopic || DEFAULT_TARGET_PER_TOPIC) || DEFAULT_TARGET_PER_TOPIC)
   );
-  const sourceDomains = cleanSourceDomains(
+  const sourceDomains = removeKnownOtherMarketDomains(cleanSourceDomains(
     profile.preferredDomains ||
     profile.preferred_domains ||
     profile.sources ||
     profile.includeDomains ||
     profile.include_domains
-  );
+  ), country);
   const typedSourceDomains = ['news', 'govt', 'competitor', 'evergreen'].reduce((out, type) => {
     out[type] = cleanSourceDomains(profile.sourceDomainsByType?.[type]);
     return out;
@@ -750,29 +473,48 @@ function buildProfileSearchPayload(profile = {}, extra = {}) {
   });
   const sourceDomainsByTopic = Object.fromEntries(
     topics.map((topic) => {
-      const sourceType = sourceTypeForTopic(topic);
+      const sourceTypes = sourceTypesForTopic(topic);
       const explicitTopicSources = typedSourceDomains[topic] || [];
-      const topicUserSources = hasTypedSourceDomains
-        ? (explicitTopicSources.length ? explicitTopicSources : typedSourceDomains[sourceType] || [])
-        : (sourceType === 'news' ? sourceDomains : []);
-      const merged = mergeSourceDomains({
-        country,
-        type: sourceType,
-        userSources: topicUserSources,
-        strictSources: profile.strictSources || profile.strict_sources
-      });
-      return [topic, merged.includeDomains];
+      let topicUserSources = hasTypedSourceDomains
+        ? (
+          explicitTopicSources.length
+            ? explicitTopicSources
+            : sourceTypes.flatMap((sourceType) => typedSourceDomains[sourceType] || [])
+        )
+        : (
+          topic === 'evergreen'
+            ? sourceDomains
+            : (sourceTypes.includes('govt') ? sourceDomains.filter(isLikelyGovernmentDomain) : sourceDomains)
+        );
+      if (topic === 'competitor') {
+        topicUserSources = topicUserSources.filter((domain) => !isLikelyGovernmentDomain(domain));
+      }
+      const merged = sourceTypes.reduce((out, sourceType) => {
+        const row = mergeSourceDomains({
+          country,
+          type: sourceType,
+          userSources: topicUserSources,
+          strictSources: profile.strictSources || profile.strict_sources
+        });
+        out.includeDomains.push(...row.includeDomains);
+        return out;
+      }, { includeDomains: [] });
+      return [topic, cleanSourceDomains(merged.includeDomains)];
     })
   );
   const defaultDomainsByTopic = Object.fromEntries(
     topics.map((topic) => {
-      const merged = mergeSourceDomains({
-        country,
-        type: sourceTypeForTopic(topic),
-        userSources: [],
-        strictSources: profile.strictSources || profile.strict_sources
-      });
-      return [topic, merged.defaultDomains];
+      const merged = sourceTypesForTopic(topic).reduce((out, sourceType) => {
+        const row = mergeSourceDomains({
+          country,
+          type: sourceType,
+          userSources: [],
+          strictSources: profile.strictSources || profile.strict_sources
+        });
+        out.defaultDomains.push(...row.defaultDomains);
+        return out;
+      }, { defaultDomains: [] });
+      return [topic, cleanSourceDomains(merged.defaultDomains)];
     })
   );
   const scope = categoryScope(profile);
@@ -838,3 +580,4 @@ module.exports = {
   cleanList,
   cleanSourceDomains
 };
+

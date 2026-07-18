@@ -1,138 +1,94 @@
-# Ascentium Intelligence Dashboard
+# BeeSocial
 
-A full-stack web application that aggregates **Singapore corporate-services intelligence** across four streams — News, Government Updates, Competitor Activity, and Evergreen Guidance — automatically, every day at 07:00 IST.
+BeeSocial is a multi-tenant business intelligence platform for country-specific monitoring across `news`, `government`, `competitor`, and `evergreen` topics.
 
-Built specifically around Ascentium's **9 service pillars** and **38 sub-categories** (verified from the official Ascentium navigation).
+It is designed for production use with:
+- role-based access for `super_admin`, `admin`, and `user`
+- country-aware source controls
+- category-based filtering and storage rules
+- AI-assisted relevance, classification, blog drafting, and social content generation
+- scheduled and manual profile-search workflows
 
----
+## Stack
 
-## What it does
+- Frontend: React, Vite, Tailwind CSS
+- Backend: Node.js, Express, Mongoose
+- Database: MongoDB
+- Search: Tavily
+- AI: OpenAI
 
-- **Scrapes** four kinds of sources every morning:
-  - News: The Business Times, Channel News Asia, The Straits Times, ASEAN Briefing
-  - Government: ACRA, IRAS, MOM, EDB, MAS
-  - Competitors: Vistra, TMF Group, Tricor, Acclime, KPMG, PwC, BoardRoom, Hawksford
-  - Evergreen guides: Incorporation, Tax/CPF, Employment Pass, VCC, ESG, GST, Transfer Pricing, Trust Formation
-- **Categorises** each article into one of Ascentium's 9 service pillars (rule-based + optional OpenAI fallback).
-- **Deduplicates** automatically via a SHA-256 URL hash — same article will never be stored twice.
-- **Workflow**: Super-admin reviews → publishes → members see it on their dashboard.
-- **Filters** by type, category, sub-category, source, date range, and free-text search.
-- **Audit log** of every fetch (cron or manual), per-source success/failure stats.
+## Structure
 
----
-
-## Tech stack
-
-| Layer       | Tech                                                          |
-|-------------|---------------------------------------------------------------|
-| Frontend    | React 18 + Vite + Tailwind CSS + React Router 6               |
-| Backend     | Node.js (≥18) + Express + Mongoose                            |
-| Database    | MongoDB (local or Atlas)                                      |
-| Auth        | JWT + bcrypt                                                  |
-| Scraping    | axios + cheerio                                               |
-| Scheduling  | node-cron (default: 07:00 Asia/Kolkata, configurable)         |
-| AI (optional)| OpenAI (gpt-4o-mini) — summary + smart category classification |
-| Search (optional) | Tavily — relevance ranking + evergreen content        |
-
----
-
-## Project structure
-
-```
-ascentium-dashboard/
-├── backend/                  # Express API
-│   ├── src/
-│   │   ├── config/           # DB, categories taxonomy, sources
-│   │   ├── models/           # User, Article, FetchLog
-│   │   ├── routes/           # auth, articles, admin
-│   │   ├── middleware/       # JWT + role checks
-│   │   ├── scrapers/         # news, govt, competitor, evergreen
-│   │   ├── services/         # tavily, openai, orchestrator
-│   │   ├── jobs/             # cron
-│   │   ├── utils/            # url hash, concurrency, seed admin
-│   │   └── server.js
-│   ├── .env.example
-│   └── package.json
-├── frontend/                 # React + Vite
-│   ├── src/
-│   │   ├── api/              # axios client
-│   │   ├── context/          # AuthContext
-│   │   ├── components/       # Navbar, Filters, ArticleCard, …
-│   │   ├── pages/            # Login, Register, Dashboard, Admin, Profile
-│   │   └── App.jsx
-│   ├── .env.example
-│   └── package.json
-├── README.md
-└── SETUP_GUIDE.md            # 👈 STEP-BY-STEP install
+```text
+project-root/
+|-- backend/
+|-- frontend/
+|-- README.md
+`-- SETUP_GUIDE.md
 ```
 
----
-
-## Quick start (TL;DR)
-
-> See **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** for full step-by-step instructions including MongoDB installation.
+## Local setup
 
 ```bash
-# 1. Install Mongo locally (or use Atlas), then:
-
-# Backend
 cd backend
-cp .env.example .env       # then edit MONGO_URI + JWT_SECRET
+cp .env.example .env
 npm install
-npm run seed               # creates the first super admin
-npm run dev                # http://localhost:5000
-
-# Frontend (in another terminal)
-cd frontend
-cp .env.example .env       # default works for local dev
-npm install
-npm run dev                # http://localhost:5173
+npm run seed
+npm run dev
 ```
 
-Open <http://localhost:5173>, log in with the email/password you set in `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, go to **Admin → Fetch → Fetch all** to pull the first batch of articles.
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
 
----
+Backend default URL:
 
-## OpenAI usage (optional)
+```text
+http://localhost:5000
+```
 
-OpenAI is **completely optional**. Default behaviour: rule-based keyword matching, free.
+Frontend default URL:
 
-To enable AI summaries and smart category classification:
+```text
+http://localhost:5173
+```
 
-1. Get an API key from <https://platform.openai.com>.
-2. In `backend/.env`:
-   ```env
-   OPENAI_API_KEY=sk-...
-   OPENAI_MODEL=gpt-4o-mini
-   OPENAI_USE_FOR_SUMMARY=true
-   OPENAI_USE_FOR_CATEGORY=true
-   ```
-3. Restart the backend.
+## Environment
 
-Per-feature toggles let you control cost — for example, you can enable summaries (cheaper) without category classification, or vice-versa. **gpt-4o-mini** is used by default for cost efficiency.
+Minimum backend variables:
 
----
+```env
+MONGO_URI=mongodb://127.0.0.1:27017/beesocial
+JWT_SECRET=replace_with_a_long_random_secret
+SEED_ADMIN_EMAIL=admin@digitalgowhere.com
+SEED_ADMIN_PASSWORD=replace_with_a_strong_password
+```
 
-## Verified Ascentium services taxonomy
+Optional integrations:
 
-Filters are built directly from the official Ascentium nav (https://www.ascentium.com).
+```env
+OPENAI_API_KEY=
+TAVILY_API_KEY=
+```
 
-| # | Pillar | Sub-categories |
-|---|--------|----------------|
-| 1 | Corporate | Incorporation & Business Formation · Company Secretarial & Compliance · Trademark/Licenses/Copyright · Share Registry · Entity Management |
-| 2 | Accounting and Tax | Accounting & Finance · Tax Filing & Compliance · Tax Advisory · Indirect Tax · Transfer Pricing · Government Incentive Plans |
-| 3 | Risk Assurance & Audit | Operation Risk Management · Internal Audit Assurance · Compliance & Governance Solutions |
-| 4 | Cross Border & FDI | Cross-Border Compliance · China ODI & Circular 37 · UAE Free Zone and Mainland |
-| 5 | Fiduciary | Corporate Services · Trust Services · Economic Substance · Compliance Solutions |
-| 6 | Funds | Fund Administration · Fund Governance · Fund Compliance · Fund Corporate Services |
-| 7 | HR & Payroll | PEO & EOR · Global Immigration · Outplacement · Statement of Work · Recruitment · Payroll Outsourcing · Multi-Country Payroll · Links One |
-| 8 | Private Client | Private Client Services · Trust Services · Economic Substance · Corporate Services |
-| 9 | Advisory | ESG & Compliance · Business Consultancy · Financial Advisory · M&A Advisory · Insolvency/Liquidation · Business Intelligence Playbook |
+## Production notes
 
-→ **9 pillars · 43 sub-categories**
+- Use environment variables for all secrets and credentials.
+- Do not keep client-specific names, emails, or domains hardcoded in source files.
+- Review source-domain settings before production deployment.
+- Rotate seed credentials after first login.
+- Prefer one primary `super_admin` and use `admin` accounts for daily operations.
 
----
+## Documentation
+
+- Setup: [SETUP_GUIDE.md](/G:/ascentium-dashboard/SETUP_GUIDE.md:1)
+- Architecture: [docs/ARCHITECTURE.md](/G:/ascentium-dashboard/docs/ARCHITECTURE.md:1)
+- API overview: [docs/API_OVERVIEW.md](/G:/ascentium-dashboard/docs/API_OVERVIEW.md:1)
+- Deployment: [docs/DEPLOYMENT.md](/G:/ascentium-dashboard/docs/DEPLOYMENT.md:1)
 
 ## License
 
-Proprietary — internal Ascentium use.
+Proprietary.
