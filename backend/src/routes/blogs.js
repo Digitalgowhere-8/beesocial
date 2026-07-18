@@ -332,7 +332,6 @@ const linkedinOptionsSchema = Joi.object({
   icpPainPoints: Joi.string().allow('').max(2000),
   marketReality: Joi.string().allow('').max(2000),
   proofElement: Joi.string().allow('').max(500),
-  authorityLine: Joi.string().allow('').max(500),
   takeaway: Joi.string().allow('').max(500),
   includeHashtags: Joi.boolean().default(true),
   includeCTA: Joi.boolean().default(true),
@@ -378,6 +377,10 @@ const updateSchema = Joi.object({
 const reviseSchema = Joi.object({
   feedback: Joi.string().trim().min(3).max(2500).required(),
   previewOnly: Joi.boolean().default(false)
+});
+
+const reviewCommentSchema = Joi.object({
+  text: Joi.string().trim().min(2).max(2000).required()
 });
 
 const bulkDeleteSchema = Joi.object({
@@ -844,6 +847,60 @@ router.get('/:id', protect, requireContentRepository, asyncHandler(async (req, r
     return res.status(404).json({ message: 'Blog not found' });
   }
   res.json({ item });
+}));
+
+router.post('/:id/comments', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const { error, value } = reviewCommentSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const blog = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!blog) return res.status(404).json({ message: 'Blog not found' });
+  if (!isBlogAdmin(req.user) && blog.status !== 'published') {
+    return res.status(404).json({ message: 'Blog not found' });
+  }
+
+  blog.reviewComments.push({
+    text: value.text,
+    authorId: req.user._id,
+    authorName: req.user.name || req.user.email || 'Reviewer',
+    createdAt: new Date()
+  });
+  await blog.save();
+
+  const item = blog.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'commented',
+    id: String(item._id)
+  });
+  res.status(201).json({ item, comment: item.reviewComments[item.reviewComments.length - 1] });
+}));
+
+router.delete('/:id/comments/:commentId', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const blog = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!blog) return res.status(404).json({ message: 'Blog not found' });
+  if (!isBlogAdmin(req.user) && blog.status !== 'published') {
+    return res.status(404).json({ message: 'Blog not found' });
+  }
+
+  const comment = blog.reviewComments.id(req.params.commentId);
+  if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+  const canDelete = isBlogAdmin(req.user) || String(comment.authorId || '') === String(req.user._id);
+  if (!canDelete) {
+    return res.status(403).json({ message: 'You can only delete your own comments.' });
+  }
+
+  comment.deleteOne();
+  await blog.save();
+
+  const item = blog.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'comment-deleted',
+    id: String(item._id)
+  });
+  res.json({ item, deletedCommentId: req.params.commentId });
 }));
 
 router.patch('/:id', protect, requireBlogAdmin, asyncHandler(async (req, res) => {
