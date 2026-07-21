@@ -103,9 +103,9 @@ const STYLE_OPTIONS = {
     ['guide', 'Guide']
   ],
   length: [
-    ['short', 'Short (500-800 words)'],
-    ['medium', 'Medium (800-1,500 words)'],
-    ['long', 'Long (1,500-3,000 words)'],
+    ['short', 'Short (800 words)'],
+    ['medium', 'Medium (1,500 words)'],
+    ['long', 'Long (2,500 words)'],
     ['custom', 'Custom']
   ],
   searchIntent: [

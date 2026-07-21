@@ -386,11 +386,108 @@ function headingHtml(label = '') {
 function wordRowHtml(label = '', content = '', options = {}) {
   const verticalAlign = options.verticalAlign || 'top';
   return [
-    '<tr>',
-    `<td style="border:1px solid #111;padding:10px 12px;width:18%;vertical-align:${verticalAlign};font-weight:700;color:#111;">${escapeHtml(label)}</td>`,
-    `<td style="border:1px solid #111;padding:14px 16px;vertical-align:${verticalAlign};color:#111;">${content}</td>`,
+    '<tr style="page-break-inside:auto;break-inside:auto;">',
+    `<td style="border:1px solid #111;padding:8px 10px;width:18%;vertical-align:${verticalAlign};font-weight:700;color:#111;font-size:8pt;line-height:1.25;page-break-inside:auto;break-inside:auto;">${escapeHtml(label)}</td>`,
+    `<td style="border:1px solid #111;padding:8px 10px;vertical-align:${verticalAlign};color:#111;font-size:9pt;line-height:1.32;page-break-inside:auto;break-inside:auto;">${content}</td>`,
     '</tr>'
   ].join('');
+}
+
+function splitMarkdownForWordRows(markdown = '') {
+  const lines = normalizePreviewMarkdown(markdown, '').split('\n');
+  const chunks = [];
+  let current = [];
+  let i = 0;
+
+  const pushCurrent = () => {
+    const text = current.join('\n').trim();
+    if (text) chunks.push(text);
+    current = [];
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      pushCurrent();
+      i += 1;
+      continue;
+    }
+
+    if (/^##+\s+/.test(trimmed)) {
+      pushCurrent();
+      chunks.push(trimmed);
+      i += 1;
+      continue;
+    }
+
+    if (isMarkdownTableRow(trimmed) && isMarkdownTableDivider(lines[i + 1] || '')) {
+      pushCurrent();
+      const tableLines = [line, lines[i + 1]];
+      i += 2;
+      while (i < lines.length && isMarkdownTableRow(lines[i]) && !isMarkdownTableDivider(lines[i])) {
+        tableLines.push(lines[i]);
+        i += 1;
+      }
+      chunks.push(tableLines.join('\n'));
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
+      pushCurrent();
+      const listLines = [];
+      while (i < lines.length && (/^\s*[-*]\s+/.test(lines[i]) || /^\s*\d+\.\s+/.test(lines[i]) || !lines[i].trim())) {
+        if (lines[i].trim()) listLines.push(lines[i]);
+        i += 1;
+      }
+      chunks.push(listLines.join('\n'));
+      continue;
+    }
+
+    current.push(line);
+    i += 1;
+  }
+
+  pushCurrent();
+  return chunks;
+}
+
+function sectionMarkdownRows(sections = [], firstLabel = 'Content', prefixHtml = '') {
+  let usedLabel = false;
+  const rows = [];
+  if (prefixHtml) {
+    rows.push(wordRowHtml(firstLabel, prefixHtml));
+    usedLabel = true;
+  }
+  sections.forEach((section) => {
+    const text = section.heading ? `## ${section.heading}\n${sectionText(section.lines)}` : sectionText(section.lines);
+    splitMarkdownForWordRows(text).forEach((chunk) => {
+      rows.push(wordRowHtml(usedLabel ? '' : firstLabel, markdownToHtml(chunk)));
+      usedLabel = true;
+    });
+  });
+  return rows;
+}
+
+function faqMarkdownRows(faqSection) {
+  if (!faqSection) return [];
+  const lines = sectionText(faqSection.lines).split('\n');
+  const chunks = [];
+  let current = [];
+  for (const line of lines) {
+    if (/^###\s+/.test(line.trim()) && current.length) {
+      chunks.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.join('\n').trim()) chunks.push(current.join('\n'));
+  return chunks.flatMap((chunk, index) => (
+    splitMarkdownForWordRows(chunk).map((part, partIndex) => (
+      wordRowHtml(index === 0 && partIndex === 0 ? 'FAQs' : '', markdownToHtml(part))
+    ))
+  ));
 }
 
 function buildWordCopyPayload({ title = '', excerpt = '', bodyMarkdown = '' }) {
@@ -432,12 +529,17 @@ function buildWordCopyPayload({ title = '', excerpt = '', bodyMarkdown = '' }) {
   ].filter(Boolean);
 
   const faqText = faqSection ? markdownToPlainText(sectionText(faqSection.lines)) : '';
-  const faqHtml = faqSection ? markdownToHtml(sectionText(faqSection.lines)) : '';
+  const contentRows = sectionMarkdownRows(
+    contentSections,
+    'Content',
+    excerpt ? `<p>${renderInlineMarkdownHtml(excerpt)}</p>` : ''
+  );
+  const faqRows = faqMarkdownRows(faqSection);
   const htmlRows = [
     keywordsText ? wordRowHtml('Keywords', markdownToHtml(sectionText(keywordsSection.lines))) : '',
-    wordRowHtml('Title', `<div style="font-size:30px;line-height:1.18;font-weight:700;color:#000;">${escapeHtml(title)}</div>`, { verticalAlign: 'middle' }),
-    wordRowHtml('Content', `${excerpt ? `<p>${renderInlineMarkdownHtml(excerpt)}</p>` : ''}${markdownToHtml(contentMarkdown, title)}`),
-    faqHtml ? wordRowHtml('FAQs', faqHtml) : '',
+    wordRowHtml('Title', `<div style="font-size:16pt;line-height:1.2;font-weight:700;color:#000;">${escapeHtml(title)}</div>`, { verticalAlign: 'middle' }),
+    ...contentRows,
+    ...faqRows,
     ctaTitle || ctaDescription || ctaButton
       ? wordRowHtml('CTA', `${ctaTitle ? `<p><strong>CTA Title :</strong> ${escapeHtml(ctaTitle)}</p>` : ''}${ctaDescription ? `<p>${renderInlineMarkdownHtml(ctaDescription)}</p>` : ''}${ctaButton ? `<p><strong>Button:</strong> ${escapeHtml(ctaButton)}</p>` : ''}`)
       : '',
@@ -449,7 +551,7 @@ function buildWordCopyPayload({ title = '', excerpt = '', bodyMarkdown = '' }) {
 
   return {
     plainText: plainParts.join('\n\n').trim(),
-    htmlBody: `<table style="border-collapse:collapse;width:100%;border:1px solid #111;">${htmlRows.join('')}</table>`
+    htmlBody: `<table style="border-collapse:collapse;width:100%;border:1px solid #111;page-break-inside:auto;break-inside:auto;mso-table-lspace:0pt;mso-table-rspace:0pt;">${htmlRows.join('')}</table>`
   };
 }
 
@@ -480,15 +582,25 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
       if (/^table of contents$/i.test(heading)) {
         const items = [];
         i += 1;
-        while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        while (i < lines.length && !lines[i].trim()) i += 1;
+        while (i < lines.length && (/^\s*-\s+/.test(lines[i]) || !lines[i].trim())) {
+          if (!lines[i].trim()) {
+            i += 1;
+            continue;
+          }
           items.push(lines[i].replace(/^\s*-\s+/, '').trim());
           i += 1;
         }
         blocks.push(
-          <section key={`toc-${i}`} className="mb-8 rounded-2xl border border-gray-200 bg-gray-50/70 p-5">
+          <section key={`toc-${i}`} className="my-8 rounded-2xl border border-gray-200 bg-gray-50/70 p-5">
             <h3 className="text-base font-black uppercase tracking-[0.14em] text-gray-500">Table of Contents</h3>
-            <ul className="mt-4 space-y-2 text-[15px] font-semibold leading-7 text-gray-700">
-              {items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+            <ul className="mt-5 grid gap-3 text-[15px] font-semibold leading-7 text-gray-800">
+              {items.map((item, index) => (
+                <li key={`${item}-${index}`} className="flex items-start gap-3 rounded-xl border border-gray-200/80 bg-white/80 px-4 py-3 shadow-sm">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-crimson/80" />
+                  <span>{item}</span>
+                </li>
+              ))}
             </ul>
           </section>
         );
@@ -497,15 +609,25 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
 
       const sopTone = sopSectionTone(heading);
       if (sopTone) {
+        const sectionLines = [];
+        i += 1;
+        while (i < lines.length && !/^##\s+/.test(lines[i].trim())) {
+          sectionLines.push(lines[i]);
+          i += 1;
+        }
         blocks.push(
           <div key={`sop-${i}`} className={`mt-10 rounded-2xl border px-5 py-4 ${sopTone.className}`}>
             <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${sopTone.labelClassName}`}>{sopTone.eyebrow}</div>
             <h3 className="mt-1 text-xl font-black tracking-tight">
               {heading === 'Recommended next step' ? 'CTA' : heading}
             </h3>
+            {sectionLines.join('\n').trim() ? (
+              <div className="content-repo-sop-body mt-4">
+                <MarkdownArticle bodyMarkdown={sectionLines.join('\n')} title="" />
+              </div>
+            ) : null}
           </div>
         );
-        i += 1;
         continue;
       }
 
@@ -902,17 +1024,18 @@ export default function BlogLibrary() {
     const html = `
       <article>
         <style>
-          article { color: #111; font-family: Georgia, "Times New Roman", serif; line-height: 1.25; margin: 0 auto; max-width: 820px; }
-          h1 { color: #111827; font-size: 30px; line-height: 1.2; margin: 0 0 18px; }
-          h2 { color: #111; font-size: 24px; line-height: 1.12; margin: 26px 0 10px; }
-          h3 { color: #111; font-size: 19px; margin: 20px 0 8px; }
-          p { margin: 10px 0; }
-          blockquote { border-left: 4px solid #163A24; color: #4b5563; font-style: italic; margin: 0 0 24px; padding: 4px 0 4px 16px; }
-          ul, ol { margin: 12px 0 18px 24px; padding: 0; }
-          li { margin: 6px 0; }
-          table { border-collapse: collapse; margin: 18px 0; width: 100%; }
-          th, td { border: 1px solid #d1d5db; padding: 9px 12px; text-align: left; vertical-align: top; }
-          th { background: #f3f4f6; color: #374151; font-weight: 700; }
+          article { color: #111; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; line-height: 1.32; margin: 0 auto; max-width: 820px; }
+          h1 { color: #000; font-size: 16pt; line-height: 1.2; margin: 0; }
+          h2 { color: #111; font-size: 11pt; line-height: 1.2; margin: 8px 0 5px; font-weight: 700; page-break-after: avoid; }
+          h3 { color: #111; font-size: 9.5pt; line-height: 1.2; margin: 7px 0 4px; font-weight: 700; page-break-after: avoid; }
+          p { margin: 4px 0 6px; text-align: justify; }
+          blockquote { border-left: 3px solid #163A24; color: #4b5563; font-style: italic; margin: 0 0 10px; padding: 3px 0 3px 10px; }
+          ul, ol { margin: 5px 0 7px 18px; padding: 0; text-align: left; }
+          li { margin: 2px 0; text-align: left; }
+          table { border-collapse: collapse; margin: 7px 0; width: 100%; page-break-inside:auto; break-inside:auto; }
+          tr { page-break-inside:auto; break-inside:auto; }
+          th, td { border: 1px solid #111; padding: 5px 7px; text-align: left; vertical-align: top; page-break-inside:auto; break-inside:auto; }
+          th { background: #f3f4f6; color: #111; font-weight: 700; }
           a { color: #163A24; }
         </style>
         ${wordPayload.htmlBody}

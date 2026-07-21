@@ -66,6 +66,26 @@ function wordsToMaxTokens(words, fallbackTokens) {
   return Math.max(500, Math.min(6000, Math.ceil(normalizedWords * 1.7)));
 }
 
+function blogWordTarget(style = {}) {
+  const length = String(style.length || 'medium').toLowerCase();
+  if (length === 'short') return 800;
+  if (length === 'long') return 2500;
+  if (length === 'custom') {
+    const match = String(style.customLength || '').match(/\d[\d,]*/);
+    const custom = match ? Number(match[0].replace(/,/g, '')) : 1500;
+    return Math.round(clampNumber(custom, 1500, 500, 3000));
+  }
+  return 1500;
+}
+
+function blogLengthInstruction(style = {}) {
+  const length = String(style.length || 'medium').toLowerCase();
+  if (length === 'custom' && style.customLength) return `Custom length requested by user: ${style.customLength}.`;
+  if (length === 'short') return 'Short blog target: approximately 800 words.';
+  if (length === 'long') return 'Long blog target: approximately 2,500 words.';
+  return 'Medium blog target: approximately 1,500 words.';
+}
+
 const BEESOCIAL_BRAND_GUIDELINES = [
   'Client brand positioning: write like a senior professional-services advisor helping companies make confident cross-border, compliance, accounting, tax, corporate services, payroll, HR, and market-entry decisions.',
   'Voice: clear, practical, commercially aware, credible, calm, and advisory. The content should feel premium and expert, not casual, hype-led, or generic.',
@@ -96,6 +116,29 @@ const BLOG_WRITING_SOP = [
   '16. SEO title should be catchy, keyword-aware, and around 50-60 characters where possible. Meta description should summarise the page and be around 145-155 characters.',
   '17. Include a Resources section listing the selected source URL and any reference/competitor URLs provided by the user. Do not fabricate resource links.',
   '18. Humanise the copy: remove robotic transitions, filler, repeated phrasing, and generic AI language. Grammar must be publication-ready and polished.'
+].join('\n');
+
+const APPROVED_HOOK_TEMPLATE_BANK = [
+  'Carousel / Educational: How to [achieve specific outcome] in [simple steps] for [target audience].',
+  'Carousel / Challenging assumption: Why [target audience] must be [counterintuitive quality] when dealing with [topic].',
+  'Carousel / You need to know this: X types of [business assets/requirements] every [target audience] needs to understand.',
+  'Carousel / Do X to achieve Y: X ways to [action] when [situation/challenge] affects [target audience].',
+  'Viral / It is not about X, it is about Y: [Common belief] is not about [surface issue]. It is about [deeper business point].',
+  'Viral / Superior method: [Common practice] creates [risk]. Here is the better [method/checklist] to use instead.',
+  'Viral / Simple steps: X simple steps to [achieve business outcome] even if [common obstacle] exists.',
+  'Viral / Industry issues: X major issues [industry/profession] is dealing with in [market/topic].',
+  'Viral / Enlightening enquiry: If you can answer these X questions, you have a stronger [business/compliance position].',
+  'Creative / Demystifying terms: What is [complex term]? Here is what [target audience] should understand.',
+  'Creative / Semantics: "[Concept A], [Concept B], or [Concept C]?" Many people think they are the same.',
+  'Creative / Choose or be chosen: If you do not [specific action], do not expect [desired outcome].',
+  'Image / Reality check: Dear [target audience], stop [common incorrect action]. [Contrasting reality].',
+  'Image / It depends on these factors: Where [company/decision] lands depends on [factor 1], [factor 2], and [factor 3].',
+  'Image / Y comes before Z: You can [achieve outcome] with less friction, but most [audience] miss [necessary action].',
+  'Story / Hidden barrier: [Seemingly small detail] does matter when [topic/risk] is involved.',
+  'Story / Costly mistake: A small mistake in [topic/process] can create [negative consequence].',
+  'Story / Contrarian approach: [Provocative concept]. The practical lesson is [business implication].',
+  'Success / Proven strategy: How [target audience] can [achieve outcome] by using [specific method/checklist].',
+  'Success / Winning insights: X lessons that help [target audience] handle [topic] more confidently.'
 ].join('\n');
 
 function fallbackBlog({ article, style = {}, keywords = [] }) {
@@ -162,6 +205,18 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
       `### Can this article be treated as advice?`,
       '',
       'No. It is a general planning note based on the available source material. Businesses should verify the details against official guidance and professional advice.',
+      '',
+      `### What should companies review first?`,
+      '',
+      'Start by confirming whether the update applies to the company, transaction, employee group, customer base, or planned market activity. Then review the documents, filings, approvals, contracts, invoices, or internal controls connected to the issue. This helps teams separate a useful business signal from a headline that may not affect their facts.',
+      '',
+      `### How can teams reduce compliance risk?`,
+      '',
+      'Assign a clear internal owner, document the decision basis, and check whether official guidance or professional advice is needed before acting. For tax, employment, immigration, legal, or regulatory topics, teams should avoid relying on assumptions and keep a record of the guidance used.',
+      '',
+      `### When should a business seek professional support?`,
+      '',
+      'Professional support is useful when the update affects tax treatment, filings, corporate governance, employment obligations, licensing, market-entry structure, or cross-border operations. An advisor can help translate the update into practical next steps, confirm edge cases, and reduce the risk of misapplying general information.',
       '',
       `## Conclusion`,
       '',
@@ -418,8 +473,104 @@ function buildPlainToc(lines = []) {
   ];
 }
 
+function stripKeyTakeawaysSection(markdown = '') {
+  const lines = normalizeLineBreaks(markdown).split('\n');
+  const output = [];
+  let skipping = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^##+\s+key takeaways\b/i.test(trimmed)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^##+\s+/.test(trimmed)) {
+      skipping = false;
+    }
+    if (!skipping) output.push(line);
+  }
+  return output.join('\n');
+}
+
+function normalizeFaqItems(items = [], article = {}) {
+  const fallbackTopic = article?.title || 'this update';
+  const base = Array.isArray(items) ? items : [];
+  const cleaned = base
+    .map((item) => ({
+      question: String(item?.question || '').replace(/\s+/g, ' ').trim(),
+      answer: String(item?.answer || '').replace(/\s+/g, ' ').trim()
+    }))
+    .filter((item) => item.question && item.answer);
+
+  const fallbacks = [
+    {
+      question: `What should businesses understand about ${fallbackTopic}?`,
+      answer: 'Businesses should first identify the specific rule, update, market signal, or compliance point involved, then assess whether it affects their entity, customers, employees, contracts, tax position, or operating timeline. The answer depends on the facts, so the article should be used as a planning guide rather than standalone professional advice.'
+    },
+    {
+      question: 'Who is most likely to be affected?',
+      answer: 'The most relevant audience is usually companies, founders, CFOs, finance teams, compliance owners, HR leaders, investors, or regional expansion teams whose decisions depend on the market, tax, regulatory, employment, or operational issue discussed. Teams should map the update to their actual business model before deciding whether action is needed.'
+    },
+    {
+      question: 'What documents or controls should be reviewed?',
+      answer: 'Companies should review the records, filings, approvals, contracts, invoices, payroll records, licenses, board documentation, or internal ownership controls that connect to the topic. Where the update relates to tax or regulation, maintaining a clear audit trail and decision rationale is often as important as the commercial decision itself.'
+    },
+    {
+      question: 'How should companies turn this update into action?',
+      answer: 'A practical first step is to assign an internal owner, confirm whether the update applies, list open questions, and decide whether professional review is needed before implementation. This keeps the response structured and reduces the risk of acting on a headline without understanding the operational consequences.'
+    },
+    {
+      question: 'Is this article a substitute for professional advice?',
+      answer: 'No. The article is general information based on the available source material. Businesses should verify current official guidance and seek qualified advice where the topic affects tax, legal, immigration, employment, corporate governance, compliance, licensing, or market-entry decisions.'
+    }
+  ];
+
+  return uniqueStrings([...cleaned, ...fallbacks].map((item) => item.question))
+    .map((question) => [...cleaned, ...fallbacks].find((item) => item.question === question))
+    .slice(0, 5);
+}
+
+function renderFaqSection(items = []) {
+  return [
+    '## FAQ',
+    '',
+    ...items.flatMap((item) => [
+      `### ${item.question}`,
+      '',
+      item.answer,
+      ''
+    ])
+  ].join('\n').trim();
+}
+
+function ensureBlogDeliverables(markdown = '', { parsed = {}, article = {}, style = {}, title = '' } = {}) {
+  let output = stripKeyTakeawaysSection(markdown);
+  const faqItems = normalizeFaqItems(parsed.faq, article);
+  const faqSection = renderFaqSection(faqItems);
+
+  if (/^##+\s+faq\b/im.test(output)) {
+    output = output.replace(/^##+\s+faq\b[\s\S]*?(?=^##\s+(?:cta|keywords\/tags|keywords|seo|meta description|social media copy|resources)\b|\s*$)/im, `${faqSection}\n\n`);
+  } else {
+    const ctaIndex = output.search(/^##\s+CTA\b/im);
+    output = ctaIndex >= 0
+      ? `${output.slice(0, ctaIndex).trim()}\n\n${faqSection}\n\n${output.slice(ctaIndex).trim()}`
+      : `${output.trim()}\n\n${faqSection}`;
+  }
+
+  if (!/^##\s+CTA\b/im.test(output)) {
+    const ctaDescription = parsed.cta?.description || style.ctaDescription || style.cta || 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.';
+    const ctaTitle = parsed.cta?.title || style.ctaTitle || 'Need help assessing this update?';
+    output = `${output.trim()}\n\n## CTA\n\n### ${ctaTitle}\n\n${ctaDescription}`;
+  }
+
+  if (!/^#\s+/m.test(output)) {
+    output = `# ${title || article?.title || 'Market intelligence update'}\n\n${output}`;
+  }
+
+  return output.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function formatBlogMarkdown(bodyMarkdown, title) {
-  const normalized = normalizeLooseTables(bodyMarkdown)
+  const normalized = normalizeLooseTables(stripKeyTakeawaysSection(bodyMarkdown))
     .replace(/\u2019/g, "'")
     .replace(/\u2018/g, "'")
     .replace(/\u201c/g, '"')
@@ -1322,6 +1473,24 @@ function linkedinFallbackAngle({ article = {}, topic = '', audience = '' }) {
     article.relevanceReason
   ].filter(Boolean).join(' '));
 
+  if (body.includes('zero rated') || body.includes('zero rating') || (body.includes('0') && body.includes('gst')) || body.includes('0 gst')) {
+    return {
+      hook: '0% GST needs evidence.',
+      companyVoice: 'Our team would treat zero-rating as a proof question, not just an invoice setting.',
+      personalVoice: 'I would treat zero-rating as a proof question, not just an invoice setting.',
+      tension: 'Charging 0% GST can be valid only when the supply fits the zero-rated rules and the supporting documents are in place.',
+      proof: 'Zero-rated GST treatment usually depends on the type of supply, customer location, export/service facts, and evidence kept by the business.',
+      audience: 'finance and tax teams',
+      bullets: [
+        'whether the supply qualifies for zero-rating',
+        'which documents support the 0% treatment',
+        'how the invoice and GST return will be reviewed'
+      ],
+      rule: '0% GST is a position to evidence, not a shortcut to apply.',
+      cta: 'Before charging 0%, check the supply type, customer facts, and documents that support the GST treatment.'
+    };
+  }
+
   if (body.includes('financial statement') || body.includes('filing') || body.includes('annual return')) {
     return {
       hook: 'Filing is governance.',
@@ -1526,11 +1695,12 @@ async function suggestBlogSettings({ article = {}, style = {}, research = [], co
 
 async function generateBlogPost({ article, style = {}, company = {}, keywords = [], aiConfig = {} }) {
   const cli = getClient();
+  const targetWords = blogWordTarget(style);
   const runtimeConfig = generationConfig(aiConfig, {
     model: MODEL,
     temperature: 0.35,
-    maxWords: style.length === 'long' || style.length === 'custom' ? 1800 : style.length === 'short' ? 700 : 1200,
-    minWords: 300,
+    maxWords: targetWords,
+    minWords: 500,
     maxAllowedWords: 3000
   });
   const filtering = aiConfig.filtering || {};
@@ -1592,6 +1762,9 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             'BLOG DRAFTING SOP',
             BLOG_WRITING_SOP,
             '',
+            'APPROVED HOOK TEMPLATE BANK',
+            APPROVED_HOOK_TEMPLATE_BANK,
+            '',
             'IMPORTANT RULES',
             '- Return ONLY valid JSON. No markdown outside JSON.',
             '- Do not plagiarize.',
@@ -1607,9 +1780,13 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- The blog must feel human-written, specific, and editorially reviewed.',
             '- Use SEO best practices, but avoid keyword stuffing.',
             '- Make the introduction sharp and specific. Do not start with generic setup lines.',
+            '- Choose the best-fitting hook pattern from the approved hook template bank for the selected topic, then adapt it naturally into the title, introduction opening, or social media copy. Do not paste placeholders.',
             '- Make the conclusion summarize the practical business signal and nudge the reader toward the CTA.',
             '- If FAQ is requested, include useful search-friendly FAQs.',
+            '- Every generated blog must include at least 5 FAQs. Each FAQ answer must be a useful paragraph of 3-5 sentences, not a one-line answer.',
+            '- Format FAQs with the question as a Markdown H3 on its own line, then a blank line, then the answer paragraph.',
             '- Use proper heading hierarchy.',
+            '- H2 headings must be descriptive, SEO-aware, and specific to the selected topic. Avoid generic H2s such as "Overview", "Benefits", "Conclusion" unless expanded with the topic keyword.',
             '- Write clean publication-ready Markdown.',
             '- Follow this visible blog template order in bodyMarkdown unless the user explicitly requested a custom outline that conflicts: Banner, H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, FAQ, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources.',
             '- Banner should be a short visual design brief section, not an image file and not a summary of the blog. It should describe the intended banner visual, mood, and text focus in 1-2 sentences.',
@@ -1628,7 +1805,9 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Include SEO / Meta Title and Meta Description as visible sections near the end of bodyMarkdown, matching the JSON meta fields.',
             '- Include Social Media Copy as a short promotional post section near the end of bodyMarkdown.',
             '- Include a standalone CTA section after the Conclusion and before Keywords/Tags. The CTA must have the heading "## CTA".',
+            '- The blog must always include a relevant CTA connected to the topic. Do not omit the CTA even when the user gives limited CTA details.',
             '- Include a Resources section at the end with the source URL and any provided reference material / competitor URLs.',
+            '- Do not include a standalone "Key Takeaways" section. Integrate takeaways into the conclusion and practical action sections.',
             '- Never use placeholder links such as "#", "javascript:void(0)", or "example.com". If no CTA URL is provided, write the CTA as plain text without a link.',
             '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
             '',
@@ -1664,7 +1843,8 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `Topic: ${requestedTopic}`,
             `Format: ${format}`,
             `Length: ${length}${length === 'custom' && customLength ? ` (${customLength})` : ''}`,
-            `Superadmin max word target: ${runtimeConfig.maxWords} words`,
+            blogLengthInstruction(style),
+            `Required target word count: ${runtimeConfig.maxWords} words. Stay within roughly +/- 10% unless the source is too limited.`,
             `Content filtering strictness: ${filtering.strictness || 'balanced'}`,
             `Blocked topics: ${Array.isArray(filtering.blockedTopics) && filtering.blockedTopics.length ? filtering.blockedTopics.join(', ') : 'None'}`,
             `Target search intent: ${searchIntent}`,
@@ -1681,6 +1861,11 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             'CONTENT STRUCTURE',
             `Outline mode: ${outlineMode}`,
             `Custom outline:\n${outlineMode === 'custom' ? customOutline : 'Auto-generate a clear Table of Contents.'}`,
+            '',
+            'HOOK SELECTION',
+            'Select one hook template category from the approved hook bank that best fits the topic, search intent, audience, and format.',
+            'For educational/compliance/tax topics, prefer Demystifying Terms, Enlightening Enquiry, Simple Steps, Reality Check, It Depends on These Factors, or It is not about X, it is about Y.',
+            'Adapt the template into a natural blog opening. Replace every bracket placeholder with concrete words from the selected topic and source context.',
             '',
             'If outline mode is "auto", generate a clear Table of Contents before writing the body.',
             'If outline mode is "custom", follow the custom outline as closely as possible.',
@@ -1714,19 +1899,19 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '1. Start bodyMarkdown with a "## Banner" section containing a concise banner/design brief, then the single H1 title.',
             '2. Write the body as a publish-ready article, not as notes, prompts, or a content brief.',
             '3. Include a clean Table of Contents in plain Markdown list format only. Do not use anchor links, and list only main article sections, not Banner/CTA/SEO/meta/social/resources sections.',
-            '4. Write a structured blog body with meaningful H2/H3 headings. Headings should sound like advisory sections, not generic textbook labels.',
+            '4. Write a structured blog body with meaningful SEO-optimized H2/H3 headings. H2s should naturally include the primary keyword, market, rule, audience, or business action where relevant.',
             '5. Explain why the topic matters to the target audience in practical business terms.',
             '6. Use examples where helpful, but do not invent unsupported examples.',
             '7. Include a practical checklist plus a valid Markdown table or decision framework. For incentives/compliance topics, a table is required.',
             '8. Include internal linking suggestions naturally if focus page or internal pages are provided.',
             '9. Include practical takeaways that a reader can act on or discuss internally.',
-            '10. If FAQ is requested, add 3-5 useful FAQs with specific, cautious answers.',
+            '10. Add at least 5 useful FAQs with specific, cautious answers. Each question must be on its own H3 line and each answer must start on the next paragraph with enough detail to be valuable.',
             '11. Add Keywords/Tags, SEO / Meta Title, Meta Description, and Social Media Copy sections after the CTA/FAQ area so the saved blog follows the SOP template.',
             '12. Add a Resources section containing only real source/reference URLs provided in this request.',
             '13. End with a concise conclusion and CTA that includes 2-3 lines explaining how the client company or advisory team can help with the relevant service/problem. Use the provided company name when available; otherwise use neutral wording such as "our team".',
             '14. The CTA must be a standalone "## CTA" section after the conclusion. Do not bury the CTA only inside the conclusion.',
             '15. Keep the blog coherent, flowing, and professionally written.',
-            `16. Keep the final article at or below approximately ${runtimeConfig.maxWords} words unless essential source context requires a short overage.`,
+            `16. Write approximately ${runtimeConfig.maxWords} words. Do not produce a thin draft below the selected length target.`,
             '',
             'QUALITY BAR BEFORE RETURNING',
             '- Rewrite any generic paragraph before final output.',
@@ -1740,7 +1925,8 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure Social Media Copy is calm, advisory, and non-hype-led.',
             '- Ensure the output includes practical formatting: tables where relevant, examples where useful, bullets, and numbered lists.',
             '- Ensure the final article looks ready to publish in a CMS without cleanup.',
-            '- Ensure the final article includes every SOP deliverable: Banner, Title, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, FAQ when requested, CTA, Social Media Copy, and Resources.',
+            '- Ensure the final article includes every SOP deliverable: Banner, Title, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, at least 5 FAQs, CTA, Social Media Copy, and Resources.',
+            '- Ensure there is no standalone Key Takeaways section; include those points inside the conclusion or practical checklist.',
             '- Proofread internally before returning. Grammar, punctuation, heading hierarchy, and flow must be publication-ready.',
             '- Ensure the opening paragraph does not merely define the topic or repeat the title.',
             '- Ensure the Markdown has one H1, clean H2/H3 structure, no duplicate headings, and no broken link syntax.',
@@ -1785,7 +1971,10 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
       };
     }
     const finalTitle = String(parsed.title).trim();
-    const finalBodyMarkdown = formatBlogMarkdown(parsed.bodyMarkdown, finalTitle);
+    const finalBodyMarkdown = ensureBlogDeliverables(
+      formatBlogMarkdown(parsed.bodyMarkdown, finalTitle),
+      { parsed, article, style, title: finalTitle }
+    );
     return {
       title: finalTitle,
       excerpt: formatExcerpt(parsed.excerpt, article?.summary || article?.aiSummary || ''),
@@ -1918,7 +2107,10 @@ async function reviseBlogPost({ blog = {}, sourceArticle = null, feedback = '', 
     return {
       title: finalTitle,
       excerpt: formatExcerpt(parsed.excerpt, blog.excerpt || article.summary || ''),
-      bodyMarkdown: formatBlogMarkdown(parsed.bodyMarkdown, finalTitle),
+      bodyMarkdown: ensureBlogDeliverables(
+        formatBlogMarkdown(parsed.bodyMarkdown, finalTitle),
+        { parsed, article, style: blog.style || {}, title: finalTitle }
+      ),
       suggestedKeywords: uniqueStrings(
         Array.isArray(parsed.suggestedKeywords)
           ? parsed.suggestedKeywords.map((item) => String(item || '').trim())
@@ -1971,6 +2163,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   const includeCTA = options.includeCTA !== false;
   const includeHashtags = options.includeHashtags !== false;
   const customInstructions = options.customInstructions || '';
+  const selectedSourceTopic = String(options.topic || options.selectedTopic || article.title || '').trim();
 
   try {
     const resp = await cli.chat.completions.create({
@@ -1990,6 +2183,9 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             'The post should feel like a senior advisor noticed the operational risk behind the source and wrote a clear note for decision-makers.',
             '',
             'Return ONLY valid JSON. No markdown outside JSON.',
+            '',
+            'APPROVED HOOK TEMPLATE BANK',
+            APPROVED_HOOK_TEMPLATE_BANK,
             '',
             'HARD CONSTRAINTS',
             'Never use these phrases:',
@@ -2031,7 +2227,14 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             'Do not write a summary. Write a point of view built from the source.',
             'Use the writing framework as a structure underneath the post, not as visible labels.',
             'Never paste raw scraped article text, bylines, read-time labels, ad labels, navigation labels, or page UI text into the LinkedIn post.',
-            'Use source context only to extract the business implication. Rewrite everything in original words.'
+            'Use source context only to extract the business implication. Rewrite everything in original words.',
+            '',
+            'TOPIC FOCUS RULES',
+            '- The selected topic is the contract. Do not drift to a loosely related governance, ownership, deadline, or documentation angle unless that is the selected topic.',
+            '- Before writing, identify the primary topic, user objective, reader takeaway, and expected learning outcome. Use them to control the hook and every paragraph.',
+            '- If the selected topic is educational, teach the concept directly before discussing controls or ownership.',
+            '- If the topic includes a concrete tax or compliance phrase such as "0% GST", "zero-rated supply", "resident director", "annual return", or "filing deadline", the hook and body must name that phrase or a very close synonym.',
+            '- For "When to Charge 0% GST (Zero-Rated Supply) - Singapore", focus on what zero-rated GST is, when 0% can be charged, common qualifying scenarios, compliance evidence, and practical examples. Do not turn it into a generic ownership post.'
           ].join('\n')
         },
         {
@@ -2052,6 +2255,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             `Blocked topics: ${Array.isArray(filtering.blockedTopics) && filtering.blockedTopics.length ? filtering.blockedTopics.join(', ') : 'None'}`,
             '',
             'SOURCE INTELLIGENCE',
+            `Selected topic to answer: ${selectedSourceTopic}`,
             `Title: ${article.title || ''}`,
             `Summary: ${article.summary || article.aiSummary || ''}`,
             `URL: ${article.url || ''}`,
@@ -2071,6 +2275,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             `Custom instructions:\n${customInstructions}`,
             '',
             'STEP 1 - TOPIC INTELLIGENCE',
+            'First identify primaryTopic, userObjective, readerTakeaway, and learningOutcome from the selected topic.',
+            'These four fields must be based on the selected topic, not a loose related concept.',
             'Generate 3 content topic options based on the source, ICP pain points, market realities, founder/operator experience, industry misconceptions, and buyer psychology.',
             'Each topic must be specific, relevant to ICP + person profile, and useful enough that a busy operator would save it.',
             'Do not choose the article title as the topic unless it is already a strong business lesson.',
@@ -2107,7 +2313,9 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '',
             'STEP 5 - HOOK GENERATION',
             `Hook style preference: ${hookStyle}`,
-            'Generate proof-led, warning-led, contrarian, identity call-out, curiosity-loop, myth-busting, and personal-story hook options.',
+            'Generate proof-led, warning-led, contrarian, identity call-out, curiosity-loop, myth-busting, and educational hook options.',
+            'Choose the best-fitting pattern from the approved hook template bank based on content category and objective, then adapt it with concrete topic words.',
+            'Do not paste bracket placeholders from the hook bank.',
             'Use personal-story hooks only when profile type is personal or custom instructions name a specific spokesperson.',
             'Each hook line 1 must be under 8 words, create curiosity or tension, and avoid generic phrasing.',
             'Good hook patterns:',
@@ -2122,6 +2330,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Businesses should pay attention.',
             '- This update is important.',
             'Hook line 1 must be source-specific. It should mention the actual risk, role, requirement, market, deadline, control, or business decision from the source.',
+            'Hook line 1 must match the selected topic. It cannot be a random adjacent concept.',
             'Do not use abstract hook words like headline, signal, radar, update, change, or decision unless paired with a concrete source-specific noun.',
             'The first five lines should form a slippery slide: each line should pull the reader to the next.',
             'Prefer first-line hooks with one idea and one breath. Avoid comma-heavy openers.',
@@ -2138,6 +2347,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Mix short, medium, and punchy sentence lengths.',
             '- Include exactly one proof element from the source. Use it in your own words in one concise sentence.',
             '- Include at least 3 concrete business implications from the source/category, such as timing, ownership, documentation, governance, due diligence, filing, cost, risk, client communication, or operational responsibility.',
+            '- For educational topics, include at least 3 concrete teaching points that answer the selected topic directly.',
+            '- The first half of the post must answer the selected topic before moving into implications or CTA.',
             '- Use a short list only when it sharpens the advice. Each bullet must be specific, not generic.',
             '- Include one clear takeaway: Rule of One.',
             '- Do not include hashtags inside postText. Return hashtags only in the hashtags array.',
@@ -2201,6 +2412,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             'Validate before output:',
             '- Hook is strong and under 8 words.',
             '- Hook names the concrete issue from the source.',
+            '- Hook and body answer the selected topic directly.',
+            '- The post identifies the primary topic, user objective, reader takeaway, and learning outcome.',
             '- No banned phrases used.',
             '- One clear idea only.',
             '- At least 3 concrete implications are present.',
@@ -2217,6 +2430,10 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '  "topicOptions": [',
             '    { "topic": "<specific topic>", "tier": "Broad|Practical|Narrow|Niche", "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert", "reason": "<why it works>" }',
             '  ],',
+            '  "primaryTopic": "<primary topic being answered>",',
+            '  "userObjective": "<what the user wants the post to achieve>",',
+            '  "readerTakeaway": "<what the reader should remember>",',
+            '  "learningOutcome": "<what the reader should understand after reading>",',
             '  "selectedTopic": "<best topic>",',
             '  "topicTier": "Broad|Practical|Narrow|Niche",',
             '  "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert",',
@@ -2252,6 +2469,10 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
 
     return {
       topicOptions: Array.isArray(parsed.topicOptions) ? parsed.topicOptions : [],
+      primaryTopic: String(parsed.primaryTopic || selectedSourceTopic || '').trim(),
+      userObjective: String(parsed.userObjective || '').trim(),
+      readerTakeaway: String(parsed.readerTakeaway || '').trim(),
+      learningOutcome: String(parsed.learningOutcome || '').trim(),
       selectedTopic: String(parsed.selectedTopic || article.title || '').trim(),
       topicTier: String(parsed.topicTier || '').trim(),
       emotionalJob: String(parsed.emotionalJob || '').trim(),

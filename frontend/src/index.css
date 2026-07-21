@@ -3977,6 +3977,32 @@ body:not(.theme-dark) .content-repo-sop-banner-distribution {
   border-left: 3px solid rgba(99, 102, 241, 0.42) !important;
 }
 
+.content-repo-sop-body > div > :first-child {
+  margin-top: 0 !important;
+}
+
+.content-repo-sop-body p,
+.content-repo-sop-body ul,
+.content-repo-sop-body ol {
+  color: inherit !important;
+}
+
+.content-repo-sop-body p {
+  margin-top: 0.85rem !important;
+  line-height: 1.9 !important;
+}
+
+.content-repo-sop-body ul,
+.content-repo-sop-body ol {
+  margin-top: 0.85rem !important;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.content-repo-sop-body table {
+  background: #fff;
+}
+
 body:not(.theme-dark) .filters-row:hover,
 body:not(.theme-dark) .intel-filter-control:hover,
 body:not(.theme-dark) .admin-country-select-option-active,
