@@ -12,7 +12,6 @@ const { publishTenantEvent } = require('../utils/realtime');
 const { acquire } = require('../utils/concurrencyGate');
 const genProgress = require('../services/generationProgress');
 const { getSystemSettings } = require('../services/systemSettings');
-const tavilyService = require('../services/tavilyService');
 
 const router = express.Router();
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -76,9 +75,38 @@ function articleTenantQuery(user) {
     $or: [
       { userId: tenantAdminId(user) },
       { userId: { $exists: false } },
-      { userId: null }
+      { userId: null },
+      { isPublished: true }
     ]
   };
+}
+
+function canUseArticleAsSource(user, article) {
+  if (!article) return false;
+  if (user?.role === 'super_admin') return true;
+  if (article.isPublished === true) return true;
+  if (!article.userId) return true;
+  return String(article.userId) === String(tenantAdminId(user));
+}
+
+async function findSourceArticleForBlog(user, articleId) {
+  if (!mongoose.Types.ObjectId.isValid(articleId)) return null;
+  const article = await Article.findById(articleId).lean();
+  return canUseArticleAsSource(user, article) ? article : null;
+}
+
+async function resolveSourceArticleForBlog(user, articleId, source = {}) {
+  const direct = await findSourceArticleForBlog(user, articleId);
+  if (direct) return direct;
+
+  const or = [];
+  if (source.urlHash) or.push({ urlHash: source.urlHash });
+  if (source.url) or.push({ url: source.url });
+  if (source.title) or.push({ title: source.title });
+  if (!or.length) return null;
+
+  const candidates = await Article.find({ $or: or }).limit(8).lean();
+  return candidates.find((item) => canUseArticleAsSource(user, item)) || null;
 }
 
 function slugify(value) {
@@ -93,10 +121,10 @@ function blogSourceContext(article = {}) {
   return [
     article.rawContent,
     article.rawData?.rawContent,
-    article.tavilyAnswer,
+    article.sourceAnswer,
     article.blogContext,
     article.blog_context,
-    article.tavily_answer,
+    article.source_answer,
     article.summary,
     article.aiSummary
   ]
@@ -305,6 +333,7 @@ const styleSchema = Joi.object({
 
 const generateSchema = Joi.object({
   articleId: Joi.string().required(),
+  sourceArticle: Joi.object().unknown(true).default({}),
   style: styleSchema.default({}),
   keywords: Joi.array().items(Joi.string().max(80)).default([]),
   status: Joi.string().valid('review', 'published').default('review')
@@ -312,6 +341,7 @@ const generateSchema = Joi.object({
 
 const suggestSettingsSchema = Joi.object({
   articleId: Joi.string().required(),
+  sourceArticle: Joi.object().unknown(true).default({}),
   style: styleSchema.default({}),
   country: Joi.string().allow('').max(80),
   limit: Joi.number().integer().min(1).max(8).default(5)
@@ -341,6 +371,7 @@ const linkedinOptionsSchema = Joi.object({
 
 const generateLinkedInSchema = Joi.object({
   articleId: Joi.string().required(),
+  sourceArticle: Joi.object().unknown(true).default({}),
   options: linkedinOptionsSchema.default({})
 });
 
@@ -380,8 +411,16 @@ const reviseSchema = Joi.object({
 });
 
 const reviewCommentSchema = Joi.object({
-  text: Joi.string().trim().min(2).max(2000).required()
+  text: Joi.string().trim().min(2).max(2000).required(),
+  selectedText: Joi.string().allow('').trim().max(1000).default(''),
+  beforeText: Joi.string().allow('').trim().max(500).default(''),
+  afterText: Joi.string().allow('').trim().max(500).default('')
 });
+
+const reviewCommentUpdateSchema = Joi.object({
+  text: Joi.string().trim().min(2).max(2000),
+  resolved: Joi.boolean()
+}).min(1);
 
 const bulkDeleteSchema = Joi.object({
   ids: Joi.array().items(Joi.string().required()).min(1).max(100).required()
@@ -446,7 +485,7 @@ router.post('/suggest-settings', protect, requireBlogAdmin, asyncHandler(async (
     return res.status(400).json({ message: 'Invalid article id' });
   }
 
-  const article = await Article.findOne({ _id: value.articleId, ...articleTenantQuery(req.user) }).lean();
+  const article = await resolveSourceArticleForBlog(req.user, value.articleId, value.sourceArticle);
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const systemSettings = await getSystemSettings();
@@ -456,26 +495,7 @@ router.post('/suggest-settings', protect, requireBlogAdmin, asyncHandler(async (
   }
 
   const seoArticle = compactSeoArticle(article);
-  const searchQuery = seoSearchQuery({
-    article: seoArticle,
-    style: value.style,
-    country: value.country
-  });
-
   let research = [];
-  if (tavilyService.isEnabled() && searchQuery) {
-    try {
-      research = await tavilyService.search(searchQuery, {
-        topic: article.type === 'evergreen' ? 'general' : 'news',
-        searchDepth: 'basic',
-        maxResults: value.limit,
-        includeRawContent: false,
-        timeoutMs: 20000
-      });
-    } catch (err) {
-      console.warn('[blog] Tavily SEO suggestion search failed:', err.message);
-    }
-  }
 
   const suggestions = await suggestBlogSettings({
     article: seoArticle,
@@ -488,7 +508,7 @@ router.post('/suggest-settings', protect, requireBlogAdmin, asyncHandler(async (
   res.json({
     item: suggestions,
     researchAvailable: research.length > 0,
-    tavilyEnabled: tavilyService.isEnabled()
+    researchProvider: 'article'
   });
 }));
 
@@ -499,7 +519,7 @@ router.post('/generate', protect, requireBlogAdmin, requireGenerationLimit, asyn
     return res.status(400).json({ message: 'Invalid article id' });
   }
 
-  const article = await Article.findOne({ _id: value.articleId, ...articleTenantQuery(req.user) }).lean();
+  const article = await resolveSourceArticleForBlog(req.user, value.articleId, value.sourceArticle);
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const tenantId = tenantAdminId(req.user);
@@ -602,7 +622,7 @@ router.post('/linkedin/generate', protect, requireBlogAdmin, requireGenerationLi
     return res.status(400).json({ message: 'Invalid article id' });
   }
 
-  const article = await Article.findOne({ _id: value.articleId, ...articleTenantQuery(req.user) }).lean();
+  const article = await resolveSourceArticleForBlog(req.user, value.articleId, value.sourceArticle);
   if (!article) return res.status(404).json({ message: 'Source topic not found' });
 
   const tenantId = tenantAdminId(req.user);
@@ -760,7 +780,7 @@ router.post('/social-posts/:id/revise', protect, requireBlogAdmin, asyncHandler(
   const post = await SocialPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) }).lean();
   if (!post) return res.status(404).json({ message: 'Social post not found' });
   const sourceArticle = post.sourceArticleId
-    ? await Article.findOne({ _id: post.sourceArticleId, ...articleTenantQuery(req.user) }).lean()
+    ? await findSourceArticleForBlog(req.user, post.sourceArticleId)
     : null;
 
   const systemSettings = await getSystemSettings();
@@ -861,6 +881,9 @@ router.post('/:id/comments', protect, requireContentRepository, asyncHandler(asy
 
   blog.reviewComments.push({
     text: value.text,
+    selectedText: value.selectedText || '',
+    beforeText: value.beforeText || '',
+    afterText: value.afterText || '',
     authorId: req.user._id,
     authorName: req.user.name || req.user.email || 'Reviewer',
     createdAt: new Date()
@@ -874,6 +897,40 @@ router.post('/:id/comments', protect, requireContentRepository, asyncHandler(asy
     id: String(item._id)
   });
   res.status(201).json({ item, comment: item.reviewComments[item.reviewComments.length - 1] });
+}));
+
+router.patch('/:id/comments/:commentId', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const { error, value } = reviewCommentUpdateSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const blog = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!blog) return res.status(404).json({ message: 'Blog not found' });
+  if (!isBlogAdmin(req.user) && blog.status !== 'published') {
+    return res.status(404).json({ message: 'Blog not found' });
+  }
+
+  const comment = blog.reviewComments.id(req.params.commentId);
+  if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+  const canEdit = isBlogAdmin(req.user) || String(comment.authorId || '') === String(req.user._id);
+  if (!canEdit) {
+    return res.status(403).json({ message: 'You can only update your own comments.' });
+  }
+
+  if (typeof value.text === 'string') comment.text = value.text;
+  if (typeof value.resolved === 'boolean') {
+    comment.resolved = value.resolved;
+    comment.resolvedAt = value.resolved ? new Date() : null;
+  }
+  await blog.save();
+
+  const item = blog.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'blogs',
+    action: 'comment-updated',
+    id: String(item._id)
+  });
+  res.json({ item, comment: item.reviewComments.find((entry) => String(entry._id) === String(req.params.commentId)) });
 }));
 
 router.delete('/:id/comments/:commentId', protect, requireContentRepository, asyncHandler(async (req, res) => {
@@ -932,7 +989,7 @@ router.post('/:id/revise', protect, requireBlogAdmin, asyncHandler(async (req, r
   const blog = await BlogPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) }).lean();
   if (!blog) return res.status(404).json({ message: 'Blog not found' });
   const sourceArticle = blog.sourceArticleId
-    ? await Article.findOne({ _id: blog.sourceArticleId, ...articleTenantQuery(req.user) }).lean()
+    ? await findSourceArticleForBlog(req.user, blog.sourceArticleId)
     : null;
 
   const systemSettings = await getSystemSettings();

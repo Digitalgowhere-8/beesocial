@@ -53,8 +53,13 @@ const blogPostSchema = new mongoose.Schema(
     keywords: [{ type: String, trim: true }],
     reviewComments: [{
       text: { type: String, required: true, trim: true, maxlength: 2000 },
+      selectedText: { type: String, default: '', trim: true, maxlength: 1000 },
+      beforeText: { type: String, default: '', trim: true, maxlength: 500 },
+      afterText: { type: String, default: '', trim: true, maxlength: 500 },
       authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       authorName: { type: String, default: '', trim: true, maxlength: 120 },
+      resolved: { type: Boolean, default: false },
+      resolvedAt: { type: Date, default: null },
       createdAt: { type: Date, default: Date.now }
     }],
     language: { type: String, default: 'en' },

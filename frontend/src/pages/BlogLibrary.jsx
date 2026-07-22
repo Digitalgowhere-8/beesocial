@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import Layout from '../components/Layout';
@@ -771,13 +771,16 @@ export default function BlogLibrary() {
   const [blogFeedback, setBlogFeedback] = useState('');
   const [socialFeedback, setSocialFeedback] = useState('');
   const [blogComment, setBlogComment] = useState('');
+  const [selectedCommentTarget, setSelectedCommentTarget] = useState(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState('');
+  const [updatingCommentId, setUpdatingCommentId] = useState('');
   const [revisingBlog, setRevisingBlog] = useState(false);
   const [revisingSocial, setRevisingSocial] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [unsavedConfirm, setUnsavedConfirm] = useState(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
+  const blogPreviewRef = useRef(null);
   const loading = mode === 'blogs' ? loadingBlogs : loadingSocial;
   const savedSelectedBlog = useMemo(
     () => items.find((blog) => blog._id === selected?._id) || null,
@@ -798,6 +801,49 @@ export default function BlogLibrary() {
     JSON.stringify(selectedSocial.hashtags || []) !== JSON.stringify(savedSelectedSocial.hashtags || [])
   ));
   const hasUnsavedRevision = blogDraftDirty || socialDraftDirty;
+
+  useEffect(() => {
+    setSelectedCommentTarget(null);
+  }, [selected?._id]);
+
+  const captureBlogSelection = useCallback(() => {
+    const root = blogPreviewRef.current;
+    const selection = window.getSelection?.();
+    if (!root || !selection || selection.rangeCount === 0) return;
+    const selectedText = selection.toString().replace(/\s+/g, ' ').trim();
+    if (!selectedText) return;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return;
+
+    const bodyText = root.innerText || '';
+    const index = bodyText.indexOf(selectedText);
+    setSelectedCommentTarget({
+      selectedText: selectedText.slice(0, 1000),
+      beforeText: index >= 0 ? bodyText.slice(Math.max(0, index - 240), index).trim().slice(-500) : '',
+      afterText: index >= 0 ? bodyText.slice(index + selectedText.length, index + selectedText.length + 240).trim().slice(0, 500) : ''
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const selection = window.getSelection?.();
+      const selectedText = selection?.toString?.().trim() || '';
+      if (!selectedText) {
+        setSelectedCommentTarget(null);
+        return;
+      }
+
+      const root = blogPreviewRef.current;
+      if (!root || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!root.contains(range.commonAncestorContainer)) {
+        setSelectedCommentTarget(null);
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, []);
 
   const confirmUnsavedLeave = useCallback((action, message = 'You have unsaved changes. Discard them and continue, or keep editing.') => {
     if (!hasUnsavedRevision) {
@@ -1140,17 +1186,38 @@ export default function BlogLibrary() {
     setSubmittingComment(true);
     setError('');
     try {
-      const { data } = await api.post(`/blogs/${selected._id}/comments`, { text });
+      const { data } = await api.post(`/blogs/${selected._id}/comments`, {
+        text,
+        selectedText: selectedCommentTarget?.selectedText || '',
+        beforeText: selectedCommentTarget?.beforeText || '',
+        afterText: selectedCommentTarget?.afterText || ''
+      });
       if (data.item) {
         updateBlogItem(data.item);
         setBlogComment('');
+        setSelectedCommentTarget(null);
+        window.getSelection?.()?.removeAllRanges?.();
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not save comment');
     } finally {
       setSubmittingComment(false);
     }
-  }, [blogComment, selected?._id, submittingComment, updateBlogItem]);
+  }, [blogComment, selected?._id, selectedCommentTarget, submittingComment, updateBlogItem]);
+
+  const updateBlogComment = useCallback(async (commentId, patch) => {
+    if (!selected?._id || !commentId || updatingCommentId) return;
+    setUpdatingCommentId(commentId);
+    setError('');
+    try {
+      const { data } = await api.patch(`/blogs/${selected._id}/comments/${commentId}`, patch);
+      if (data.item) updateBlogItem(data.item);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not update comment');
+    } finally {
+      setUpdatingCommentId('');
+    }
+  }, [selected?._id, updateBlogItem, updatingCommentId]);
 
   const deleteBlogComment = useCallback(async (commentId) => {
     if (!selected?._id || !commentId || deletingCommentId) return;
@@ -1669,7 +1736,12 @@ export default function BlogLibrary() {
                       </div>
                     )}
                     
-                    <div className="max-w-none">
+                    <div
+                      ref={blogPreviewRef}
+                      onMouseUp={captureBlogSelection}
+                      onKeyUp={captureBlogSelection}
+                      className="max-w-none"
+                    >
                       <div className="text-gray-800">
                         <MarkdownArticle bodyMarkdown={selected.bodyMarkdown} title={selected.title} />
                       </div>
@@ -1695,11 +1767,15 @@ export default function BlogLibrary() {
                       ) : null}
                       <ReviewCommentsPanel
                         comments={selected.reviewComments || []}
+                        selectedTarget={selectedCommentTarget}
+                        onClearSelectedTarget={() => setSelectedCommentTarget(null)}
                         value={blogComment}
                         onChange={setBlogComment}
                         onSubmit={submitBlogComment}
+                        onUpdate={updateBlogComment}
                         onDelete={deleteBlogComment}
                         loading={submittingComment}
+                        updatingCommentId={updatingCommentId}
                         deletingCommentId={deletingCommentId}
                       />
                     </div>
@@ -1773,11 +1849,15 @@ function ImproveFeedbackPanel({
 
 function ReviewCommentsPanel({
   comments = [],
+  selectedTarget = null,
+  onClearSelectedTarget,
   value,
   onChange,
   onSubmit,
+  onUpdate,
   onDelete,
   loading = false,
+  updatingCommentId = '',
   deletingCommentId = ''
 }) {
   const sortedComments = [...comments].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -1787,10 +1867,27 @@ function ReviewCommentsPanel({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest text-gray-700">Review Comments</div>
-          <p className="mt-1 text-xs font-semibold leading-relaxed text-gray-500">Leave notes for the reviewer or content team.</p>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-gray-500">Select text in the article, then add a note for review.</p>
         </div>
         <MessageSquareText size={18} className="shrink-0 text-gray-500" />
       </div>
+      {selectedTarget?.selectedText ? (
+        <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">Selected Text</span>
+            <button
+              type="button"
+              onClick={onClearSelectedTarget}
+              className="rounded-lg border border-emerald-100 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 transition-all hover:border-emerald-200 hover:bg-emerald-50"
+            >
+              Clear
+            </button>
+          </div>
+          <p className="line-clamp-4 border-l-2 border-emerald-300 pl-3 text-xs font-semibold leading-relaxed text-emerald-950/75">
+            {selectedTarget.selectedText}
+          </p>
+        </div>
+      ) : null}
       <textarea
         className="input min-h-[86px] resize-y rounded-xl bg-gray-50 text-sm transition-colors hover:border-gray-200 focus:border-brand-crimson/50"
         value={value}
@@ -1808,7 +1905,7 @@ function ReviewCommentsPanel({
       </button>
       <div className="mt-4 space-y-3">
         {sortedComments.length ? sortedComments.map((comment) => (
-          <div key={comment._id || `${comment.createdAt}-${comment.text}`} className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
+          <div key={comment._id || `${comment.createdAt}-${comment.text}`} className={`rounded-xl border p-3 ${comment.resolved ? 'border-gray-100 bg-gray-50/70 opacity-75' : 'border-gray-100 bg-gray-50/80'}`}>
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-xs font-black text-gray-800">{comment.authorName || 'Reviewer'}</span>
               <div className="flex shrink-0 items-center gap-2">
@@ -1816,6 +1913,20 @@ function ReviewCommentsPanel({
                   {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : ''}
                 </span>
                 {comment._id ? (
+                  <>
+                  <button
+                    type="button"
+                    onClick={() => onUpdate?.(comment._id, { resolved: !comment.resolved })}
+                    disabled={Boolean(updatingCommentId)}
+                    className={`inline-flex h-7 items-center justify-center rounded-lg border px-2 text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                      comment.resolved
+                        ? 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                        : 'border-emerald-100 bg-white text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50'
+                    }`}
+                    title={comment.resolved ? 'Reopen comment' : 'Resolve comment'}
+                  >
+                    {updatingCommentId === comment._id ? <Loader2 size={13} className="animate-spin" /> : comment.resolved ? 'Open' : 'Resolve'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onDelete?.(comment._id)}
@@ -1826,9 +1937,18 @@ function ReviewCommentsPanel({
                   >
                     {deletingCommentId === comment._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                   </button>
+                  </>
                 ) : null}
               </div>
             </div>
+            {comment.selectedText ? (
+              <div className="mb-2 rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2">
+                <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-700">Commented Selection</div>
+                <p className="line-clamp-4 border-l-2 border-amber-300 pl-2 text-xs font-semibold leading-relaxed text-amber-950/75">
+                  {comment.selectedText}
+                </p>
+              </div>
+            ) : null}
             <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-600">{comment.text}</p>
           </div>
         )) : (

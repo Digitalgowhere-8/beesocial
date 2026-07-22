@@ -103,9 +103,9 @@ const STYLE_OPTIONS = {
     ['guide', 'Guide']
   ],
   length: [
-    ['short', 'Short (800 words)'],
-    ['medium', 'Medium (1,500 words)'],
-    ['long', 'Long (2,500 words)'],
+    ['short', 'Short (500-800 words)'],
+    ['medium', 'Medium (800-1,500 words)'],
+    ['long', 'Long (1,500-3,000 words)'],
     ['custom', 'Custom']
   ],
   searchIntent: [
@@ -141,9 +141,9 @@ const DEFAULT_STYLE = {
   internalLinkPages: '',
   ctaTitle: 'Need help assessing this update?',
   ctaDescription: '',
-  ctaButtonText: 'Speak with an advisor',
+  ctaButtonText: 'Speak with Ascentium',
   ctaUrl: '',
-  cta: 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
+  cta: 'Ascentium can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
   keyPoints: '',
   referenceUrls: '',
   includeFaq: true,
@@ -312,6 +312,7 @@ export default function BlogStudio() {
   const [selectedBlogIds, setSelectedBlogIds] = useState([]);
   const [selectedSocialPostIds, setSelectedSocialPostIds] = useState([]);
   const [error, setError] = useState('');
+  const [settingsNotice, setSettingsNotice] = useState('');
   const [draggingArticleId, setDraggingArticleId] = useState('');
   const [dropActive, setDropActive] = useState(false);
   const [pendingDraftId, setPendingDraftId] = useState('');
@@ -939,6 +940,7 @@ export default function BlogStudio() {
   const suggestSeoSettings = async () => {
     if (!selectedArticle?._id) {
       setError('Select a topic first so AI can suggest SEO settings.');
+      setSettingsNotice('');
       return;
     }
     suggestSettingsAbortRef.current?.abort();
@@ -946,9 +948,22 @@ export default function BlogStudio() {
     suggestSettingsAbortRef.current = controller;
     setSuggestingSettings(true);
     setError('');
+    setSettingsNotice('');
     try {
       const { data } = await api.post('/blogs/suggest-settings', {
         articleId: selectedArticle._id,
+        sourceArticle: {
+          _id: selectedArticle._id,
+          title: selectedArticle.title,
+          url: selectedArticle.url,
+          urlHash: selectedArticle.urlHash,
+          source: selectedArticle.source,
+          sourceType: selectedArticle.sourceType,
+          country: selectedArticle.country,
+          type: selectedArticle.type,
+          category: selectedArticle.category,
+          subcategory: selectedArticle.subcategory
+        },
         style: normalizeBlogStyle({ ...style, topic: style.topic || selectedArticle.title }),
         country: selectedArticle.country || topicFilters.country || '',
         limit: 5
@@ -976,11 +991,12 @@ export default function BlogStudio() {
       if (Array.isArray(item.secondaryKeywords) && item.secondaryKeywords.length) {
         setKeywords(item.secondaryKeywords.join(', '));
       }
-      if (!data.tavilyEnabled) {
-        setError('SEO settings suggested with AI. Tavily is not configured, so live web research was skipped.');
-      }
+      setSettingsNotice(data.researchAvailable
+        ? 'SEO and blog settings updated from the selected article and supporting context.'
+        : 'SEO and blog settings updated from the selected article context.');
     } catch (err) {
       if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+      setSettingsNotice('');
       setError(err.response?.data?.message || err.message || 'Could not suggest SEO settings');
     } finally {
       if (suggestSettingsAbortRef.current === controller) {
@@ -1013,6 +1029,18 @@ export default function BlogStudio() {
     try {
       await api.post('/blogs/generate', {
         articleId: selectedArticle._id,
+        sourceArticle: {
+          _id: selectedArticle._id,
+          title: selectedArticle.title,
+          url: selectedArticle.url,
+          urlHash: selectedArticle.urlHash,
+          source: selectedArticle.source,
+          sourceType: selectedArticle.sourceType,
+          country: selectedArticle.country,
+          type: selectedArticle.type,
+          category: selectedArticle.category,
+          subcategory: selectedArticle.subcategory
+        },
         style: normalizeBlogStyle(style),
         keywords: [style.primaryKeyword, ...keywordList].filter(Boolean),
         status: 'review'
@@ -1193,6 +1221,18 @@ export default function BlogStudio() {
     try {
       await api.post('/blogs/linkedin/generate', {
         articleId: selectedArticle._id,
+        sourceArticle: {
+          _id: selectedArticle._id,
+          title: selectedArticle.title,
+          url: selectedArticle.url,
+          urlHash: selectedArticle.urlHash,
+          source: selectedArticle.source,
+          sourceType: selectedArticle.sourceType,
+          country: selectedArticle.country,
+          type: selectedArticle.type,
+          category: selectedArticle.category,
+          subcategory: selectedArticle.subcategory
+        },
         options: linkedinForm
       });
 
@@ -1502,6 +1542,11 @@ export default function BlogStudio() {
         {error && (
           <div className="content-studio-error-alert mb-3 rounded-xl border border-red-200/50 bg-red-50/80 px-5 py-4 text-sm font-semibold text-red-700 shadow-sm backdrop-blur-md animate-fade-in-up stagger-2">
             {error}
+          </div>
+        )}
+        {settingsNotice && !error && (
+          <div className="mb-3 rounded-xl border border-emerald-200/70 bg-emerald-50/90 px-5 py-4 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur-md animate-fade-in-up stagger-2">
+            {settingsNotice}
           </div>
         )}
 

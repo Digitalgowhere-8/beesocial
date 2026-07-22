@@ -118,6 +118,59 @@ const BLOG_WRITING_SOP = [
   '18. Humanise the copy: remove robotic transitions, filler, repeated phrasing, and generic AI language. Grammar must be publication-ready and polished.'
 ].join('\n');
 
+const ASCENTIUM_BLOG_GENERATION_RULES = [
+  '# ROLE',
+  'You are an experienced corporate advisor, SEO strategist, market researcher, and professional B2B content writer creating publication-ready blogs for professional services firms.',
+  'Transform verified market intelligence into original, educational, commercially useful thought leadership. Do not rewrite, paraphrase, or summarize the source article.',
+  'Every blog must read as if written by an experienced consultant, not AI. Every paragraph must help the reader understand something, solve a problem, or make a better business decision.',
+  '',
+  '# ABOUT ASCENTIUM',
+  'Every blog represents Ascentium, a premium global corporate services company helping founders, growing businesses, multinational companies, investors, and family offices scale with confidence.',
+  'Ascentium is human-first: technology enables people; it never replaces people. Ascentium removes complexity, not creates it.',
+  'Clients should leave with clear answers, better understanding, practical direction, and greater confidence.',
+  'Ascentium expertise includes Company Incorporation, Corporate Secretarial, Accounting, Tax Advisory, GST, Payroll, HR & Employment, Immigration, Compliance, Global Expansion, Market Entry, Business Advisory, Governance, and Entity Management.',
+  'Always position Ascentium as a trusted advisor, naturally and educationally.',
+  '',
+  '# ASCENTIUM BRAND GUIDELINES',
+  'Write with confidence, humanity, accountability, and a client-first lens.',
+  'Speak with authority without exaggeration or arrogance. Use facts and clarity.',
+  'Write naturally, like a consultant explaining the issue to a client.',
+  'Always provide practical guidance. Explain what businesses should do, common mistakes, commercial implications, and future considerations.',
+  'Avoid generic phrases: "we leverage", "comprehensive", "industry-leading", "world-class", "cutting-edge", "revolutionary", "game-changing", "optimize your workflow", "best-in-class".',
+  '',
+  '# REQUIRED BLOG STRUCTURE',
+  'Generate every blog in this order: Banner, Title, Table of contents, Body of Content, Keywords/Tags, SEO / meta Title, Meta Description, FAQ, CTA, Social media copy, Resources.',
+  'The introduction must use three paragraphs: real-world business challenge, why it matters, and what readers will learn. Never start with a dictionary definition or generic filler.',
+  'Table of Contents must be generated from all H2 headings. H2 headings should include keywords naturally and follow a logical reading flow.',
+  'Each H2 section should cover: Problem, Explanation, Business Impact, Example, Practical Advice, Transition.',
+  'Use tables when comparisons, requirements, risks, steps, or decisions are clearer in a table. Use bullets sparingly; never turn the whole article into bullet points.',
+  'Conclusion must not say "In conclusion". It should summarize the major insight, reinforce business implications, encourage proactive planning, and transition naturally into the CTA in about 150-200 words.',
+  '',
+  '# FAQ AND CTA',
+  'Generate at least 5 FAQs based on real Google-style searches. Each answer should be 80-120 words, useful, and not a yes/no answer.',
+  'Every blog must end with a topic-specific CTA. CTA must include title, description, buttonText, and url. Educate first, sell second.',
+  '',
+  '# SEO RULES',
+  'Prioritize search intent and helpful content over keyword density.',
+  'Primary keyword must appear naturally in the SEO title, H1 title, first 100 words, at least one H2, conclusion, and meta description.',
+  'Use secondary and semantic keywords naturally in H2s, body, FAQ, and conclusion. Never keyword stuff.',
+  'Meta Title must be 50-60 characters where possible and can be question-style when suitable. Meta Description must be 150-160 characters where possible.',
+  'Answer important questions directly when useful for featured snippets.',
+  '',
+  '# FACT CHECKING',
+  'Never invent statistics, dates, regulations, government policies, tax rates, legal interpretations, or source URLs.',
+  'If factual information is unavailable, state the principle without fabricating details.',
+  'For legal, tax, regulatory, immigration, employment, or compliance topics, use advisory wording and avoid definitive advice.',
+  '',
+  '# LENGTH',
+  'Follow the selected length exactly: Short 500-800 words, Medium 800-1,500 words, Long 1,500-3,000 words. For custom length, use the exact requested length.',
+  '',
+  '# OUTPUT REQUIREMENTS',
+  'Return ONLY valid JSON. Do not wrap JSON in markdown. Do not include explanations, notes, or comments.',
+  'The JSON must follow this structure exactly: {"title":"","excerpt":"","bodyMarkdown":"","suggestedKeywords":[],"metaTitle":"","metaDescription":"","faq":[{"question":"","answer":""}],"cta":{"title":"","description":"","buttonText":"","url":""},"socialMediaCopy":"","resources":[{"label":"","url":""}],"bannerBrief":""}',
+  'Before returning, ask whether a founder, CFO, investor, or business owner would believe this was written by an experienced Ascentium advisor. If not, rewrite before returning.'
+].join('\n');
+
 const APPROVED_HOOK_TEMPLATE_BANK = [
   'Carousel / Educational: How to [achieve specific outcome] in [simple steps] for [target audience].',
   'Carousel / Challenging assumption: Why [target audience] must be [counterintuitive quality] when dealing with [topic].',
@@ -320,7 +373,7 @@ function blogSourceContext(article = {}) {
   return [
     article.rawContent || article.raw_content,
     article.rawData?.rawContent,
-    article.tavilyAnswer || article.tavily_answer,
+    article.sourceAnswer || article.source_answer,
     article.blogContext || article.blog_context,
     article.summary,
     article.sourceQuery ? `Search query: ${article.sourceQuery}` : '',
@@ -339,7 +392,7 @@ function socialSourceContext(article = {}) {
   return [
     article.summary,
     article.aiSummary,
-    article.tavilyAnswer || article.tavily_answer,
+    article.sourceAnswer || article.source_answer,
     article.blogContext || article.blog_context,
     article.rawContent || article.raw_content,
     article.rawData?.rawContent,
@@ -871,6 +924,21 @@ function taxonomyPromptText() {
     .join('\n\n');
 }
 
+function ascentiumRelevanceRubricText() {
+  return [
+    'Score relevance from 0 to 100 using this fixed Ascentium business rubric:',
+    '- Connects to a service Ascentium sells: 0-20 points.',
+    '- Is in a market Ascentium operates in: 0-15 points.',
+    '- Affects clients businesses, operations, risk, filings, tax, accounting, payroll, governance, compliance, market entry, or advisory decisions: 0-20 points.',
+    '- Is a law, regulatory change, official guidance, filing requirement, consultation, enforcement, or government policy update: 0-15 points.',
+    '- Is fresh, time-sensitive, or inside the requested date window: 0-10 points.',
+    '- Source is trustworthy: government/regulator highest, reputable business news medium, blogs/promotional pages lowest: 0-10 points.',
+    '- Could bring leads or create a client conversation/opportunity: 0-5 points.',
+    '- Connects to content/services Ascentium already has or can publish around: 0-5 points.',
+    'Use the sum as relevance_score. Do not inflate scores for generic news. If service fit plus client impact is below 20 combined, return IGNORE even if other factors are present.'
+  ].join('\n');
+}
+
 function topicFilterInstructions(topic) {
   const map = {
     govt:
@@ -972,7 +1040,7 @@ function validFallbackSubcategory(category, subcategory) {
 }
 
 function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
-  const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.tavilyScore || 0) || 0));
+  const score = Math.max(0, Math.min(100, Number(article.relevanceScore || article.sourceScore || 0) || 0));
   const body = [
     article.title,
     article.summary,
@@ -991,7 +1059,7 @@ function fallbackProfileRelevance({ article = {}, topic = 'news' }) {
     summary: article.summary || article.aiSummary || '',
     relevance_score: score,
     relevance_reason: shouldStore
-      ? `Fallback rule-based match for ${category} / ${subcategory} with Tavily relevance score ${score} for ${topic}.`
+      ? `Fallback rule-based match for ${category} / ${subcategory} with Source relevance score ${score} for ${topic}.`
       : `Fallback ignored because score/category/sub-category did not meet storage rules for ${topic}.`
   };
 }
@@ -1024,6 +1092,9 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   const selectedCategories = listPromptValues(profile.categories || article.categories || selectedCategory);
   const selectedSubcategory = profile.subcategory || article.subcategory || 'All sub-categories';
   const mainCategories = Object.keys(CATEGORIES || {});
+  const taxonomyScopeInstruction = profile.globalFetch || profile.platformFetch || profile.global
+    ? 'This is a superadmin/global fetch. You may STORE when the chosen category and sub-category exist anywhere in the taxonomy. Do not restrict to one user-selected category.'
+    : 'You may STORE only when the chosen category is one of the user selected categories and the chosen sub-category is one of the selected/allowed sub-categories. If it fits another category, return IGNORE.';
   const isGovtTopic = topic === 'govt';
   const isCompetitorTopic = topic === 'competitor';
   const isEvergreenTopic = topic === 'evergreen';
@@ -1050,6 +1121,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `- Any regulatory change older than ${maxAgeDays} days.`,
         '',
         'STEP 2: SCORING',
+        ascentiumRelevanceRubricText(),
         `HIGH (70-100): NEW government announcement, circular, consultation, law, tax change, budget measure, incentive scheme, immigration/labour rule change, or named regulator guidance affecting ${marketText}.`,
         `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): Government policy update with a named regulator and clear business impact in ${marketText}, or budget/tax proposal under consultation.`,
         'Score 0: matches any reject rule or is older than the allowed window.',
@@ -1059,6 +1131,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `For STORE decisions, map the article into one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
         'Use the government focus areas above only as interpretation guidance, not as output categories.',
         'Never invent a new category or sub-category. If no existing taxonomy category fits, return IGNORE.',
+        taxonomyScopeInstruction,
         '',
         'STEP 4: OUTPUT',
         `summary must explain in 2 short sentences what was announced and why it matters to businesses or compliance teams in ${marketText}.`,
@@ -1115,6 +1188,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           `- Any update older than ${maxAgeDays} days.`,
           '',
           'STEP 2: SCORING',
+          ascentiumRelevanceRubricText(),
           `HIGH (70-100): Named tracked competitor opening a NEW office, completing an acquisition, launching a NEW service, or winning a major mandate in ${marketText}.`,
           `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): Named competitor announcing an expansion plan, leadership hire, partnership, investment increase, pricing/market strategy, or regulatory approval in ${marketText}.`,
           'Score 0: no named tracked competitor or activity outside the selected markets.',
@@ -1124,6 +1198,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           `For STORE decisions, map the competitor event into one of the existing taxonomy categories only: ${mainCategories.join(', ')}.`,
           'Choose the best exact storage sub-category from the selected category taxonomy only. Never invent a new category or sub-category.',
           'If the competitor event is relevant but no existing category/sub-category fit is available, return IGNORE.',
+          taxonomyScopeInstruction,
           '',
           'STEP 4: OUTPUT',
           `summary must explain in 2 short sentences what the competitor did and why it matters to ${companyName} in ${marketText}.`,
@@ -1176,6 +1251,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           '- Pages that do not fit at least one existing storage taxonomy category/sub-category.',
           '',
           'STEP 2: SCORING',
+          ascentiumRelevanceRubricText(),
           `HIGH (70-100): A practical evergreen guide, official explainer, FAQ, checklist, filing/compliance guide, market-entry guide, tax/accounting reference, employment/work-pass guide, AML/KYC requirement page, or regulator guidance that is directly useful in ${marketText}.`,
           `MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69): A useful reference page for ${marketText} with practical business or compliance value, but with less direct actionability or weaker category fit.`,
           'Score 0: ordinary news, outdated time-sensitive content, unrelated geography, weak business relevance, or no exact taxonomy fit.',
@@ -1189,6 +1265,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
           'Use the best exact category and sub-category from the existing taxonomy.',
           `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
           'Never invent a new category or sub-category. If no existing taxonomy fit is available, return IGNORE.',
+          taxonomyScopeInstruction,
           '',
           'STEP 5: OUTPUT',
           `summary must explain in 2 short sentences what the guide/reference covers and why it is practically useful for businesses, operators, or compliance teams in ${marketText}.`,
@@ -1245,6 +1322,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         `- Competitor intelligence should be kept only when a tracked competitor is explicitly named (${competitors.join(', ') || 'no tracked competitors provided'}) and the article shows expansion, acquisition, partnership, new office, service launch, leadership move, senior hire, thought leadership, or another real market signal in ${marketText}.`,
         '',
         'STEP 2: SCORING',
+        ascentiumRelevanceRubricText(),
         `Give HIGH (70-100) when the article has a concrete NEW business, market, economy, investment, tax, compliance, employment, company registry, FDI, trade, professional-services, or competitor signal affecting ${marketText}.`,
         `Give MEDIUM (${PROFILE_RELEVANCE_MIN_SCORE}-69) only when the article has a clear actionable business impact in ${marketText} and fits at least one existing taxonomy category, even if it is not a formal government/regulatory announcement.`,
         'Give 0 when it is unrelated to the market, unrelated to every taxonomy category, too old, broken, or matches a hard reject rule.',
@@ -1260,6 +1338,7 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
         'Choose the best exact sub-category under that category from the existing taxonomy only.',
         `Example valid sub-categories from the selected profile category: ${validSubcategories.join(', ') || 'Use the taxonomy list above.'}`,
         'Never invent a new category or sub-category. If no existing taxonomy category fits, return IGNORE.',
+        taxonomyScopeInstruction,
         '',
         'STEP 5: OUTPUT',
         `summary must explain in 2 short sentences what happened and why it matters for businesses, investors, operators, or compliance teams in ${marketText}.`,
@@ -1332,6 +1411,118 @@ async function classifyProfileRelevance({ article = {}, profile = {}, topic = 'n
   } catch (err) {
     console.warn('[ai] profile relevance failed:', err.message);
     return fallbackProfileRelevance({ article, topic });
+  }
+}
+
+function batchArticlePayload(article = {}, index = 0) {
+  const excerpt = [
+    article.summary,
+    article.aiSummary,
+    article.rawContent
+  ].filter(Boolean).join('\n\n').slice(0, 1600);
+  return {
+    id: article.batchId || article.urlHash || article.hash || `candidate_${index + 1}`,
+    title: String(article.title || '').slice(0, 300),
+    url: String(article.url || '').slice(0, 800),
+    source: String(article.sourceType || article.source || '').slice(0, 160),
+    country: String(article.country || article.profile?.country || '').slice(0, 80),
+    publishedAt: String(article.publishedAt || '').slice(0, 80),
+    excerpt
+  };
+}
+
+async function classifyProfileRelevanceBatch({ articles = [], profile = {}, topic = 'news', aiConfig = {} }) {
+  const cli = getClient();
+  if (!cli || !articles.length) return [];
+
+  const companyName = profileCompanyName(profile, articles[0] || {});
+  const markets = profileMarkets(profile, articles[0] || {});
+  const marketText = markets.join(', ') || 'the selected market';
+  const maxAgeDays = Math.max(1, Math.min(365, Number(profile.days || 30) || 30));
+  const mainCategories = Object.keys(CATEGORIES || {});
+  const taxonomyScopeInstruction = profile.globalFetch || profile.platformFetch || profile.global
+    ? 'This is a superadmin/global fetch. STORE only when the chosen category and sub-category exist anywhere in the taxonomy.'
+    : 'STORE only when the chosen category is one of the user selected categories and the chosen sub-category is one of the selected/allowed sub-categories.';
+  const selectedCategories = listPromptValues(profile.categories || profile.category);
+  const candidates = articles.map(batchArticlePayload);
+
+  try {
+    const resp = await cli.chat.completions.create({
+      model: runtimeAiModel(aiConfig),
+      temperature: 0,
+      max_tokens: Math.min(3500, 500 + candidates.length * 260),
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a precise batch business-intelligence relevance classifier.',
+            'Return valid JSON only.',
+            'Classify every candidate exactly once using its provided id.',
+            'Do not invent facts, URLs, categories, or sub-categories.',
+            'If evidence is weak, return IGNORE with score 0.'
+          ].join(' ')
+        },
+        {
+          role: 'user',
+          content: [
+            'TASK',
+            `Classify ${candidates.length} candidates for topic "${topic}".`,
+            `Company/client: ${companyName}`,
+            `Market: ${marketText}`,
+            `Maximum age preference: ${maxAgeDays} days`,
+            `Selected categories: ${selectedCategories.join(', ') || 'All taxonomy categories'}`,
+            taxonomyScopeInstruction,
+            '',
+            'STRICT STORAGE TAXONOMY',
+            taxonomyPromptText(),
+            '',
+            'RELEVANCE SCORING RUBRIC',
+            ascentiumRelevanceRubricText(),
+            '',
+            'RULES',
+            `- STORE only if the article has a concrete business, tax, compliance, employment, governance, market-entry, FDI, trade, professional-services, or competitor signal affecting ${marketText}.`,
+            '- STORE only with an exact category and exact sub-category from the taxonomy above.',
+            '- Never create new categories or sub-categories.',
+            '- Reject generic politics, diplomacy, events, entertainment, sports, tourism, CSR, charity, scam alerts, portal pages, homepages, listings, search pages, and thin pages unless there is a direct professional-services/business impact.',
+            `- STORE only when relevance_score is at least ${PROFILE_RELEVANCE_MIN_SCORE}; otherwise IGNORE with score 0.`,
+            '- summary must be two short sentences grounded only in the candidate text.',
+            '- relevance_reason must mention the specific business impact and taxonomy fit.',
+            '',
+            'OUTPUT JSON SHAPE',
+            '{"items":[{"id":"<same id>","decision":"STORE|IGNORE","category":"<exact category or IGNORE>","subcategory":"<exact sub-category or IGNORE>","summary":"<2 short sentences>","relevance_score":0-100,"relevance_reason":"<specific reason>"}]}',
+            '',
+            'CANDIDATES',
+            JSON.stringify(candidates)
+          ].join('\n')
+        }
+      ]
+    });
+
+    const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    const rows = Array.isArray(parsed.items) ? parsed.items : Array.isArray(parsed.results) ? parsed.results : [];
+    const byId = new Map(rows.map((row) => [String(row.id || ''), row]));
+    return candidates.map((candidate) => {
+      const row = byId.get(candidate.id) || {};
+      const relevanceScore = Math.max(0, Math.min(100, parseInt(row.relevance_score, 10) || 0));
+      const category = row.category || 'IGNORE';
+      const explicitDecision = String(row.decision || '').toUpperCase();
+      const inferredDecision = String(category).toUpperCase() !== 'IGNORE' && relevanceScore >= PROFILE_RELEVANCE_MIN_SCORE
+        ? 'STORE'
+        : 'IGNORE';
+      return {
+        id: candidate.id,
+        decision: explicitDecision || inferredDecision,
+        category,
+        subcategory: row.subcategory || row.sub_category || '',
+        summary: row.summary || '',
+        relevance_score: relevanceScore,
+        relevance_reason: row.relevance_reason || row.relevanceReason || ''
+      };
+    });
+  } catch (err) {
+    console.warn('[ai] batch profile relevance failed:', err.message);
+    return [];
   }
 }
 
@@ -1443,13 +1634,13 @@ function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
     focusPage: style.focusPage || '',
     internalLinkPages: style.internalLinkPages || '',
     ctaTitle: style.ctaTitle || 'Need help assessing this update?',
-    ctaButtonText: style.ctaButtonText || 'Speak with an advisor',
-    ctaDescription: style.ctaDescription || style.cta || 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
-    referenceUrls: research.map((item) => item.url).filter(Boolean).slice(0, 5).join(', '),
+    ctaButtonText: style.ctaButtonText || 'Speak with Ascentium',
+    ctaDescription: style.ctaDescription || style.cta || 'Ascentium can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
+    referenceUrls: [article.url, ...research.map((item) => item.url)].filter(Boolean).slice(0, 5).join(', '),
     suggestedOutline: [
       'Introduction',
-      'Why this matters',
-      'What businesses should review',
+      `Why ${primaryKeyword} matters for businesses`,
+      `What companies should review before acting on ${primaryKeyword}`,
       'Practical checklist',
       'FAQs',
       'Conclusion'
@@ -1459,7 +1650,10 @@ function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
       `Who should review ${primaryKeyword}?`,
       `What steps should companies take next?`
     ],
-    sources: research.map((item) => ({ title: item.title || '', url: item.url || '' })).filter((item) => item.url)
+    sources: [
+      article.url ? { title: article.title || 'Source article', url: article.url } : null,
+      ...research.map((item) => ({ title: item.title || '', url: item.url || '' }))
+    ].filter((item) => item?.url)
   };
 }
 
@@ -1623,21 +1817,33 @@ async function suggestBlogSettings({ article = {}, style = {}, research = [], co
         {
           role: 'system',
           content: [
-            'You are an SEO strategist for a professional-services content studio.',
-            'Use the selected article and Tavily research context to suggest practical blog settings.',
+            'You are an Ascentium SEO strategist and corporate advisory content planner.',
+            'Use the selected intelligence item to suggest practical blog settings for an Ascentium advisory blog.',
+            'Do not rewrite or summarize the source article. Turn it into an original educational blog angle.',
             'Do not invent search volume, keyword difficulty, CPC, or rankings.',
+            'Do not invent facts, statistics, legal interpretations, tax rates, policies, or source URLs.',
             'Return valid JSON only.'
           ].join('\n')
         },
         {
           role: 'user',
           content: [
-            BEESOCIAL_BRAND_GUIDELINES,
+            ASCENTIUM_BLOG_GENERATION_RULES,
+            '',
+            'SETTING QUALITY RULES',
+            '- Suggest a topic and SEO direction that will produce a practical advisory blog, not an article rewrite.',
+            '- Meta title should be 50-60 characters where possible and may be question-style when natural.',
+            '- Meta description should be 150-160 characters where possible.',
+            '- Primary keyword should be specific enough to match search intent, not just the source headline.',
+            '- Secondary keywords should support semantic SEO and Ascentium service relevance.',
+            '- Key points should tell the writer what business problem, impact, example, practical advice, and CTA angle to cover.',
+            '- CTA must be topic-specific and connected to Ascentium services. Avoid generic sales language.',
+            '- Suggested outline must follow: Introduction, H2 sections, Conclusion, Keywords/Tags, SEO title, Meta description, FAQ, CTA, Social media copy, Resources.',
             '',
             'Return JSON shape:',
             '{"metaTitle":"50-60 char title","metaDescription":"145-160 char description","primaryKeyword":"keyword","secondaryKeywords":["keyword"],"searchIntent":"informational|commercial|transactional|navigational","audience":"target audience","keyPoints":"newline separated key points","focusPage":"optional service/page","internalLinkPages":"comma separated internal page ideas","ctaTitle":"CTA title","ctaButtonText":"CTA button","ctaDescription":"CTA description","referenceUrls":"comma separated source/reference URLs","suggestedOutline":"newline separated outline","questions":["FAQ question"],"sources":[{"title":"source title","url":"https://..."}]}',
             '',
-            `Company/client: ${company.name || ''}`,
+            `Company/client: ${company.name || 'Ascentium'}`,
             `Selected topic: ${style.topic || article.title || ''}`,
             'Compact article context:',
             JSON.stringify(articleMeta),
@@ -1654,8 +1860,8 @@ async function suggestBlogSettings({ article = {}, style = {}, research = [], co
               ctaDescription: style.ctaDescription || style.cta
             }),
             '',
-            'TAVILY RESEARCH CONTEXT',
-            researchContext || 'No Tavily results available.'
+            'ARTICLE RESEARCH CONTEXT',
+            researchContext || 'No additional research results available.'
           ].join('\n')
         }
       ]
@@ -1672,8 +1878,8 @@ async function suggestBlogSettings({ article = {}, style = {}, research = [], co
     return {
       ...fallback,
       ...parsed,
-      metaTitle: String(parsed.metaTitle || fallback.metaTitle).slice(0, 90),
-      metaDescription: String(parsed.metaDescription || fallback.metaDescription).slice(0, 180),
+      metaTitle: String(parsed.metaTitle || fallback.metaTitle).slice(0, 60),
+      metaDescription: String(parsed.metaDescription || fallback.metaDescription).slice(0, 160),
       primaryKeyword: String(parsed.primaryKeyword || fallback.primaryKeyword).slice(0, 120),
       secondaryKeywords,
       searchIntent,
@@ -1750,16 +1956,16 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
         {
           role: 'system',
           content: [
-            'You are a senior B2B advisory writer, professional-services content editor, and SEO strategist.',
+            'You are a senior B2B advisory writer, professional-services content editor, market researcher, and SEO strategist.',
             '',
-            'Your job is to create a high-quality, human-sounding, commercially useful blog for a professional-services company website using the selected intelligence topic and provided source/reference content.',
+            'Your job is to create a high-quality, human-sounding, commercially useful Ascentium blog using the selected intelligence topic and provided source/reference content.',
             '',
             'The finished blog should read like it was written by an experienced advisor for business owners, CFOs, investors, founders, boards, and regional expansion teams. It must not read like generic AI content.',
             '',
-            'CLIENT BRAND GUIDELINES',
-            BEESOCIAL_BRAND_GUIDELINES,
+            'ASCENTIUM BLOG GENERATION RULES - FOLLOW THESE AS SOURCE OF TRUTH',
+            ASCENTIUM_BLOG_GENERATION_RULES,
             '',
-            'BLOG DRAFTING SOP',
+            'ADDITIONAL BLOG DRAFTING SOP',
             BLOG_WRITING_SOP,
             '',
             'APPROVED HOOK TEMPLATE BANK',
@@ -1788,7 +1994,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Use proper heading hierarchy.',
             '- H2 headings must be descriptive, SEO-aware, and specific to the selected topic. Avoid generic H2s such as "Overview", "Benefits", "Conclusion" unless expanded with the topic keyword.',
             '- Write clean publication-ready Markdown.',
-            '- Follow this visible blog template order in bodyMarkdown unless the user explicitly requested a custom outline that conflicts: Banner, H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, FAQ, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources.',
+            '- Follow this visible blog template order in bodyMarkdown unless the user explicitly requested a custom outline that conflicts: Banner, H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, Keywords/Tags, SEO / Meta Title, Meta Description, FAQ, CTA, Social Media Copy, Resources.',
             '- Banner should be a short visual design brief section, not an image file and not a summary of the blog. It should describe the intended banner visual, mood, and text focus in 1-2 sentences.',
             '- Do not mention statistics, data points, charts, or infographics in the banner brief unless the source/reference material provides them.',
             '- Include exactly one H1 at the top of the article body and do not repeat the title again in the introduction.',
@@ -1801,12 +2007,13 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- If the topic involves incentives, eligibility, benefits, steps, compliance, or comparisons, include a valid Markdown table with a header separator row.',
             '- Include at least one bullet list and one numbered list in the body when useful. Do not make the blog a single uninterrupted essay.',
             '- Include practical examples or scenarios where they clarify the topic. Keep them cautious and source-grounded.',
-            '- Include Keywords/Tags as a short Markdown list near the end of bodyMarkdown.',
-            '- Include SEO / Meta Title and Meta Description as visible sections near the end of bodyMarkdown, matching the JSON meta fields.',
-            '- Include Social Media Copy as a short promotional post section near the end of bodyMarkdown.',
-            '- Include a standalone CTA section after the Conclusion and before Keywords/Tags. The CTA must have the heading "## CTA".',
+            '- Include Keywords/Tags as a short Markdown list after the conclusion.',
+            '- Include SEO / Meta Title and Meta Description as visible sections after Keywords/Tags, matching the JSON meta fields.',
+            '- Include FAQ after Meta Description.',
+            '- Include a standalone CTA section after FAQ. The CTA must have the heading "## CTA".',
+            '- Include Social Media Copy after CTA.',
             '- The blog must always include a relevant CTA connected to the topic. Do not omit the CTA even when the user gives limited CTA details.',
-            '- Include a Resources section at the end with the source URL and any provided reference material / competitor URLs.',
+            '- Include a Resources section at the end with only the source URL and any provided reference material / competitor URLs.',
             '- Do not include a standalone "Key Takeaways" section. Integrate takeaways into the conclusion and practical action sections.',
             '- Never use placeholder links such as "#", "javascript:void(0)", or "example.com". If no CTA URL is provided, write the CTA as plain text without a link.',
             '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
@@ -1906,10 +2113,10 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '8. Include internal linking suggestions naturally if focus page or internal pages are provided.',
             '9. Include practical takeaways that a reader can act on or discuss internally.',
             '10. Add at least 5 useful FAQs with specific, cautious answers. Each question must be on its own H3 line and each answer must start on the next paragraph with enough detail to be valuable.',
-            '11. Add Keywords/Tags, SEO / Meta Title, Meta Description, and Social Media Copy sections after the CTA/FAQ area so the saved blog follows the SOP template.',
+            '11. After the conclusion, add sections in this exact order: Keywords/Tags, SEO / Meta Title, Meta Description, FAQ, CTA, Social Media Copy, Resources.',
             '12. Add a Resources section containing only real source/reference URLs provided in this request.',
-            '13. End with a concise conclusion and CTA that includes 2-3 lines explaining how the client company or advisory team can help with the relevant service/problem. Use the provided company name when available; otherwise use neutral wording such as "our team".',
-            '14. The CTA must be a standalone "## CTA" section after the conclusion. Do not bury the CTA only inside the conclusion.',
+            '13. Write a concise conclusion before Keywords/Tags. The conclusion should transition naturally toward the CTA but must not use "In conclusion".',
+            '14. The CTA must be a standalone "## CTA" section after FAQ. Include 2-3 lines explaining how Ascentium can help with the relevant service/problem.',
             '15. Keep the blog coherent, flowing, and professionally written.',
             `16. Write approximately ${runtimeConfig.maxWords} words. Do not produce a thin draft below the selected length target.`,
             '',
@@ -1925,7 +2132,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure Social Media Copy is calm, advisory, and non-hype-led.',
             '- Ensure the output includes practical formatting: tables where relevant, examples where useful, bullets, and numbered lists.',
             '- Ensure the final article looks ready to publish in a CMS without cleanup.',
-            '- Ensure the final article includes every SOP deliverable: Banner, Title, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, at least 5 FAQs, CTA, Social Media Copy, and Resources.',
+            '- Ensure the final article includes every Ascentium deliverable in order: Banner, Title, Table of Contents, Body of Content, Keywords/Tags, SEO/meta Title, Meta Description, at least 5 FAQs, CTA, Social Media Copy, and Resources.',
             '- Ensure there is no standalone Key Takeaways section; include those points inside the conclusion or practical checklist.',
             '- Proofread internally before returning. Grammar, punctuation, heading hierarchy, and flow must be publication-ready.',
             '- Ensure the opening paragraph does not merely define the topic or repeat the title.',
@@ -1938,7 +2145,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '{',
             '  "title": "<SEO-friendly blog title>",',
             '  "excerpt": "<short blog summary, 2-3 sentences>",',
-            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown following the SOP template: Banner, one H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, FAQ if requested, CTA, Keywords/Tags, SEO / Meta Title, Meta Description, Social Media Copy, Resources>",',
+            '  "bodyMarkdown": "<full blog in clean publish-ready Markdown following this exact order: Banner, one H1 Title, Introduction, Table of Contents, Body of Content, Conclusion, Keywords/Tags, SEO / Meta Title, Meta Description, FAQ, CTA, Social Media Copy, Resources>",',
             '  "suggestedKeywords": ["<keyword 1>", "<keyword 2>", "<keyword 3>"],',
             '  "metaTitle": "<SEO title, 50-60 characters, ideally question-style if suitable>",',
             '  "metaDescription": "<SEO meta description, ideally 145-155 characters>",',
@@ -2066,7 +2273,7 @@ async function reviseBlogPost({ blog = {}, sourceArticle = null, feedback = '', 
             feedback,
             '',
             'COMPANY CONTEXT',
-            `Company name: ${company.name || 'The company'}`,
+            `Company name: ${company.name || 'Ascentium'}`,
             `Audience: ${blog.style?.audience || 'business decision-makers'}`,
             '',
             'CURRENT BLOG',
@@ -2629,4 +2836,4 @@ async function reviseLinkedInPost({ post = {}, sourceArticle = null, feedback = 
   }
 }
 
-module.exports = { isEnabled, summarizeArticle, classifyCategory, classifyProfileRelevance, suggestBlogSettings, generateBlogPost, reviseBlogPost, generateLinkedInPost, reviseLinkedInPost };
+module.exports = { isEnabled, summarizeArticle, classifyCategory, classifyProfileRelevance, classifyProfileRelevanceBatch, suggestBlogSettings, generateBlogPost, reviseBlogPost, generateLinkedInPost, reviseLinkedInPost };
