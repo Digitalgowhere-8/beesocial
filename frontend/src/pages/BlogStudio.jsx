@@ -23,7 +23,7 @@ const CONTENT_TYPE_TABS = [
 
 const EMPTY_META = { categories: {}, dataCategories: {}, countries: [], types: TYPE_OPTIONS.slice(1).map(({ value, label }) => ({ id: value, label })) };
 const CONTENT_STUDIO_UPCOMING_MODE = false;
-const CONTENT_STUDIO_CACHE_VERSION = 'v1';
+const CONTENT_STUDIO_CACHE_VERSION = 'v2';
 const STUDIO_PAGE_SIZE = 12;
 const GENERATED_DRAFT_RETRY_COUNT = 10;
 const GENERATED_DRAFT_RETRY_DELAY_MS = 500;
@@ -127,7 +127,7 @@ const STYLE_OPTIONS = {
 const DEFAULT_STYLE = {
   tone: 'professional',
   format: 'insight_article',
-  audience: 'business decision-makers',
+  audience: '',
   length: 'medium',
   customLength: '',
   pointOfView: 'third_person',
@@ -139,11 +139,10 @@ const DEFAULT_STYLE = {
   customOutline: '',
   focusPage: '',
   internalLinkPages: '',
-  ctaTitle: 'Need help assessing this update?',
+  ctaTitle: '',
   ctaDescription: '',
-  ctaButtonText: 'Speak with Ascentium',
-  ctaUrl: '',
-  cta: 'Ascentium can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
+  ctaButtonText: '',
+  cta: '',
   keyPoints: '',
   referenceUrls: '',
   includeFaq: true,
@@ -153,24 +152,40 @@ const DEFAULT_STYLE = {
 const DEFAULT_LINKEDIN_FORM = {
   profileType: 'company',
   profileUrl: '',
-  postGoal: 'thought_leadership',
+  postGoal: 'build_authority',
   tone: 'professional',
-  audience: 'business decision-makers',
+  audience: '',
   length: 'medium',
   hookStyle: 'proof',
   framework: 'auto',
   topicTier: 'auto',
   emotionalJob: 'auto',
-  personaProfile: 'founder/operator/advisor',
-  icpPainPoints: '',
-  marketReality: '',
-  proofElement: '',
   takeaway: '',
   includeHashtags: true,
   includeCTA: true,
   cta: '',
   customInstructions: ''
 };
+
+function linkedinGenerationOptions(form = {}) {
+  return {
+    profileType: form.profileType || DEFAULT_LINKEDIN_FORM.profileType,
+    profileUrl: form.profileUrl || '',
+    postGoal: form.postGoal || DEFAULT_LINKEDIN_FORM.postGoal,
+    tone: form.tone || DEFAULT_LINKEDIN_FORM.tone,
+    audience: form.audience || '',
+    length: form.length || DEFAULT_LINKEDIN_FORM.length,
+    hookStyle: form.hookStyle || DEFAULT_LINKEDIN_FORM.hookStyle,
+    framework: form.framework || DEFAULT_LINKEDIN_FORM.framework,
+    topicTier: form.topicTier || DEFAULT_LINKEDIN_FORM.topicTier,
+    emotionalJob: form.emotionalJob || DEFAULT_LINKEDIN_FORM.emotionalJob,
+    takeaway: form.takeaway || '',
+    includeHashtags: form.includeHashtags !== false,
+    includeCTA: form.includeCTA !== false,
+    cta: form.cta || '',
+    customInstructions: form.customInstructions || ''
+  };
+}
 
 const BLOG_STEPS = [
   'Analyzing source topic & context...',
@@ -1233,7 +1248,7 @@ export default function BlogStudio() {
           category: selectedArticle.category,
           subcategory: selectedArticle.subcategory
         },
-        options: linkedinForm
+        options: linkedinGenerationOptions(linkedinForm)
       });
 
       const completed = await waitForGenerationCompletion('linkedin', ownerKey);
@@ -1758,6 +1773,12 @@ export default function BlogStudio() {
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="Comma separated" />
                   </Field>
                   <SelectField label="Target Search Intent" value={style.searchIntent} onChange={(value) => setStyle({ ...style, searchIntent: value })} options={STYLE_OPTIONS.searchIntent} />
+                  <Field label="Focus Page / Service">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.focusPage} onChange={(e) => setStyle({ ...style, focusPage: e.target.value })} />
+                  </Field>
+                  <Field label="Pages on the company's website to link to">
+                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.internalLinkPages} onChange={(e) => setStyle({ ...style, internalLinkPages: e.target.value })} placeholder="Comma separated pages or URLs" />
+                  </Field>
                 </SettingsGroup>
 
                 <SettingsGroup title="Content Structure">
@@ -1775,13 +1796,7 @@ export default function BlogStudio() {
                   )}
                 </SettingsGroup>
 
-                <SettingsGroup title="Internal Linking & CTA">
-                  <Field label="Focus Page / Service">
-                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.focusPage} onChange={(e) => setStyle({ ...style, focusPage: e.target.value })} />
-                  </Field>
-                  <Field label="Pages on the company's website to link to">
-                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.internalLinkPages} onChange={(e) => setStyle({ ...style, internalLinkPages: e.target.value })} placeholder="Comma separated pages or URLs" />
-                  </Field>
+                <SettingsGroup title="CTA">
                   <Field label="CTA Title">
                     <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaTitle} onChange={(e) => setStyle({ ...style, ctaTitle: e.target.value })} />
                   </Field>
@@ -1790,9 +1805,6 @@ export default function BlogStudio() {
                   </Field>
                   <Field label="CTA Description">
                     <textarea className="input rounded-xl min-h-[72px] resize-y xl:col-span-2 hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaDescription || style.cta} onChange={(e) => setStyle({ ...style, ctaDescription: e.target.value, cta: e.target.value })} />
-                  </Field>
-                  <Field label="CTA URL (optional)">
-                    <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={style.ctaUrl} onChange={(e) => setStyle({ ...style, ctaUrl: e.target.value })} />
                   </Field>
                 </SettingsGroup>
 
@@ -3013,11 +3025,13 @@ function LinkedInStudio({
                   value={linkedinForm.postGoal}
                   onChange={(value) => update('postGoal', value)}
                   options={[
-                    ['thought_leadership', 'Thought Leadership'],
-                    ['client_alert', 'Client Alert'],
-                    ['market_insight', 'Market Insight'],
-                    ['educational', 'Educational'],
-                    ['lead_generation', 'Lead Generation']
+                    ['educate_audience', 'Educate Audience'],
+                    ['build_authority', 'Build Authority'],
+                    ['generate_leads', 'Generate Leads'],
+                    ['drive_engagement', 'Drive Engagement'],
+                    ['event_announcement', 'Event / Announcement'],
+                    ['promote_service', 'Promote a Service'],
+                    ['client_advisory', 'Client Advisory']
                   ]}
                 />
               </div>
@@ -3100,9 +3114,6 @@ function LinkedInStudio({
               <Field label="Target Audience">
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.audience} onChange={(e) => update('audience', e.target.value)} />
               </Field>
-              <Field label="Person Profile">
-                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.personaProfile} onChange={(e) => update('personaProfile', e.target.value)} placeholder="Founder / operator / advisor / consultant..." />
-              </Field>
               <Field label="Call to Action">
                 <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.cta} onChange={(e) => update('cta', e.target.value)} placeholder="Optional - leave blank for a contextual CTA" />
               </Field>
@@ -3110,16 +3121,7 @@ function LinkedInStudio({
               <ToggleField label="Include CTA" checked={linkedinForm.includeCTA} onChange={(checked) => update('includeCTA', checked)} />
             </SettingsGroup>
 
-            <SettingsGroup title="Market Context">
-              <Field label="ICP Pain Points">
-                <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.icpPainPoints} onChange={(e) => update('icpPainPoints', e.target.value)} placeholder="What painful truth should this speak to?" />
-              </Field>
-              <Field label="Market Realities">
-                <textarea className="input rounded-xl min-h-[96px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.marketReality} onChange={(e) => update('marketReality', e.target.value)} placeholder="What is changing in the market?" />
-              </Field>
-              <Field label="Proof Element">
-                <input className="input rounded-xl hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.proofElement} onChange={(e) => update('proofElement', e.target.value)} placeholder="Number / timeframe / result, if known" />
-              </Field>
+            <SettingsGroup title="Custom Guidance">
               <Field label="Custom Instructions">
                 <textarea className="input rounded-xl min-h-[120px] resize-y hover:border-gray-300 focus:border-brand-crimson transition-colors" value={linkedinForm.customInstructions} onChange={(e) => update('customInstructions', e.target.value)} placeholder="Add brand voice, angle, keywords, do/don't rules..." />
               </Field>

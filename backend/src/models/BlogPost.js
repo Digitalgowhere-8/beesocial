@@ -39,7 +39,7 @@ const blogPostSchema = new mongoose.Schema(
     style: {
       tone: { type: String, default: 'professional' },
       format: { type: String, default: 'insight_article' },
-      audience: { type: String, default: 'business decision-makers' },
+      audience: { type: String, default: '' },
       length: { type: String, default: 'medium' },
       cta: { type: String, default: '' },
       pointOfView: { type: String, default: 'third_person' }

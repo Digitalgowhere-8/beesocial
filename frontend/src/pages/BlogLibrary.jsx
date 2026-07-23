@@ -31,6 +31,20 @@ function safeSessionSet(key, value) {
   }
 }
 
+function normalizeSelectionText(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function findSmallestElementContainingText(root, text = '') {
+  const needle = normalizeSelectionText(text);
+  if (!root || !needle) return null;
+
+  const candidates = Array.from(root.querySelectorAll('h1,h2,h3,h4,p,li,blockquote,td,th,div'));
+  return candidates
+    .filter((element) => normalizeSelectionText(element.innerText || element.textContent || '').includes(needle))
+    .sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length)[0] || null;
+}
+
 function renderInlineMarkdown(text = '') {
   const parts = [];
   const pattern = /(\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\))/g;
@@ -828,10 +842,7 @@ export default function BlogLibrary() {
     const handleSelectionChange = () => {
       const selection = window.getSelection?.();
       const selectedText = selection?.toString?.().trim() || '';
-      if (!selectedText) {
-        setSelectedCommentTarget(null);
-        return;
-      }
+      if (!selectedText) return;
 
       const root = blogPreviewRef.current;
       if (!root || !selection.rangeCount) return;
@@ -1204,6 +1215,18 @@ export default function BlogLibrary() {
       setSubmittingComment(false);
     }
   }, [blogComment, selected?._id, selectedCommentTarget, submittingComment, updateBlogItem]);
+
+  const scrollToBlogCommentSelection = useCallback((comment = {}) => {
+    const root = blogPreviewRef.current;
+    const target = findSmallestElementContainingText(root, comment.selectedText);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('content-repo-comment-jump-highlight');
+    window.setTimeout(() => {
+      target.classList.remove('content-repo-comment-jump-highlight');
+    }, 1800);
+  }, []);
 
   const updateBlogComment = useCallback(async (commentId, patch) => {
     if (!selected?._id || !commentId || updatingCommentId) return;
@@ -1772,6 +1795,7 @@ export default function BlogLibrary() {
                         value={blogComment}
                         onChange={setBlogComment}
                         onSubmit={submitBlogComment}
+                        onJumpToSelection={scrollToBlogCommentSelection}
                         onUpdate={updateBlogComment}
                         onDelete={deleteBlogComment}
                         loading={submittingComment}
@@ -1854,6 +1878,7 @@ function ReviewCommentsPanel({
   value,
   onChange,
   onSubmit,
+  onJumpToSelection,
   onUpdate,
   onDelete,
   loading = false,
@@ -1942,12 +1967,17 @@ function ReviewCommentsPanel({
               </div>
             </div>
             {comment.selectedText ? (
-              <div className="mb-2 rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => onJumpToSelection?.(comment)}
+                className="mb-2 block w-full rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2 text-left transition-all hover:border-amber-200 hover:bg-amber-100/70 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                title="Jump to this selection in the article"
+              >
                 <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-700">Commented Selection</div>
                 <p className="line-clamp-4 border-l-2 border-amber-300 pl-2 text-xs font-semibold leading-relaxed text-amber-950/75">
                   {comment.selectedText}
                 </p>
-              </div>
+              </button>
             ) : null}
             <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-gray-600">{comment.text}</p>
           </div>

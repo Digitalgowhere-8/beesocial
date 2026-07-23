@@ -200,7 +200,7 @@ function fallbackBlog({ article, style = {}, keywords = [] }) {
     .replace(/^\d+\.\s*/, '')
     .replace(/\s*\|\s*[^|]{2,40}$/g, '')
     .trim() || 'Market intelligence update';
-  const audience = style.audience || 'business decision-makers';
+  const audience = style.audience || 'the target audience';
   const cta = style.cta || 'Speak with our team to understand how this update may affect your plans.';
   const summary = article?.summary || article?.aiSummary || 'This update may create a new planning, compliance, market-entry, or advisory signal for businesses.';
   const metaDescription = String(summary || `A practical update for ${audience}.`).replace(/\s+/g, ' ').trim().slice(0, 155);
@@ -319,15 +319,49 @@ function linkedinAudiencePhrase(value = '', fallback = 'business teams') {
   return text;
 }
 
+function normalizeLinkedInObjective(value = '') {
+  const key = String(value || '').trim().toLowerCase();
+  const map = {
+    educational: 'educate_audience',
+    market_insight: 'educate_audience',
+    thought_leadership: 'build_authority',
+    lead_generation: 'generate_leads',
+    client_alert: 'client_advisory',
+    educate_audience: 'educate_audience',
+    build_authority: 'build_authority',
+    generate_leads: 'generate_leads',
+    client_advisory: 'client_advisory',
+    drive_engagement: 'drive_engagement',
+    event_announcement: 'event_announcement',
+    promote_service: 'promote_service'
+  };
+  return map[key] || 'build_authority';
+}
+
+function linkedinObjectiveLabel(value = '') {
+  const labels = {
+    educate_audience: 'Educate Audience',
+    build_authority: 'Build Authority',
+    generate_leads: 'Generate Leads',
+    client_advisory: 'Client Advisory',
+    drive_engagement: 'Drive Engagement',
+    event_announcement: 'Event or Announcement',
+    promote_service: 'Promote a Service'
+  };
+  return labels[normalizeLinkedInObjective(value)] || labels.build_authority;
+}
+
 function fallbackLinkedInPost({ article, options = {} }) {
   const topic = article?.title || options.topic || 'A practical market update';
-  const audience = options.audience || 'business decision-makers';
+  const audience = options.audience || '';
   const profileType = options.profileType === 'personal' ? 'personal' : 'company';
   const fallbackAngle = linkedinFallbackAngle({ article, topic, audience });
-  const cta = options.cta || fallbackAngle.cta;
+  const includeCTA = options.includeCTA !== false;
+  const includeHashtags = options.includeHashtags !== false;
+  const cta = includeCTA ? (options.cta || fallbackAngle.cta) : '';
   const hook = fallbackAngle.hook;
   const voiceLine = profileType === 'personal' ? fallbackAngle.personalVoice : fallbackAngle.companyVoice;
-  const audiencePhrase = linkedinAudiencePhrase(audience, fallbackAngle.audience || 'business teams');
+  const audiencePhrase = linkedinAudiencePhrase(audience, fallbackAngle.audience || 'the relevant business teams');
 
   return {
     selectedTopic: topic,
@@ -347,18 +381,17 @@ function fallbackLinkedInPost({ article, options = {} }) {
       ...fallbackAngle.bullets.map((item) => `- ${item}`),
       '',
       fallbackAngle.rule,
-      '',
-      cta
-    ].join('\n'),
+      cta ? `\n${cta}` : ''
+    ].filter(Boolean).join('\n'),
     cta,
-    hashtags: [
+    hashtags: includeHashtags ? [
       '#MarketIntelligence',
       '#BusinessStrategy',
       '#RiskManagement',
       '#Governance',
       '#Compliance',
       '#Advisory'
-    ],
+    ] : [],
     qualityChecks: {
       hookUnderEightWords: hook.split(/\s+/).length <= 8,
       oneClearIdea: true,
@@ -610,9 +643,11 @@ function ensureBlogDeliverables(markdown = '', { parsed = {}, article = {}, styl
   }
 
   if (!/^##\s+CTA\b/im.test(output)) {
-    const ctaDescription = parsed.cta?.description || style.ctaDescription || style.cta || 'Our team can help review the practical implications, compliance considerations, and next steps before your business acts on this update.';
-    const ctaTitle = parsed.cta?.title || style.ctaTitle || 'Need help assessing this update?';
-    output = `${output.trim()}\n\n## CTA\n\n### ${ctaTitle}\n\n${ctaDescription}`;
+    const ctaDescription = parsed.cta?.description || style.ctaDescription || style.cta || '';
+    const ctaTitle = parsed.cta?.title || style.ctaTitle || '';
+    if (ctaTitle || ctaDescription) {
+      output = `${output.trim()}\n\n## CTA\n\n${ctaTitle ? `### ${ctaTitle}\n\n` : ''}${ctaDescription}`;
+    }
   }
 
   if (!/^#\s+/m.test(output)) {
@@ -1625,17 +1660,17 @@ function fallbackBlogSeoSettings({ article = {}, style = {}, research = [] }) {
     primaryKeyword,
     secondaryKeywords,
     searchIntent: style.searchIntent || 'informational',
-    audience: style.audience || 'business decision-makers',
+    audience: style.audience || '',
     keyPoints: [
-      summary || `Explain why ${primaryKeyword} matters for business decision-makers.`,
+      summary || `Explain why ${primaryKeyword} matters for the target audience.`,
       'Translate the update into practical compliance, tax, operational, or market-entry considerations.',
       'Include a concise checklist and FAQs.'
     ].filter(Boolean).join('\n'),
     focusPage: style.focusPage || '',
     internalLinkPages: style.internalLinkPages || '',
-    ctaTitle: style.ctaTitle || 'Need help assessing this update?',
-    ctaButtonText: style.ctaButtonText || 'Speak with Ascentium',
-    ctaDescription: style.ctaDescription || style.cta || 'Ascentium can help review the practical implications, compliance considerations, and next steps before your business acts on this update.',
+    ctaTitle: style.ctaTitle || '',
+    ctaButtonText: style.ctaButtonText || '',
+    ctaDescription: style.ctaDescription || style.cta || '',
     referenceUrls: [article.url, ...research.map((item) => item.url)].filter(Boolean).slice(0, 5).join(', '),
     suggestedOutline: [
       'Introduction',
@@ -1919,7 +1954,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
 
   const tone = style.tone || 'professional';
   const format = style.format || 'insight_article';
-  const audience = style.audience || 'business decision-makers';
+  const audience = style.audience || '';
   const length = style.length || 'medium';
   const cta = style.ctaDescription || style.cta || '';
   const pointOfView = style.pointOfView || 'third_person';
@@ -1934,7 +1969,6 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
   const focusPage = style.focusPage || '';
   const ctaTitle = style.ctaTitle || '';
   const ctaButtonText = style.ctaButtonText || '';
-  const ctaUrl = style.ctaUrl || '';
   const keyPoints = style.keyPoints || '';
   const competitorUrls = style.competitorUrls || '';
   const referenceUrls = style.referenceUrls || '';
@@ -2015,7 +2049,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- The blog must always include a relevant CTA connected to the topic. Do not omit the CTA even when the user gives limited CTA details.',
             '- Include a Resources section at the end with only the source URL and any provided reference material / competitor URLs.',
             '- Do not include a standalone "Key Takeaways" section. Integrate takeaways into the conclusion and practical action sections.',
-            '- Never use placeholder links such as "#", "javascript:void(0)", or "example.com". If no CTA URL is provided, write the CTA as plain text without a link.',
+            '- Never use placeholder links such as "#", "javascript:void(0)", or "example.com". Write the CTA as plain text without a link.',
             '- Do not produce template filler like "this guide explores", "in this article", or "navigating the evolving landscape" unless the wording is genuinely specific and necessary.',
             '',
             'ANTI-GENERIC WRITING RULES',
@@ -2081,7 +2115,6 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             `CTA title: ${ctaTitle}`,
             `CTA description: ${cta || 'Use a soft professional CTA.'}`,
             `CTA button text: ${ctaButtonText}`,
-            `CTA URL: ${ctaUrl}`,
             '',
             'ADDITIONAL CONTEXT',
             `Key points to cover:\n${keyPoints}`,
@@ -2126,7 +2159,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '- Ensure each major section answers "so what?" for the target audience.',
             '- Ensure the blog is useful even to a reader who already knows the headline.',
             '- Ensure the CTA is connected to the topic, not a generic sales line.',
-            '- Ensure the CTA does not contain placeholder links. If no CTA URL is provided, do not create a markdown link.',
+            '- Ensure the CTA does not contain placeholder links and do not create a markdown link.',
             '- Ensure the banner brief does not promise statistics, charts, or data visuals unless source-backed data is available.',
             '- Ensure any table is valid Markdown with a separator row, for example "| Column | Column |" followed by "| --- | --- |".',
             '- Ensure Social Media Copy is calm, advisory, and non-hype-led.',
@@ -2156,7 +2189,7 @@ async function generateBlogPost({ article, style = {}, company = {}, keywords = 
             '    "title": "<CTA title>",',
             '    "description": "<CTA description>",',
             '    "buttonText": "<CTA button text>",',
-            '    "url": "<CTA URL or empty string>"',
+            '    "url": ""',
             '  },',
             '  "socialMediaCopy": "<short LinkedIn/social copy for promoting the blog>",',
             '  "resources": [',
@@ -2274,7 +2307,7 @@ async function reviseBlogPost({ blog = {}, sourceArticle = null, feedback = '', 
             '',
             'COMPANY CONTEXT',
             `Company name: ${company.name || 'Ascentium'}`,
-            `Audience: ${blog.style?.audience || 'business decision-makers'}`,
+            `Audience: ${blog.style?.audience || 'Not specified'}`,
             '',
             'CURRENT BLOG',
             `Title: ${blog.title || ''}`,
@@ -2351,9 +2384,10 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   }
 
   const sourceContext = socialSourceContext(article);
-  const postGoal = options.postGoal || 'thought_leadership';
+  const postGoal = normalizeLinkedInObjective(options.postGoal || 'build_authority');
+  const postGoalLabel = linkedinObjectiveLabel(postGoal);
   const tone = options.tone || 'professional';
-  const audience = options.audience || 'business decision-makers';
+  const audience = String(options.audience || '').trim();
   const length = options.length || 'medium';
   const hookStyle = options.hookStyle || 'proof';
   const framework = options.framework || 'auto';
@@ -2361,10 +2395,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
   const emotionalJob = options.emotionalJob || 'auto';
   const profileType = options.profileType === 'personal' ? 'personal' : 'company';
   const profileUrl = String(options.profileUrl || '').trim();
-  const icpPainPoints = options.icpPainPoints || '';
-  const marketReality = options.marketReality || '';
   const personaProfile = options.personaProfile || '';
-  const proofElement = options.proofElement || '';
   const takeaway = options.takeaway || '';
   const cta = options.cta || '';
   const includeCTA = options.includeCTA !== false;
@@ -2383,16 +2414,34 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
           role: 'system',
           content: [
             'You are a founder/operator/advisor LinkedIn ghostwriter.',
+            'You are also a personal-brand strategist, B2B marketing consultant, content strategist, and thought-leadership editor.',
             'You do not sound like a content writer or AI.',
             'You write like someone who has done the work, learned the lesson, and can explain it plainly.',
             'You optimize for sharpness, specificity, and memorability over safe generic phrasing.',
             'Your job is not to summarize the article. Your job is to turn it into one useful professional-services insight.',
+            'Never rewrite news. Interpret it, explain it, connect it to the audience, and create business value from it.',
+            'Educate first. Build trust. Build authority. Generate conversation. Let business demand happen naturally.',
             'The post should feel like a senior advisor noticed the operational risk behind the source and wrote a clear note for decision-makers.',
+            'Selected-topic accuracy is more important than cleverness. If the topic is "When to Charge 0% GST", teach that topic directly; do not drift into adjacent ownership, governance, or documentation themes before answering it.',
             '',
             'Return ONLY valid JSON. No markdown outside JSON.',
             '',
             'APPROVED HOOK TEMPLATE BANK',
             APPROVED_HOOK_TEMPLATE_BANK,
+            '',
+            'PROFILE TYPE ENGINE',
+            '- Company profile: the company is the educator. Use we, our team, our experience, our clients, or neutral advisory language. Never use I. Never invent founder stories.',
+            '- Personal profile: the individual is the brand. Use I only for genuine observations, lessons, opinions, or provided experience. Never invent personal stories.',
+            '- If no lived experience exists, share a professional observation instead.',
+            '',
+            'CONTENT OBJECTIVE ENGINE',
+            '- Educate Audience: teach one useful concept, simplify complexity, and make the reader smarter.',
+            '- Build Authority: demonstrate expertise, challenge assumptions, explain trends, and show judgment.',
+            '- Generate Leads: educate first, surface the problem, show the possible solution, and position expertise without hard selling.',
+            '- Client Advisory: explain what changed, who is affected, what action to take, and what mistakes to avoid.',
+            '- Drive Engagement: present a thoughtful opinion, challenge assumptions, and invite discussion without engagement bait.',
+            '- Event or Announcement: explain why it matters, who benefits, key details, and business implications. Keep promotion minimal.',
+            '- Promote a Service: start with the problem or pain, explain the solution and outcome, then introduce the service naturally.',
             '',
             'HARD CONSTRAINTS',
             'Never use these phrases:',
@@ -2438,7 +2487,10 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '',
             'TOPIC FOCUS RULES',
             '- The selected topic is the contract. Do not drift to a loosely related governance, ownership, deadline, or documentation angle unless that is the selected topic.',
-            '- Before writing, identify the primary topic, user objective, reader takeaway, and expected learning outcome. Use them to control the hook and every paragraph.',
+            '- Before writing, identify primary topic, search intent, reader intent, business context, market context, business problem, business opportunity, business risk, commercial relevance, reader takeaway, and expected learning outcome.',
+            '- Use that analysis to control the hook and every paragraph.',
+            '- The hook must communicate the selected topic clearly. Do not generate random hooks.',
+            '- The first half of the post must answer the selected topic directly before moving into implications, risks, ownership, controls, or CTA.',
             '- If the selected topic is educational, teach the concept directly before discussing controls or ownership.',
             '- If the topic includes a concrete tax or compliance phrase such as "0% GST", "zero-rated supply", "resident director", "annual return", or "filing deadline", the hook and body must name that phrase or a very close synonym.',
             '- For "When to Charge 0% GST (Zero-Rated Supply) - Singapore", focus on what zero-rated GST is, when 0% can be charged, common qualifying scenarios, compliance evidence, and practical examples. Do not turn it into a generic ownership post.'
@@ -2453,10 +2505,11 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             `Company/author: ${company.name || 'The company'}`,
             `Profile type: ${profileType}`,
             `Profile URL: ${profileUrl || 'Not provided'}`,
-            `Audience / ICP: ${audience}`,
+            `Target audience: ${audience || 'Infer the most relevant audience from the selected topic, source, company context, and profile type.'}`,
             `Person profile: ${personaProfile || 'Founder/operator/advisor/consultant'}`,
             `Tone: ${tone}`,
             `Post goal: ${postGoal}`,
+            `Content objective: ${postGoalLabel}`,
             `Superadmin max word target: ${runtimeConfig.maxWords} words`,
             `Content filtering strictness: ${filtering.strictness || 'balanced'}`,
             `Blocked topics: ${Array.isArray(filtering.blockedTopics) && filtering.blockedTopics.length ? filtering.blockedTopics.join(', ') : 'None'}`,
@@ -2474,17 +2527,14 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             `Source context:\n${sourceContext || 'No extra source context stored.'}`,
             '',
             'USER STRATEGY INPUTS',
-            `ICP pain points:\n${icpPainPoints}`,
-            `Market realities:\n${marketReality}`,
-            `Proof element to use:\n${proofElement}`,
             `Preferred takeaway:\n${takeaway}`,
             `CTA direction:\n${cta}`,
             `Custom instructions:\n${customInstructions}`,
             '',
             'STEP 1 - TOPIC INTELLIGENCE',
-            'First identify primaryTopic, userObjective, readerTakeaway, and learningOutcome from the selected topic.',
-            'These four fields must be based on the selected topic, not a loose related concept.',
-            'Generate 3 content topic options based on the source, ICP pain points, market realities, founder/operator experience, industry misconceptions, and buyer psychology.',
+            'First identify primaryTopic, searchIntent, readerIntent, businessContext, marketContext, businessProblem, businessOpportunity, businessRisk, commercialRelevance, userObjective, readerTakeaway, and learningOutcome from the selected topic.',
+            'These fields must be based on the selected topic, not a loose related concept.',
+            'Generate 3 content topic options based on the selected topic, source context, target audience, user objective, company/profile context, industry misconceptions, and buyer psychology.',
             'Each topic must be specific, relevant to ICP + person profile, and useful enough that a busy operator would save it.',
             'Do not choose the article title as the topic unless it is already a strong business lesson.',
             '',
@@ -2516,12 +2566,31 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '- Use POV only for broader reach posts where the reader becomes the main character.',
             '- Use 5-Line Mirror only for high-authority posts with a clear mirror, friction, realization, shift, and invitation.',
             '- Use AIDA for announcements, offers, launch-style posts, or conversion moments.',
+            `Content objective framework guidance for ${postGoalLabel}:`,
+            '- Educate Audience: prefer SLAY or PRA. Teach, simplify, and give practical advice.',
+            '- Build Authority: prefer POV or SLAY. Challenge assumptions and show expert perspective.',
+            '- Client Advisory: prefer PAS or PRA. Explain change, risk, action, and mistakes to avoid.',
+            '- Generate Leads: prefer PAS or AIDA. Educate first, then introduce the problem and solution naturally.',
+            '- Drive Engagement: prefer 5-Line Mirror or POV. Present a clear opinion and invite thoughtful discussion.',
+            '- Event or Announcement: prefer Story or AIDA. Highlight why it matters and who benefits.',
+            '- Promote a Service: prefer PAS, PRA, or AIDA. Start with pain, then solution, outcome, and service fit.',
             `Preferred framework: ${framework}`,
             '',
             'STEP 5 - HOOK GENERATION',
             `Hook style preference: ${hookStyle}`,
-            'Generate proof-led, warning-led, contrarian, identity call-out, curiosity-loop, myth-busting, and educational hook options.',
-            'Choose the best-fitting pattern from the approved hook template bank based on content category and objective, then adapt it with concrete topic words.',
+            'Before writing the post, choose one approved hook category from the hook bank. Do not invent a new hook category.',
+            `Choose the hook category based on content objective (${postGoalLabel}), profile type, target audience, topic, emotional job, topic tier, industry, and business context.`,
+            'Objective-based hook guidance:',
+            '- Educate Audience: prefer Demystifying Terms, Educational Asset, Simple Steps, Enlightening Enquiry, You Need To Know This, How To Do X and Achieve Y, Do X to Achieve Y, or Reality Check.',
+            '- Build Authority: prefer Challenging Assumptions, Contrarian Approach, Intriguing Principle, Hidden Barrier to Success, It is Not About X, Superior Method, or Industry Issues.',
+            '- Client Advisory: prefer Reality Check, It Depends On These Factors, Choose or Be Chosen, Demystifying Terms, Simple Steps, or If You Want X, Do Y.',
+            '- Generate Leads: prefer Hidden Barrier, Reality Check, How To Really Do It All, Superior Method, or Impactful Advice.',
+            '- Drive Engagement: prefer Contrarian Approach, It is Not About X, Challenging Assumptions, Industry Issues, or Reality Check.',
+            '- Event or Announcement: prefer Meaningful Achievement, New vs Old, Inside Information, or Meet This Impressive Individual when relevant.',
+            '- Promote a Service: prefer Hidden Barrier, Reality Check, Simple Steps, If You Want X, Do Y, or Superior Method.',
+            'Generate 5 hook options from the selected hook category only. Evaluate them for relevance, curiosity, clarity, business value, and topic alignment.',
+            'Choose the best-fitting pattern from the approved hook template bank, then adapt it with concrete topic words.',
+            'If no approved template fits, use the closest approved template category and adapt it narrowly to the selected topic instead of creating a random hook.',
             'Do not paste bracket placeholders from the hook bank.',
             'Use personal-story hooks only when profile type is personal or custom instructions name a specific spokesperson.',
             'Each hook line 1 must be under 8 words, create curiosity or tension, and avoid generic phrasing.',
@@ -2603,10 +2672,12 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '',
             'STEP 7 - CTA',
             `Include CTA: ${includeCTA ? 'Yes' : 'No'}`,
-            'Write one tightly coupled CTA related directly to the topic, even if the user CTA direction is generic.',
-            'It should feel like a natural next step, preferably a useful operator question.',
-            'Do not use a generic CTA if the topic does not support one.',
-            'If the user provided a generic CTA like "Follow us", turn it into a contextual CTA and keep the promotional wording out of the post.',
+            includeCTA
+              ? 'Write one tightly coupled CTA related directly to the topic, even if the user CTA direction is generic.'
+              : 'Do not include a CTA in postText and return an empty cta field.',
+            includeCTA ? 'It should feel like a natural next step, preferably a useful operator question.' : '',
+            includeCTA ? 'Do not use a generic CTA if the topic does not support one.' : '',
+            includeCTA ? 'If the user provided a generic CTA like "Follow us", turn it into a contextual CTA and keep the promotional wording out of the post.' : '',
             '',
             'STEP 7B - HASHTAGS',
             `Include hashtags: ${includeHashtags ? 'Yes' : 'No'}`,
@@ -2638,6 +2709,14 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '    { "topic": "<specific topic>", "tier": "Broad|Practical|Narrow|Niche", "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert", "reason": "<why it works>" }',
             '  ],',
             '  "primaryTopic": "<primary topic being answered>",',
+            '  "searchIntent": "<why someone would search or care about this topic>",',
+            '  "readerIntent": "<what the reader wants to understand or decide>",',
+            '  "businessContext": "<business situation behind the topic>",',
+            '  "marketContext": "<market or regulatory context if relevant>",',
+            '  "businessProblem": "<problem created or revealed by the topic>",',
+            '  "businessOpportunity": "<opportunity created or revealed by the topic>",',
+            '  "businessRisk": "<risk created or revealed by the topic>",',
+            '  "commercialRelevance": "<why this matters commercially>",',
             '  "userObjective": "<what the user wants the post to achieve>",',
             '  "readerTakeaway": "<what the reader should remember>",',
             '  "learningOutcome": "<what the reader should understand after reading>",',
@@ -2645,7 +2724,8 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
             '  "topicTier": "Broad|Practical|Narrow|Niche",',
             '  "emotionalJob": "Inspire|Educate|Urgency|Reassure|Provoke|Convert",',
             '  "framework": "SLAY|PAS|PRA|POV|5-Line Mirror|AIDA",',
-            '  "hookOptions": ["<hook 1>", "<hook 2>", "<hook 3>"],',
+            '  "hookCategory": "<selected approved hook category>",',
+            '  "hookOptions": ["<hook 1>", "<hook 2>", "<hook 3>", "<hook 4>", "<hook 5>"],',
             '  "hook": "<selected hook under 8 words>",',
             '  "postText": "<complete LinkedIn post with line breaks>",',
             '  "cta": "<final CTA or empty string>",',
@@ -2677,6 +2757,14 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
     return {
       topicOptions: Array.isArray(parsed.topicOptions) ? parsed.topicOptions : [],
       primaryTopic: String(parsed.primaryTopic || selectedSourceTopic || '').trim(),
+      searchIntent: String(parsed.searchIntent || '').trim(),
+      readerIntent: String(parsed.readerIntent || '').trim(),
+      businessContext: String(parsed.businessContext || '').trim(),
+      marketContext: String(parsed.marketContext || '').trim(),
+      businessProblem: String(parsed.businessProblem || '').trim(),
+      businessOpportunity: String(parsed.businessOpportunity || '').trim(),
+      businessRisk: String(parsed.businessRisk || '').trim(),
+      commercialRelevance: String(parsed.commercialRelevance || '').trim(),
       userObjective: String(parsed.userObjective || '').trim(),
       readerTakeaway: String(parsed.readerTakeaway || '').trim(),
       learningOutcome: String(parsed.learningOutcome || '').trim(),
@@ -2684,11 +2772,12 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
       topicTier: String(parsed.topicTier || '').trim(),
       emotionalJob: String(parsed.emotionalJob || '').trim(),
       framework: String(parsed.framework || '').trim(),
+      hookCategory: String(parsed.hookCategory || '').trim(),
       hookOptions: Array.isArray(parsed.hookOptions) ? parsed.hookOptions.map(String) : [],
       hook: String(parsed.hook || '').trim(),
       postText: stripTrailingHashtags(parsed.postText),
-      cta: String(parsed.cta || '').trim(),
-      hashtags: normalizeHashtags(
+      cta: includeCTA ? String(parsed.cta || '').trim() : '',
+      hashtags: includeHashtags ? normalizeHashtags(
         Array.isArray(parsed.hashtags) ? parsed.hashtags.map(String) : [],
         [
           '#MarketIntelligence',
@@ -2698,7 +2787,7 @@ async function generateLinkedInPost({ article, options = {}, company = {}, aiCon
           '#Compliance',
           '#Advisory'
         ]
-      ),
+      ) : [],
       qualityChecks: parsed.qualityChecks || {},
       model: runtimeConfig.model
     };

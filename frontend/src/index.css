@@ -1714,6 +1714,96 @@ body.theme-dark .content-repo-copy-button svg {
   color: #ffffff !important;
 }
 
+body.theme-dark .content-repo-improve-panel,
+body.theme-dark .content-repo-comments-panel {
+  background: rgba(15, 23, 36, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #e5edf7 !important;
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.26) !important;
+}
+
+body.theme-dark .content-repo-improve-panel [class*='text-emerald-700'],
+body.theme-dark .content-repo-improve-panel [class*='text-emerald-900'],
+body.theme-dark .content-repo-improve-panel svg,
+body.theme-dark .content-repo-comments-panel [class*='text-gray-700'],
+body.theme-dark .content-repo-comments-panel [class*='text-gray-800'],
+body.theme-dark .content-repo-comments-panel [class*='text-gray-500'],
+body.theme-dark .content-repo-comments-panel [class*='text-gray-400'] {
+  color: #cbd5e1 !important;
+}
+
+body.theme-dark .content-repo-improve-input,
+body.theme-dark .content-repo-comments-panel textarea {
+  background: rgba(8, 15, 24, 0.96) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: #e5edf7 !important;
+  box-shadow: none !important;
+}
+
+body.theme-dark .content-repo-improve-input::placeholder,
+body.theme-dark .content-repo-comments-panel textarea::placeholder {
+  color: #64748b !important;
+}
+
+body.theme-dark .content-repo-improve-button {
+  background: #d11243 !important;
+  border-color: rgba(244, 63, 108, 0.46) !important;
+  color: #ffffff !important;
+}
+
+body.theme-dark .content-repo-improve-button:hover {
+  background: #f43f6c !important;
+  border-color: rgba(244, 63, 108, 0.62) !important;
+  color: #ffffff !important;
+}
+
+body.theme-dark .content-repo-comments-panel [class*='bg-emerald-50'],
+body.theme-dark .content-repo-comments-panel [class*='bg-amber-50'] {
+  background: rgba(8, 15, 24, 0.86) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+body.theme-dark .content-repo-comments-panel [class*='text-emerald'],
+body.theme-dark .content-repo-comments-panel [class*='text-amber'] {
+  color: #d8dee9 !important;
+}
+
+body.theme-dark .content-repo-comments-panel [class*='border-emerald-300'] {
+  border-color: rgba(45, 212, 191, 0.56) !important;
+}
+
+body.theme-dark .content-repo-comments-panel [class*='border-amber-300'] {
+  border-color: rgba(251, 191, 36, 0.62) !important;
+}
+
+body.theme-dark .content-repo-comments-panel button[class*='bg-amber-50'] {
+  background: rgba(120, 53, 15, 0.22) !important;
+  border-color: rgba(251, 191, 36, 0.32) !important;
+}
+
+body.theme-dark .content-repo-comments-panel button[class*='bg-amber-50']:hover {
+  background: rgba(120, 53, 15, 0.34) !important;
+  border-color: rgba(251, 191, 36, 0.48) !important;
+}
+
+body.theme-dark .content-repo-comments-panel button[class*='border-emerald'] {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(52, 211, 153, 0.34) !important;
+  color: #6ee7b7 !important;
+}
+
+body.theme-dark .content-repo-comments-panel button[class*='border-red'] {
+  background: rgba(127, 29, 29, 0.2) !important;
+  border-color: rgba(248, 113, 113, 0.32) !important;
+  color: #fca5a5 !important;
+}
+
+body.theme-dark .content-repo-comments-panel .bg-gray-50,
+body.theme-dark .content-repo-comments-panel [class*='bg-gray-50'] {
+  background: rgba(8, 15, 24, 0.58) !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+}
+
 body.theme-dark .content-studio-panel {
   background:
     linear-gradient(180deg, rgba(10, 17, 29, 0.98) 0%, rgba(8, 15, 24, 0.98) 100%) !important;
@@ -4001,6 +4091,19 @@ body:not(.theme-dark) .content-repo-sop-banner-distribution {
 
 .content-repo-sop-body table {
   background: #fff;
+}
+
+.content-repo-comment-jump-highlight {
+  border-radius: 10px;
+  background: rgba(254, 243, 199, 0.9);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22);
+  transition: background-color 240ms ease, box-shadow 240ms ease;
+}
+
+body.theme-dark .content-repo-comment-jump-highlight {
+  background: rgba(146, 64, 14, 0.42) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.24), inset 0 0 0 1px rgba(251, 191, 36, 0.42) !important;
 }
 
 body:not(.theme-dark) .filters-row:hover,
