@@ -45,7 +45,7 @@ const ARTICLE_FILTER_STORAGE_KEY = 'scraperGlobalArticleFilters';
 const EMPTY_ARTICLE_FILTERS = { q: '', country: '', source: '', topic: '', from: '', to: '' };
 
 function scraperApiBaseUrl() {
-  return String(import.meta.env.VITE_SCRAPER_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  return String(import.meta.env.VITE_SCRAPER_API_BASE_URL || 'https://beesocial-scraper.onrender.com').trim().replace(/\/+$/, '');
 }
 
 function scraperApi(path, options) {
