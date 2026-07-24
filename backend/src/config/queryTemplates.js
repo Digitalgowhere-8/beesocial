@@ -7,8 +7,7 @@ const CATEGORY_QUERY_PHRASES = {
   'Financial Advisory': 'M&A transaction advisory corporate finance valuation business consulting market analysis',
   'Fiduciary & Trust Services': 'trust fiduciary trustee family office private client wealth structuring compliance',
   'Cross Border & FDI': 'foreign direct investment market entry cross border expansion company setup investment rules',
-  'Economy & Trade': 'economic policy trade policy business regulation budget tax authority company registry',
-  'Competitor Intelligence': 'service launch expansion acquisition partnership new office client advisory competitor'
+  'Economy & Trade': 'economic policy trade policy business regulation budget tax authority company registry'
 };
 
 const GOVT_CATEGORY_QUERY_PHRASES = {
@@ -20,8 +19,7 @@ const GOVT_CATEGORY_QUERY_PHRASES = {
   'Financial Advisory': 'corporate finance M&A advisory market conduct regulatory compliance',
   'Fiduciary & Trust Services': 'trust fiduciary family office private wealth regulatory compliance',
   'Cross Border & FDI': 'foreign investment market entry cross border business setup investment rules',
-  'Economy & Trade': 'economic policy trade policy budget business regulation tax authority company registry',
-  'Competitor Intelligence': 'professional services market activity regulatory approval expansion'
+  'Economy & Trade': 'economic policy trade policy budget business regulation tax authority company registry'
 };
 
 const COUNTRY_CATEGORY_QUERY_PHRASES = {

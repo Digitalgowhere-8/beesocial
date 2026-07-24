@@ -9,6 +9,11 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_API_PROXY || 'http://127.0.0.1:5000',
         changeOrigin: true
+      },
+      '/scraper-api': {
+        target: process.env.VITE_SCRAPER_API_PROXY || 'http://127.0.0.1:8091',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/scraper-api/, '')
       }
     }
   },

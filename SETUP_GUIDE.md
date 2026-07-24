@@ -240,16 +240,18 @@ For richer AI summaries and smarter category classification when the rule-based 
 
 ---
 
-## Step 8 · (Optional) Enable Tavily
+## Step 8 - Connect Scraper Master Database
 
-For higher-quality evergreen content (semantic search instead of plain HTML scraping):
+Fetch reads from the scraper master collection and then uses AI for category, sub-category, relevance score, and summary.
 
-1. Get a free key from <https://tavily.com>.
-2. In `backend/.env`:
+1. In `backend/.env`, set:
    ```env
-   TAVILY_API_KEY=tvly-...
+   MASTER_ARTICLES_MONGO_URI=
+   MASTER_ARTICLES_DB=master
+   MASTER_ARTICLES_COLLECTION=master_articles
    ```
-3. Restart the backend. The evergreen scraper automatically uses Tavily when the key is present, and falls back to DuckDuckGo HTML when it's missing.
+2. Restart the backend.
+
 
 ---
 

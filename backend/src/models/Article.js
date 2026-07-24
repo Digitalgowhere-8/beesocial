@@ -65,7 +65,7 @@ const articleSchema = new mongoose.Schema(
     // Useful context snippets (trimmed — no full raw payload)
     rawContent:   { type: String, default: '', maxlength: 20000 },
     blogContext:  { type: String, default: '', maxlength: 12000 },
-    tavilyAnswer: { type: String, default: '', maxlength: 4000 },
+    sourceAnswer: { type: String, default: '', maxlength: 4000 },
     rawData: { type: mongoose.Schema.Types.Mixed, default: undefined },
 
     // Workflow

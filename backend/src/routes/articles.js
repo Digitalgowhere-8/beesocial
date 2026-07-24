@@ -14,7 +14,7 @@ const isAdminUser = (user) => ['admin', 'super_admin'].includes(user.role);
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-const DEFAULT_ARTICLE_SORT = { fetchedDate: -1, relevanceScore: -1, effectiveDate: -1 };
+const DEFAULT_ARTICLE_SORT = { effectiveDate: -1, fetchedDate: -1, relevanceScore: -1 };
 const DASHBOARD_TIMEZONE = 'Asia/Kolkata';
 const DASHBOARD_TIMEZONE_OFFSET_MINUTES = 330;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -206,8 +206,9 @@ function buildQuery(req, opts = {}) {
   const minScoreThreshold = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 30) || 30));
   q.relevanceScore = { $gte: minScoreThreshold };
 
-  if (req.query.type) {
-    const types = req.query.type.split(',').map((s) => s.trim()).filter(Boolean);
+  const typeFilter = req.query.type || req.query.topic;
+  if (typeFilter) {
+    const types = String(typeFilter).split(',').map((s) => s.trim()).filter(Boolean);
     if (types.length === 1) q.type = types[0];
     else if (types.length > 1) q.type = { $in: types };
   }
@@ -249,6 +250,58 @@ function buildQuery(req, opts = {}) {
   }
 
   return q;
+}
+
+function queryWithoutKeys(query = {}, keys = []) {
+  const omit = new Set(keys);
+  return Object.fromEntries(Object.entries(query).filter(([key]) => !omit.has(key)));
+}
+
+async function articleFilterOptions(req) {
+  const baseQuery = await applySourceCredibilityFilter(
+    req,
+    await applySavedFilter(req, buildQuery(req))
+  );
+  const dateRange = dashboardDateRangeMatch(req.query.from, req.query.to);
+  const withDate = (match) => {
+    const pipeline = withEffectiveDateSort(match);
+    if (dateRange) pipeline.push({ $match: { fetchedDate: dateRange } });
+    return pipeline;
+  };
+  const distinctFrom = async (match, field) => {
+    const rows = await Article.aggregate([
+      ...withDate(match),
+      { $match: { [field]: { $nin: ['', null] } } },
+      { $group: { _id: `$${field}` } },
+      { $sort: { _id: 1 } }
+    ]);
+    return rows.map((row) => optionLabel(row._id)).filter(Boolean);
+  };
+
+  const countryMatch = queryWithoutKeys(baseQuery, ['country', 'type', 'topic', 'sourceId']);
+  const topicMatch = queryWithoutKeys(baseQuery, ['type', 'sourceId']);
+  const sourceMatch = queryWithoutKeys(baseQuery, ['sourceId']);
+  const sourceRows = await Article.aggregate([
+    ...withDate(sourceMatch),
+    { $match: { sourceId: { $nin: ['', null] }, source: { $nin: ['', null] } } },
+    {
+      $group: {
+        _id: { id: '$sourceId', name: '$source' }
+      }
+    },
+    { $sort: { '_id.name': 1 } }
+  ]);
+
+  return {
+    countries: await distinctFrom(countryMatch, 'country'),
+    topics: await distinctFrom(topicMatch, 'type'),
+    sources: sourceRows
+      .map((row) => ({
+        id: optionLabel(row._id?.id),
+        name: optionLabel(row._id?.name)
+      }))
+      .filter((item) => item.id && item.name)
+  };
 }
 
 async function savedArticleIdsForUser(user) {
@@ -656,7 +709,7 @@ router.get('/', protect, asyncHandler(async (req, res) => {
     }
   }
 
-  const [items, total] = await Promise.all([
+  const [items, total, filters] = await Promise.all([
     sort
       ? Article.aggregate(withEffectiveDateSort(q, [
         ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
@@ -672,7 +725,8 @@ router.get('/', protect, asyncHandler(async (req, res) => {
     Article.aggregate(withEffectiveDateSort(q, [
       ...(dateRange ? [{ $match: { fetchedDate: dateRange } }] : []),
       { $count: 'total' }
-    ]))
+    ])),
+    articleFilterOptions(req)
   ]);
 
   const totalCount = total[0]?.total || 0;
@@ -682,7 +736,9 @@ router.get('/', protect, asyncHandler(async (req, res) => {
     page,
     limit,
     total: totalCount,
-    pages: Math.ceil(totalCount / limit)
+    pages: Math.ceil(totalCount / limit),
+    hasMore: page * limit < totalCount,
+    filters
   });
 }));
 

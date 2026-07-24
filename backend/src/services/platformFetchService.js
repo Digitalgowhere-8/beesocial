@@ -9,7 +9,7 @@ const progress = require('./profileRunProgress');
 const { publishGlobalEvent } = require('../utils/realtime');
 
 const TOPICS = ['news', 'govt', 'competitor', 'evergreen'];
-const ALL_CATEGORIES = Object.keys(CATEGORIES).filter((category) => category !== 'Competitor Intelligence');
+const ALL_CATEGORIES = Object.keys(CATEGORIES);
 const DEFAULT_CONFIG = {
   countries: [],
   categories: ALL_CATEGORIES,
@@ -17,7 +17,7 @@ const DEFAULT_CONFIG = {
   sourceDomainsByCountry: {},
   days: 30,
   targetPerTopic: 150,
-  minTavilyScore: undefined,
+  minSourceScore: undefined,
   language: 'en',
   timezone: 'Asia/Kolkata',
   schedule: {
@@ -84,9 +84,9 @@ function normalizeConfig(value = {}) {
     sourceDomainsByCountry,
     days: Math.max(1, Math.min(365, Number(value.days || DEFAULT_CONFIG.days) || DEFAULT_CONFIG.days)),
     targetPerTopic: Math.max(1, Math.min(150, Number(value.targetPerTopic || DEFAULT_CONFIG.targetPerTopic) || DEFAULT_CONFIG.targetPerTopic)),
-    minTavilyScore: value.minTavilyScore === undefined || value.minTavilyScore === null || value.minTavilyScore === ''
+    minSourceScore: value.minSourceScore === undefined || value.minSourceScore === null || value.minSourceScore === ''
       ? undefined
-      : Math.max(0, Math.min(100, Number(value.minTavilyScore) || 0)),
+      : Math.max(0, Math.min(100, Number(value.minSourceScore) || 0)),
     language: String(value.language || DEFAULT_CONFIG.language),
     timezone: String(value.timezone || DEFAULT_CONFIG.timezone),
     schedule: {
@@ -260,12 +260,14 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         // again before persisting the final shared results.
         userId: String(triggeredByUser || 'platform-scheduler'),
         trigger,
+        globalFetch: true,
+        platformFetch: true,
         country,
         categories: ALL_CATEGORIES,
         topics: config.topics,
         days: config.days,
         targetPerTopic: config.targetPerTopic,
-        minTavilyScore: config.minTavilyScore,
+        minSourceScore: config.minSourceScore,
         language: config.language,
         timezone: config.timezone,
         sourceDomainsByType: config.sourceDomainsByCountry?.[country] || {},
@@ -301,6 +303,7 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
       const aiIgnored = Number(resultPayload.searchStats?.aiIgnored || 0);
       const categoryRejected = Number(resultPayload.searchStats?.categoryRejected || 0);
       const scoreRejected = Number(resultPayload.searchStats?.scoreRejected || 0);
+      const searchErrors = Number(resultPayload.searchStats?.searchErrors || 0);
       const rejectedTotal = precheckRejected + aiIgnored + categoryRejected + scoreRejected;
       totals.fetched += fetchedCandidates;
       totals.matched += Number(resultPayload.resultCount || 0);
@@ -308,8 +311,22 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
       totals.aiIgnored += aiIgnored;
       totals.inserted += Number(persisted.inserted || 0);
       totals.duplicates += Number(persisted.duplicates || 0);
+      totals.errors += searchErrors;
       addDebugSamples(resultPayload.searchStats?.debugSamples);
       perSource.push(...resultRows(country, resultPayload, persisted));
+      if (searchErrors) {
+        perSource.push({
+          sourceId: `platform-${country}-master-provider`,
+          sourceName: `${country} master database`,
+          type: 'master',
+          attempted: 1,
+          fetched: fetchedCandidates,
+          inserted: 0,
+          duplicates: 0,
+          errors: searchErrors,
+          errorMessages: ['Master database candidate load failed. Check MASTER_ARTICLES_MONGO_URI, DB, collection, and Atlas network access.']
+        });
+      }
       await updateLogTotals(logId, {
         totalFetched: totals.fetched,
         totalMatched: totals.matched,
@@ -321,12 +338,12 @@ async function runPlatformFetchJob({ logId, triggeredByUser, config, trigger = '
         perSource,
         debugSamples,
         resultCount: totals.inserted,
-        notes: `Platform fetch running: ${countryPrefix} complete (${fetchedCandidates} fetched, ${resultPayload.resultCount || 0} matched, ${rejectedTotal} rejected, ${aiIgnored} AI ignored)`
+        notes: `Platform fetch running: ${countryPrefix} complete (${fetchedCandidates} fetched, ${resultPayload.resultCount || 0} matched, ${rejectedTotal} rejected, ${aiIgnored} AI ignored${searchErrors ? `, ${searchErrors} provider error${searchErrors === 1 ? '' : 's'}` : ''})`
       });
       recordProgress(logId, {
         step: `country:${country}:saved`,
         percent: Math.min(92, basePercent + Math.floor(82 / config.countries.length)),
-        message: `${countryPrefix}: fetched ${fetchedCandidates}, matched ${resultPayload.resultCount || 0}, saved ${persisted.inserted} new (${persisted.duplicates} duplicate${persisted.duplicates === 1 ? '' : 's'})`
+        message: `${countryPrefix}: fetched ${fetchedCandidates}, matched ${resultPayload.resultCount || 0}, saved ${persisted.inserted} new (${persisted.duplicates} duplicate${persisted.duplicates === 1 ? '' : 's'}${searchErrors ? `, ${searchErrors} provider error${searchErrors === 1 ? '' : 's'}` : ''})`
       });
     } catch (error) {
       if (error.code === 'FETCH_CANCELLED') throw error;

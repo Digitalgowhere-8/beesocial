@@ -4047,6 +4047,19 @@ body:not(.theme-dark) .content-repo-sop-banner {
   box-shadow: none !important;
 }
 
+body:not(.theme-dark) .content-studio-panel-header-icon {
+  background: #d11243 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border: 1px solid #d11243 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-dark) .content-studio-panel-header-icon svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
 body:not(.theme-dark) .content-repo-sop-eyebrow {
   color: #667085 !important;
 }
@@ -7354,4 +7367,73 @@ body:not(.theme-dark) .content-studio-panel-header-icon {
 
 .content-repo-list-panel {
   scrollbar-gutter: stable;
+}
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-card {
+  border-color: #dbe3d4;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(16, 52, 20, 0.045);
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-track {
+  background: #e5ebdf;
+  box-shadow: inset 0 0 0 1px #d5decf;
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-fill {
+  background: linear-gradient(90deg, #103414 0%, #2f7a2d 72%, #f4b60b 100%);
+  box-shadow: 0 0 0 1px rgba(16, 52, 20, 0.08), 0 4px 12px rgba(16, 52, 20, 0.18);
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-fill.is-failed {
+  background: linear-gradient(90deg, #dc2626 0%, #fb7185 100%);
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-event {
+  background: #f8faf6;
+  border: 1px solid #e5ebdf;
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-dot {
+  background: #f4b60b;
+  box-shadow: 0 0 0 4px rgba(244, 182, 11, 0.12);
+}
+
+body:not(.theme-dark) .admin-theme-page .admin-live-progress-dot.is-failed {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-card {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.32);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-track {
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-fill {
+  background: linear-gradient(90deg, #64d47a 0%, #20a044 72%, #f4b60b 100%);
+  box-shadow: 0 4px 14px rgba(100, 212, 122, 0.22);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-fill.is-failed {
+  background: linear-gradient(90deg, #ef4444 0%, #fb7185 100%);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-event {
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-dot {
+  background: #f4b60b;
+  box-shadow: 0 0 0 4px rgba(244, 182, 11, 0.14);
+}
+
+body.theme-dark .admin-theme-page .admin-live-progress-dot.is-failed {
+  background: #fb7185;
+  box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.14);
 }

@@ -21,6 +21,7 @@ const { CATEGORIES, matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
+const BUSINESS_TIMES_TIMEOUT = parseInt(process.env.BUSINESS_TIMES_SEARCH_TIMEOUT_MS, 10) || 8000;
 const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; BeeSocialBot/1.0)';
 
 // Reasonable, generic link extractor.  We collect every <a> whose visible
@@ -52,7 +53,59 @@ function extractArticles(html, source) {
   return items.slice(0, 15); // cap per query
 }
 
+async function searchBusinessTimesForQuery(source, queryString, { category, subcategory }) {
+  const endpoint = `https://${source.origin}/_plat/api/v1/queryly-search`;
+  const { data } = await axios.get(endpoint, {
+    timeout: BUSINESS_TIMES_TIMEOUT,
+    params: { query: queryString, endindex: 0, batchsize: 15, sort: 'date' },
+    headers: { 'User-Agent': UA, Accept: 'application/json' },
+    validateStatus: (s) => s >= 200 && s < 400
+  });
+
+  const seen = new Set();
+  const items = [];
+  for (const entry of data?.items || []) {
+    const title = String(entry.title || '').replace(/\s+/g, ' ').trim();
+    const rawUrl = String(entry.link || '').trim();
+    if (!title || !rawUrl) continue;
+
+    let url;
+    try {
+      url = new URL(rawUrl, `https://${source.origin}`).toString();
+    } catch (_e) {
+      continue;
+    }
+
+    if (!url.includes(source.origin)) continue;
+    if (/\/(search|tag|author|topic|subscribe|login|events-awards|paid-press-release)\b/i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+
+    items.push({
+      title: title.slice(0, 300),
+      url,
+      urlHash: hashUrl(url),
+      type: 'news',
+      source: source.name,
+      sourceId: source.id,
+      sourceType: source.origin,
+      category,
+      subcategory,
+      summary: `Found via "${queryString}" search on ${source.name}.`,
+      country: 'Singapore',
+      fetchedAt: new Date(),
+      publishedAt: entry.pubdate ? new Date(entry.pubdate) : null
+    });
+  }
+
+  return items;
+}
+
 async function searchSourceForQuery(source, queryString, { category, subcategory }) {
+  if (source.origin === 'businesstimes.com.sg') {
+    return searchBusinessTimesForQuery(source, queryString, { category, subcategory });
+  }
+
   const url = source.searchUrl(queryString);
   const { data: html } = await axios.get(url, {
     timeout: TIMEOUT,

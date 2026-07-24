@@ -179,7 +179,7 @@ const COMPETITOR_SOURCES = [
 
 /**
  * Evergreen topics - we DON'T scrape these from a single feed.
- * Instead we use the news/govt sources + Tavily search to find lasting
+ * Instead we use the news/govt sources + master database search to find lasting
  * "how to do X in Singapore" guides.  Each entry is a topic + keyword set.
  */
 const EVERGREEN_TOPICS = [

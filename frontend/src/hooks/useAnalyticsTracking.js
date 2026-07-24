@@ -72,6 +72,20 @@ function sectionName(element) {
   return cleanLabel(section?.dataset?.analyticsSection || section?.getAttribute?.('aria-label') || '');
 }
 
+function fieldName(element) {
+  const explicit = element?.dataset?.analyticsFilter || element?.dataset?.analyticsSearch;
+  if (explicit) return cleanLabel(explicit, 80);
+  const aria = element?.getAttribute?.('aria-label') || element?.getAttribute?.('placeholder') || element?.name || element?.id;
+  return cleanLabel(aria, 80) || 'Filter';
+}
+
+function isSearchLike(element) {
+  const value = String(element?.value || '').trim();
+  const type = String(element?.type || '').toLowerCase();
+  const text = `${element?.dataset?.analyticsSearch || ''} ${element?.name || ''} ${element?.id || ''} ${element?.placeholder || ''} ${element?.getAttribute?.('aria-label') || ''}`.toLowerCase();
+  return type === 'search' || text.includes('search') || text.includes('keyword') || value.split(/\s+/).length > 1;
+}
+
 export default function useAnalyticsTracking() {
   const location = useLocation();
   const { user } = useAuth();
@@ -117,6 +131,44 @@ export default function useAnalyticsTracking() {
 
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
+  }, [user?.role]);
+
+  useEffect(() => {
+    const timers = new Map();
+
+    const onInput = (event) => {
+      const target = event.target;
+      const tag = target?.tagName?.toLowerCase?.();
+      if (!['input', 'select', 'textarea'].includes(tag)) return;
+      const type = String(target.type || '').toLowerCase();
+      if (['password', 'email', 'tel', 'number', 'date', 'datetime-local', 'time'].includes(type)) return;
+
+      const value = cleanLabel(target.value, 80);
+      if (!value || value.length < 2) return;
+      const kind = isSearchLike(target) ? 'keyword' : 'filter';
+      const key = `${kind}:${target.name || target.id || fieldName(target)}`;
+      window.clearTimeout(timers.get(key));
+      timers.set(key, window.setTimeout(() => {
+        send({
+          type: 'search',
+          label: value,
+          section: sectionName(target),
+          targetType: tag,
+          metadata: {
+            kind,
+            field: fieldName(target)
+          }
+        });
+      }, kind === 'keyword' ? 900 : 250));
+    };
+
+    document.addEventListener('input', onInput, true);
+    document.addEventListener('change', onInput, true);
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      document.removeEventListener('input', onInput, true);
+      document.removeEventListener('change', onInput, true);
+    };
   }, [user?.role]);
 
   useEffect(() => {

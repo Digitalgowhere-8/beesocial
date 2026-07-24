@@ -106,15 +106,10 @@ const CATEGORIES = {
       'Company Registry': ['company registry', 'business registry', 'company registration authority']
     }
   },
-  'Competitor Intelligence': {
-    keywords: ['competitor', 'competitor intelligence', 'competitive landscape', 'market competitor'],
-    subcategories: {
-      'Investment Increase': ['investment increase', 'funding round', 'capital raise', 'expansion investment', 'growth investment']
-    }
-  }
+
 };
 
-const UI_CATEGORY_EXCLUDES = new Set(['Competitor Intelligence']);
+const UI_CATEGORY_EXCLUDES = new Set([]);
 const VISIBLE_CATEGORIES = Object.keys(CATEGORIES).filter((category) => !UI_CATEGORY_EXCLUDES.has(category));
 
 /**

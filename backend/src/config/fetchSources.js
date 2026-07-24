@@ -16,6 +16,100 @@ function cleanDomain(value) {
     .toLowerCase();
 }
 
+const ENABLED_SOURCE_COUNTRIES = ['Singapore', 'Hong Kong'];
+
+const SCRAPER_SOURCE_URLS_BY_COUNTRY = {
+  Singapore: {
+    news: [
+      'https://www.businesstimes.com.sg/search?query=singapore+',
+      'https://www.straitstimes.com/singapore',
+      'https://www.straitstimes.com/business',
+      'https://www.channelnewsasia.com/singapore',
+      'https://www.channelnewsasia.com/business'
+    ],
+    govt: [
+      'https://www.acra.gov.sg/news-events/news-announcements/',
+      'https://www.iras.gov.sg/latest-updates',
+      'https://www.mom.gov.sg/newsroom/press-releases',
+      'https://www.mom.gov.sg/newsroom/announcements',
+      'https://www.mom.gov.sg/newsroom/speeches',
+      'https://www.mom.gov.sg/newsroom/press-replies',
+      'https://www.mom.gov.sg/newsroom/fact-checks',
+      'https://www.mom.gov.sg/newsroom/mom-statements',
+      'https://www.mom.gov.sg/newsroom/media-articles',
+      'https://www.edb.gov.sg/en/about-edb/media-releases-publications.html',
+      'https://www.edb.gov.sg/en/business-insights/insights.html',
+      'https://www.gov.sg/sitemap.xml',
+      'https://www.mfa.gov.sg/newsroom/press-statements-transcripts-and-photos?filters=%5B%7B%22id%22%3A%22Country%22%2C%22items%22%3A%5B%7B%22id%22%3A%22Singapore%22%7D%5D%7D%5D&page=1',
+      'https://www.mfa.gov.sg/newsroom/announcements-and-highlights?filters=%5B%5D&page=1'
+    ],
+    competitor: [
+      'https://www.vistra.com/news-and-insights',
+      'https://www.tricorglobal.com/blog',
+      'https://singapore.acclime.com/guides/',
+      'https://singapore.acclime.com/downloads/',
+      'https://singapore.acclime.com/category/press-releases/',
+      'https://singapore.acclime.com/case-studies/',
+      'https://singapore.acclime.com/category/insights/',
+      'https://singapore.acclime.com/category/news/',
+      'https://kpmg.com/sg/en/media/press-releases.html',
+      'https://kpmg.com/sg/en/events.html',
+      'https://kpmg.com/sg/en/media.html',
+      'https://www.pwc.com/sg/en/blog.html',
+      'https://www.pwc.com/sg/en/publications.html',
+      'https://www.boardroomlimited.com/insights-news/articles/',
+      'https://www.hawksford.com/insights-and-guides',
+      'https://www.hawksford.com/insights-and-guides?type=news',
+      'https://www.tmf-group.com/en/news-insights/?filters=1066'
+    ],
+    evergreen: ['https://www.acra.gov.sg/sitemap.xml']
+  },
+  'Hong Kong': {
+    news: [
+      'https://www.scmp.com/news/hong-kong',
+      'https://www.scmp.com/news/hong-kong/politics?module=sub_section_menu&pgtype=section',
+      'https://www.scmp.com/news/hong-kong/hong-kong-economy?module=sub_section_menu&pgtype=section',
+      'https://www.scmp.com/news/hong-kong/law-and-crime?module=sub_section_menu&pgtype=section',
+      'https://www.scmp.com/news/china-future-tech?module=sub_section_menu&pgtype=section',
+      'https://research.hktdc.com/en/data-and-profiles/market-profiles/hong-kong',
+      'https://research.hktdc.com/en/analysis-and-news/analysis'
+    ],
+    govt: [
+      'https://www.cr.gov.hk/en/about/news/highlights.htm',
+      'https://www.cr.gov.hk/en/about/corp-info/event.htm',
+      'https://www.cr.gov.hk/en/consolidated-annual-open-data-plans/index.htm',
+      'https://www.ird.gov.hk/eng/new/index.htm',
+      'https://www.ird.gov.hk/eng/ppr/pre_rpr.htm',
+      'https://www.labour.gov.hk/eng/news/content.htm',
+      'https://www.labour.gov.hk/eng/news/highlights.php',
+      'https://www.labour.gov.hk/eng/major/content.php',
+      'https://www.investhk.gov.hk/en/news/',
+      'https://www.investhk.gov.hk/en/events/',
+      'https://www.immd.gov.hk/eng/press/press_releases.html',
+      'https://www.info.gov.hk/gia/general/today.htm'
+    ],
+    competitor: [
+      'https://www.pwchk.com/en/research-and-insights.html',
+      'https://www.pwchk.com/en/publications.html',
+      'https://www.pwchk.com/en/press-room.html',
+      'https://www.pwchk.com/en/press-room/press-releases.html',
+      'https://www.tmf-group.com/en/news-insights/',
+      'https://www.tmf-group.com/en/locations/asia-pacific/hong-kong/',
+      'https://hongkong.acclime.com/news-insights/',
+      'https://hongkong.acclime.com/downloads/'
+    ],
+    evergreen: [
+      'https://www.cr.gov.hk/en/services/register-company.htm',
+      'https://www.cr.gov.hk/en/services/running-company.htm',
+      'https://www.ird.gov.hk/eng/tax/bus.htm',
+      'https://www.investhk.gov.hk/en/setting-up/',
+      'https://www.immd.gov.hk/eng/services/visas/investment.html',
+      'https://hongkong.acclime.com/guides/',
+      'https://hongkong.acclime.com/downloads/'
+    ]
+  }
+};
+
 function domainMatches(host, domain) {
   const normalizedHost = cleanDomain(host);
   const normalizedDomain = cleanDomain(domain);
@@ -361,36 +455,6 @@ const COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY = {
   'British Virgin Islands': DEFAULT_COMPETITOR_SOURCE_DOMAINS
 };
 
-const GLOBAL_NEWS_SOURCE_DOMAINS = [
-  'mondaq.com',
-  'lexology.com',
-  'conventuslaw.com',
-  'asia.nikkei.com'
-];
-
-const TRUSTED_INTELLIGENCE_DOMAINS = [
-  'mas.gov.sg',
-  'acra.gov.sg',
-  'iras.gov.sg',
-  'mom.gov.sg',
-  'edb.gov.sg',
-  'mti.gov.sg',
-  'sfc.hk',
-  'hkma.gov.hk',
-  'cr.gov.hk',
-  'ird.gov.hk',
-  'csrc.gov.cn',
-  'mofcom.gov.cn',
-  'businesstimes.com.sg',
-  'straitstimes.com',
-  'channelnewsasia.com',
-  'mondaq.com',
-  'lexology.com',
-  'conventuslaw.com',
-  'asia.nikkei.com',
-  'scmp.com'
-];
-
 const COUNTRY_ALIASES = {
   singapore: 'Singapore',
   india: 'India',
@@ -458,13 +522,15 @@ function canonicalCountry(country) {
 
 function defaultSourceDomainsForCountry(country, type = 'news') {
   const selected = canonicalCountry(country);
+  if (!ENABLED_SOURCE_COUNTRIES.includes(selected)) return [];
+  if (SCRAPER_SOURCE_URLS_BY_COUNTRY[selected]?.[type]) return SCRAPER_SOURCE_URLS_BY_COUNTRY[selected][type];
   if (type === 'govt') return GOVT_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
   if (type === 'competitor') return COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY[selected] || DEFAULT_COMPETITOR_SOURCE_DOMAINS;
   return NEWS_SOURCE_DOMAINS_BY_COUNTRY[selected] || [];
 }
 
 function configuredFetchCountries() {
-  return Object.keys(NEWS_SOURCE_DOMAINS_BY_COUNTRY).sort();
+  return ENABLED_SOURCE_COUNTRIES.slice();
 }
 
 function fetchSourceCatalog() {
@@ -473,13 +539,13 @@ function fetchSourceCatalog() {
       news: defaultSourceDomainsForCountry(country, 'news'),
       govt: defaultSourceDomainsForCountry(country, 'govt'),
       competitor: defaultSourceDomainsForCountry(country, 'competitor'),
-      evergreen: defaultSourceDomainsForCountry(country, 'news')
+      evergreen: defaultSourceDomainsForCountry(country, 'evergreen')
     };
     return out;
   }, {});
 }
 
-function mergeSourceDomains({ country, type = 'news', userSources = [], strictSources = false }) {
+function mergeSourceDomains({ country, type = 'news', userSources = [] }) {
   const defaults = defaultSourceDomainsForCountry(country, type);
   const defaultDomains = [...new Set(defaults.map(cleanDomain).filter(Boolean))];
   const userDomains = cleanList(userSources).map(cleanDomain).filter(Boolean);
@@ -510,8 +576,7 @@ module.exports = {
   GOVT_SOURCE_DOMAINS_BY_COUNTRY,
   COMPETITOR_SOURCE_DOMAINS_BY_COUNTRY,
   DEFAULT_COMPETITOR_SOURCE_DOMAINS,
-  GLOBAL_NEWS_SOURCE_DOMAINS,
-  TRUSTED_INTELLIGENCE_DOMAINS,
+  ENABLED_SOURCE_COUNTRIES,
   canonicalCountry,
   configuredFetchCountries,
   defaultSourceDomainsForCountry,

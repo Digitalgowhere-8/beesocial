@@ -743,7 +743,7 @@ function MarkdownArticle({ bodyMarkdown = '', title = '' }) {
     }
 
     blocks.push(
-      <p key={`p-${i}`} className="mt-5 text-[15px] leading-8 text-gray-700">
+      <p key={`p-${i}`} className="mt-5 text-[15px] leading-8 text-gray-700 text-justify hyphens-auto">
         {renderInlineMarkdown(paragraphLines.join(' '))}
       </p>
     );
@@ -785,16 +785,22 @@ export default function BlogLibrary() {
   const [blogFeedback, setBlogFeedback] = useState('');
   const [socialFeedback, setSocialFeedback] = useState('');
   const [blogComment, setBlogComment] = useState('');
+  const [socialComment, setSocialComment] = useState('');
   const [selectedCommentTarget, setSelectedCommentTarget] = useState(null);
+  const [selectedSocialCommentTarget, setSelectedSocialCommentTarget] = useState(null);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [submittingSocialComment, setSubmittingSocialComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState('');
+  const [deletingSocialCommentId, setDeletingSocialCommentId] = useState('');
   const [updatingCommentId, setUpdatingCommentId] = useState('');
+  const [updatingSocialCommentId, setUpdatingSocialCommentId] = useState('');
   const [revisingBlog, setRevisingBlog] = useState(false);
   const [revisingSocial, setRevisingSocial] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [unsavedConfirm, setUnsavedConfirm] = useState(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
   const blogPreviewRef = useRef(null);
+  const socialPreviewRef = useRef(null);
   const loading = mode === 'blogs' ? loadingBlogs : loadingSocial;
   const savedSelectedBlog = useMemo(
     () => items.find((blog) => blog._id === selected?._id) || null,
@@ -1122,8 +1128,62 @@ export default function BlogLibrary() {
     const hashtags = Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length
       ? `\n\n${selectedSocial.hashtags.join(' ')}`
       : '';
+    const fullContent = `${selectedSocial.postText}${hashtags}`;
+
+    // Full markdown-to-HTML converter matching on-screen rendering
+    function socialMarkdownToHtml(md) {
+      const lines = md.replace(/\r\n/g, '\n').split('\n');
+      const blocks = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        // Collect bullet list block
+        if (/^\s*[-*]\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+            items.push(`<li style="margin:4px 0;">${renderInlineMarkdownHtml(lines[i].replace(/^\s*[-*]\s+/, '').trim())}</li>`);
+            i++;
+          }
+          blocks.push(`<ul style="margin:8px 0 8px 20px;padding:0;">${items.join('')}</ul>`);
+          continue;
+        }
+        // Empty line — skip (paragraph break handled implicitly)
+        if (line.trim() === '') {
+          i++;
+          continue;
+        }
+        // Collect paragraph lines (stop at blank or bullet)
+        const paraLines = [];
+        while (i < lines.length && lines[i].trim() !== '' && !/^\s*[-*]\s+/.test(lines[i])) {
+          paraLines.push(renderInlineMarkdownHtml(lines[i].trim()));
+          i++;
+        }
+        if (paraLines.length) {
+          blocks.push(`<p style="margin:0 0 10px;">${paraLines.join('<br/>')}</p>`);
+        }
+      }
+      return blocks.join('');
+    }
+
+    const htmlBody = socialMarkdownToHtml(fullContent);
+    const html = `<article style="color:#111;font-family:Arial,sans-serif;font-size:10pt;line-height:1.6;">${htmlBody}</article>`;
+
+    // Plain text: strip markdown bold, keep bullets as "- item"
+    const plainText = fullContent
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1 ($2)');
+
     try {
-      await navigator.clipboard.writeText(`${selectedSocial.postText}${hashtags}`);
+      if (navigator.clipboard?.write && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' })
+          })
+        ]);
+      } else {
+        await navigator.clipboard.writeText(plainText);
+      }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch (err) {
@@ -1281,6 +1341,87 @@ export default function BlogLibrary() {
       setSavingRevision(false);
     }
   }, [savingRevision, selectedSocial]);
+
+  const submitSocialComment = useCallback(async () => {
+    const text = socialComment.trim();
+    if (!selectedSocial?._id || !text || submittingSocialComment) return;
+    setSubmittingSocialComment(true);
+    setError('');
+    try {
+      const { data } = await api.post(`/blogs/social-posts/${selectedSocial._id}/comments`, {
+        text,
+        selectedText: selectedSocialCommentTarget?.selectedText || '',
+        beforeText: selectedSocialCommentTarget?.beforeText || '',
+        afterText: selectedSocialCommentTarget?.afterText || ''
+      });
+      if (data.item) {
+        setSelectedSocial(data.item);
+        setSocialItems((prev) => prev.map((p) => p._id === data.item._id ? data.item : p));
+        setSocialComment('');
+        setSelectedSocialCommentTarget(null);
+        window.getSelection?.()?.removeAllRanges?.();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not save comment');
+    } finally {
+      setSubmittingSocialComment(false);
+    }
+  }, [socialComment, selectedSocial?._id, selectedSocialCommentTarget, submittingSocialComment]);
+
+  const updateSocialComment = useCallback(async (commentId, patch) => {
+    if (!selectedSocial?._id || !commentId || updatingSocialCommentId) return;
+    setUpdatingSocialCommentId(commentId);
+    setError('');
+    try {
+      const { data } = await api.patch(`/blogs/social-posts/${selectedSocial._id}/comments/${commentId}`, patch);
+      if (data.item) {
+        setSelectedSocial(data.item);
+        setSocialItems((prev) => prev.map((p) => p._id === data.item._id ? data.item : p));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not update comment');
+    } finally {
+      setUpdatingSocialCommentId('');
+    }
+  }, [selectedSocial?._id, updatingSocialCommentId]);
+
+  const deleteSocialComment = useCallback(async (commentId) => {
+    if (!selectedSocial?._id || !commentId || deletingSocialCommentId) return;
+    const confirmed = window.confirm('Delete this comment?');
+    if (!confirmed) return;
+    setDeletingSocialCommentId(commentId);
+    setError('');
+    try {
+      const { data } = await api.delete(`/blogs/social-posts/${selectedSocial._id}/comments/${commentId}`);
+      if (data.item) {
+        setSelectedSocial(data.item);
+        setSocialItems((prev) => prev.map((p) => p._id === data.item._id ? data.item : p));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not delete comment');
+    } finally {
+      setDeletingSocialCommentId('');
+    }
+  }, [deletingSocialCommentId, selectedSocial?._id]);
+
+  const captureSocialSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const selectedText = sel.toString().trim();
+    if (!selectedText) return;
+    const range = sel.getRangeAt(0);
+    const root = socialPreviewRef.current;
+    if (!root || !root.contains(range.commonAncestorContainer)) return;
+    const beforeRange = document.createRange();
+    beforeRange.setStart(root, 0);
+    beforeRange.setEnd(range.startContainer, range.startOffset);
+    const beforeText = beforeRange.toString().slice(-120);
+    const afterRange = document.createRange();
+    afterRange.setStart(range.endContainer, range.endOffset);
+    afterRange.setEnd(root, root.childNodes.length);
+    const afterText = afterRange.toString().slice(0, 120);
+    setSelectedSocialCommentTarget({ selectedText, beforeText, afterText });
+  }, []);
 
   const openReaderOnSmallScreens = () => {
     if (window.matchMedia('(max-width: 1279px)').matches) setMobileReaderOpen(true);
@@ -1660,7 +1801,7 @@ export default function BlogLibrary() {
             </div>
             {mode === 'linkedin' ? (
               selectedSocial ? (
-                <div className="mx-auto max-w-6xl animate-fade-in-up">
+                <div className="w-full animate-fade-in-up">
                   <div className="content-repo-toolbar mb-5 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
@@ -1695,15 +1836,23 @@ export default function BlogLibrary() {
                             <div className="text-xs font-semibold text-gray-400">LinkedIn post</div>
                           </div>
                         </div>
-                        <div className="whitespace-pre-wrap text-[15px] font-medium leading-loose text-gray-800">{selectedSocial.postText}</div>
-                        {Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length ? (
-                          <div className="mt-4 break-words text-sm font-bold leading-relaxed text-brand-crimson">{selectedSocial.hashtags.join(' ')}</div>
-                        ) : null}
+                        <div
+                          ref={socialPreviewRef}
+                          onMouseUp={captureSocialSelection}
+                          onKeyUp={captureSocialSelection}
+                        >
+                          <div className="text-gray-800">
+                            <MarkdownArticle bodyMarkdown={selectedSocial.postText} title="" />
+                          </div>
+                          {Array.isArray(selectedSocial.hashtags) && selectedSocial.hashtags.length ? (
+                            <div className="mt-4 break-words text-sm font-bold leading-relaxed text-brand-crimson">{selectedSocial.hashtags.join(' ')}</div>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     {isAdmin ? (
-                      <aside className="order-last lg:order-none">
-                        <div className="lg:sticky lg:top-4">
+                      <aside className="order-last lg:order-none w-full xl:-mr-10">
+                        <div className="lg:sticky lg:top-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pb-8 w-full xl:pr-10 lg:pl-3">
                           <ImproveFeedbackPanel
                             value={socialFeedback}
                             onChange={setSocialFeedback}
@@ -1712,12 +1861,25 @@ export default function BlogLibrary() {
                             title="Improve with feedback"
                             description="Ask AI to revise this same draft while keeping the post useful and source grounded."
                             placeholder="Example: Make the hook sharper, reduce hype, add a clearer advisory CTA."
-                          buttonLabel="Improve Post"
-                          loadingLabel="Improving Post..."
-                          dirty={socialDraftDirty}
-                          onSave={saveSocialRevision}
-                          saving={savingRevision}
-                        />
+                            buttonLabel="Improve Post"
+                            loadingLabel="Improving Post..."
+                            dirty={socialDraftDirty}
+                            onSave={saveSocialRevision}
+                            saving={savingRevision}
+                          />
+                          <ReviewCommentsPanel
+                            comments={selectedSocial.reviewComments || []}
+                            selectedTarget={selectedSocialCommentTarget}
+                            onClearSelectedTarget={() => setSelectedSocialCommentTarget(null)}
+                            value={socialComment}
+                            onChange={setSocialComment}
+                            onSubmit={submitSocialComment}
+                            onUpdate={updateSocialComment}
+                            onDelete={deleteSocialComment}
+                            loading={submittingSocialComment}
+                            updatingCommentId={updatingSocialCommentId}
+                            deletingCommentId={deletingSocialCommentId}
+                          />
                         </div>
                       </aside>
                     ) : null}
@@ -1725,7 +1887,7 @@ export default function BlogLibrary() {
                 </div>
               ) : <Empty large />
             ) : selected ? (
-              <div className="mx-auto max-w-6xl animate-fade-in-up">
+              <div className="w-full animate-fade-in-up">
                 <div className="content-repo-toolbar mb-6 rounded-[22px] border border-gray-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,252,0.98))] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2.5">
@@ -1747,13 +1909,13 @@ export default function BlogLibrary() {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_400px]">
                   <div className="min-w-0">
                     <h2 className="text-3xl sm:text-4xl font-black leading-tight text-gray-900 mb-6 font-display tracking-tight text-gradient">{selected.title}</h2>
                     
                     {selected.excerpt && (
                       <div className="pl-4 border-l-4 border-brand-crimson/30 mb-8 py-1">
-                        <p className="text-lg font-medium leading-relaxed text-gray-600 italic">
+                        <p className="text-lg font-medium leading-relaxed text-gray-600 italic text-justify">
                           {selected.excerpt}
                         </p>
                       </div>
@@ -1770,8 +1932,8 @@ export default function BlogLibrary() {
                       </div>
                     </div>
                   </div>
-                  <aside className="order-last lg:order-none">
-                    <div className="lg:sticky lg:top-4">
+                  <aside className="order-last lg:order-none w-full xl:-mr-10">
+                    <div className="lg:sticky lg:top-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pb-8 w-full xl:pr-10 lg:pl-3">
                       {isAdmin ? (
                         <ImproveFeedbackPanel
                           value={blogFeedback}
@@ -1928,7 +2090,7 @@ function ReviewCommentsPanel({
         {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquareText size={16} />}
         {loading ? 'Saving Comment...' : 'Add Comment'}
       </button>
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 max-h-[25vh] overflow-y-auto pr-0.5 space-y-3">
         {sortedComments.length ? sortedComments.map((comment) => (
           <div key={comment._id || `${comment.createdAt}-${comment.text}`} className={`rounded-xl border p-3 ${comment.resolved ? 'border-gray-100 bg-gray-50/70 opacity-75' : 'border-gray-100 bg-gray-50/80'}`}>
             <div className="mb-1 flex items-center justify-between gap-2">

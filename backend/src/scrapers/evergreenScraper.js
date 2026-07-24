@@ -2,18 +2,13 @@
  * EVERGREEN SCRAPER
  * -----------------
  * "Evergreen" = lasting how-to / guide content about opportunity and compliance topics.
- * We hit Tavily (https://tavily.com) for relevance-ranked search.
- *
- *  - If TAVILY_API_KEY is set, we use Tavily search API.
- *  - Otherwise we degrade to a simple DuckDuckGo HTML search so the
- *    column isn't empty.  Set the env to get high-quality results.
+ * Uses a simple DuckDuckGo HTML search fallback for legacy evergreen runs.
  */
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { EVERGREEN_TOPICS } = require('../config/sources');
 const { matchCategory } = require('../config/categories');
 const { hashUrl } = require('../utils/hash');
-const tavilyService = require('../services/tavilyService');
 
 const TIMEOUT = parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000;
 const UA = process.env.SCRAPE_USER_AGENT || 'Mozilla/5.0 (compatible; BeeSocialBot/1.0)';
@@ -37,13 +32,6 @@ async function ddgSearch(query) {
 }
 
 async function searchOne(topic) {
-  if (tavilyService.isEnabled()) {
-    try {
-      return await tavilyService.search(topic.query, { maxResults: 6, includeDomains: [] });
-    } catch (err) {
-      console.warn('[evergreen] tavily failed, falling back:', err.message);
-    }
-  }
   return ddgSearch(topic.query);
 }
 

@@ -194,7 +194,7 @@ router.post('/saved-searches', protect, requireProfileAutomation, asyncHandler(a
     strictSources,
     days,
     targetPerTopic,
-    minTavilyScore,
+    minsourceScore,
     minStoreScore,
     query,
     customQueryOverride,
@@ -222,7 +222,7 @@ router.post('/saved-searches', protect, requireProfileAutomation, asyncHandler(a
     strictSources: Boolean(strictSources),
     days: Number(days || req.user.days || 30),
     targetPerTopic: Number(targetPerTopic || 150),
-    minTavilyScore: minTavilyScore === undefined || minTavilyScore === null || minTavilyScore === '' ? undefined : Number(minTavilyScore),
+    minsourceScore: minsourceScore === undefined || minsourceScore === null || minsourceScore === '' ? undefined : Number(minsourceScore),
     minStoreScore: minStoreScore === undefined || minStoreScore === null || minStoreScore === '' ? undefined : Number(minStoreScore),
     query: query || customQueryOverride || '',
     language: language || req.user.language || 'en',
@@ -264,9 +264,9 @@ router.post('/trigger', protect, requireProfileAutomation, requireFetchAccess, a
       strictSources: Boolean(req.body.strictSources || req.body.strict_sources),
       days: Number(req.body.days || user.days || 30),
       targetPerTopic: Number(req.body.targetPerTopic || req.body.maxPerTopic || 150),
-      minTavilyScore: req.body.minTavilyScore === undefined || req.body.minTavilyScore === null || req.body.minTavilyScore === ''
+      minsourceScore: req.body.minsourceScore === undefined || req.body.minsourceScore === null || req.body.minsourceScore === ''
         ? undefined
-        : Number(req.body.minTavilyScore),
+        : Number(req.body.minsourceScore),
       minStoreScore: req.body.minStoreScore === undefined || req.body.minStoreScore === null || req.body.minStoreScore === ''
         ? undefined
         : Number(req.body.minStoreScore),

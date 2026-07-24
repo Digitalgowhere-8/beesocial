@@ -1,10 +1,11 @@
-const tavilyService = require('./tavilyService');
 const aiService = require('./aiService');
+const masterArticleProvider = require('./masterArticleProvider');
 const { getSystemSettings } = require('./systemSettings');
 const { hashUrl, normalizeUrl } = require('../utils/hash');
 const { CATEGORIES } = require('../config/categories');
 const { canonicalCountry, defaultSourceDomainsForCountry } = require('../config/fetchSources');
 const { evaluateTopicArticle } = require('./articleTopicRules');
+const Article = require('../models/Article');
 
 const ALLOWED_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergreen')
   .split(',')
@@ -20,9 +21,10 @@ const MAX_TOPIC_QUERY_LIMIT = Math.max(1, Math.min(10, Number(process.env.MAX_SE
 const DEFAULT_TARGET_PER_CATEGORY = 10;
 const DEFAULT_TARGET_PER_TOPIC = 100;
 const MAX_TARGET_PER_TOPIC = 100;
-const DEFAULT_TAVILY_MAX_RESULTS = 10;
-const MAX_TAVILY_MAX_RESULTS = 10;
+const DEFAULT_SOURCE_MAX_RESULTS = 10;
+const MAX_SOURCE_MAX_RESULTS = 10;
 const MAX_AI_CANDIDATES_PER_TOPIC = Math.max(1, Math.min(30, Number(process.env.MAX_AI_CANDIDATES_PER_TOPIC || 8) || 8));
+const AI_CLASSIFICATION_BATCH_SIZE = Math.max(1, Math.min(15, Number(process.env.AI_CLASSIFICATION_BATCH_SIZE || 10) || 10));
 const DEFAULT_MIN_STORE_SCORE = Math.max(0, Math.min(100, Number(process.env.AI_RELEVANCE_MIN_SCORE || 60) || 60));
 const MIN_FETCH_CONTENT_CHARS = Math.max(200, Math.min(2000, Number(process.env.MIN_FETCH_CONTENT_CHARS || 450) || 450));
 const MIN_RAW_CONTENT_CHARS = Math.max(300, Math.min(3000, Number(process.env.MIN_RAW_CONTENT_CHARS || 700) || 700));
@@ -152,7 +154,7 @@ function compactRawData(value = {}, fallback = {}) {
         : Array.isArray(fallback.allowedDomains)
           ? fallback.allowedDomains
           : [],
-    tavilyScore: source.tavilyScore || source.tavily_score || fallback.tavilyScore || null,
+    sourceScore: source.sourceScore || source.source_score || fallback.sourceScore || null,
     snippet: text(source.snippet || fallback.snippet).slice(0, 4000)
   };
 }
@@ -643,7 +645,7 @@ function normalizeProfileInput(incoming = {}) {
     region: text(incoming.region),
     location: text(incoming.location) || [incoming.country, incoming.region].map((v) => text(v)).filter(Boolean).join(' '),
     category: text(incoming.category || defaultCategory()),
-    categories: unique(list(incoming.categories || incoming.selectedCategories || incoming.category)).slice(0, 10),
+    categories: unique(list(incoming.categories || incoming.selectedCategories || incoming.category)),
     subcategory: text(incoming.subcategory || incoming.sub_category),
     subcategoryOptions: unique(list(incoming.subcategoryOptions || incoming.categoryOptions)),
     topics: selectedTopics,
@@ -659,14 +661,20 @@ function normalizeProfileInput(incoming = {}) {
     competitors: unique(list(incoming.competitors)),
     days: Math.max(1, Math.min(365, Number(incoming.days || 30) || 30)),
     targetPerTopic: Math.max(1, Math.min(MAX_TARGET_PER_TOPIC, Number(incoming.targetPerTopic || incoming.maxPerTopic || DEFAULT_TARGET_PER_TOPIC) || DEFAULT_TARGET_PER_TOPIC)),
-    minTavilyScore: incoming.minTavilyScore,
-    minStoreScore: incoming.minStoreScore,
+    minStoreScore: incoming.minStoreScore ?? (
+      masterArticleProvider.isMasterProvider()
+        ? Math.max(0, Math.min(100, Number(process.env.MASTER_FETCH_MIN_RELEVANCE || 70) || 70))
+        : undefined
+    ),
     language: text(incoming.language || defaultLanguage()),
     timezone: text(incoming.timezone || defaultTimezone()),
-    startedAt: incoming.startedAt || now
+    startedAt: incoming.startedAt || now,
+    globalFetch: Boolean(incoming.globalFetch || incoming.platformFetch || incoming.global || incoming.isPlatformFetch)
   };
 
   if (!profile.userId) throw new Error('userId is required');
+  if (profile.globalFetch) profile.categories = Object.keys(CATEGORIES);
+  else profile.categories = profile.categories.slice(0, 10);
   if (!profile.categories.length) profile.categories = [profile.category || defaultCategory()].filter(Boolean);
   return profile;
 }
@@ -690,7 +698,7 @@ function domainsForTopic(profile, topic) {
   return unique([...filteredTopicDomains, ...filteredDefaults].map(cleanDomain).filter(Boolean));
 }
 
-function tavilyTopicForProfileTopic(topic) {
+function sourceTopicForProfileTopic(topic) {
   return topic === 'news' ? 'news' : 'general';
 }
 
@@ -741,7 +749,7 @@ function buildTopicQueries(profile, topic) {
   const includeDomains = domainsForTopic(profile, topic);
   if (profile.strictSources && !includeDomains.length) return [];
 
-  const maxResults = Math.max(1, Math.min(MAX_TAVILY_MAX_RESULTS, Number(process.env.TAVILY_MAX_RESULTS || DEFAULT_TAVILY_MAX_RESULTS) || DEFAULT_TAVILY_MAX_RESULTS));
+  const maxResults = Math.max(1, Math.min(MAX_SOURCE_MAX_RESULTS, Number(process.env.SEARCH_MAX_RESULTS || DEFAULT_SOURCE_MAX_RESULTS) || DEFAULT_SOURCE_MAX_RESULTS));
   const requestForQuery = ({ query, category, variantIndex, includeDomainsOverride, searchDepth = 'basic', maxResultsOverride }) => ({
     profile: {
       ...profile,
@@ -752,9 +760,9 @@ function buildTopicQueries(profile, topic) {
     type: topic,
     opportunityType: OPPORTUNITY_TYPE[topic] || 'market_news',
     sourceQuery: query,
-    minTavilyScore: Math.max(0, Math.min(100, Number(profile.minTavilyScore || 0) || 0)),
-    tavilyOptions: {
-      topic: tavilyTopicForProfileTopic(topic),
+    minsourceScore: Math.max(0, Math.min(100, Number(profile.minsourceScore || 0) || 0)),
+    sourceOptions: {
+      topic: sourceTopicForProfileTopic(topic),
       searchDepth,
       maxResults: maxResultsOverride || maxResults,
       timeRange: daysToTimeRange(profile.days),
@@ -797,14 +805,14 @@ function articleFromResult(row, request, stats) {
   }
   if (
     shouldEnforcePostSourceFilter(request.topic) &&
-    !isAllowedSourceResult(url, request.tavilyOptions?.includeDomains || [])
+    !isAllowedSourceResult(url, request.sourceOptions?.includeDomains || [])
   ) {
     return rejectCandidate(stats, 'source', sampleCandidate(sampleRow, 'source-not-allowed'));
   }
   if (!resultMatchesTopicSourceType(url, request.topic, request.profile || {})) {
     return rejectCandidate(stats, 'type', sampleCandidate(sampleRow, 'wrong-topic-source-type'));
   }
-  if (request.topic === 'govt' && !isAllowedGovtResult(url, request.tavilyOptions?.includeDomains || [])) {
+  if (request.topic === 'govt' && !isAllowedGovtResult(url, request.sourceOptions?.includeDomains || [])) {
     return rejectCandidate(stats, 'source', sampleCandidate(sampleRow, 'govt-source-not-allowed'));
   }
   if (!hasEnoughGenerationContext({ title, summary, rawContent })) {
@@ -830,7 +838,7 @@ function articleFromResult(row, request, stats) {
       sampleCandidate(sampleRow, topicRule.reason || rejectReason)
     );
   }
-  const tavilyScore = typeof row.score === 'number' ? row.score : 50;
+  const sourceScore = typeof row.score === 'number' ? row.score : 50;
 
   const profile = request.profile || {};
   const sourceType = hostFromUrl(url);
@@ -859,18 +867,18 @@ function articleFromResult(row, request, stats) {
     aiSummary: summary.slice(0, 3000),
     rawContent: rawContent.slice(0, 20000),
     blogContext: '',
-    tavilyScore,
-    relevanceScore: tavilyScore,
-    relevance_score: tavilyScore,
-    relevanceReason: `Tavily relevance score ${tavilyScore} for ${request.topic} query variant ${request.variantIndex}.`,
-    relevance_reason: `Tavily relevance score ${tavilyScore} for ${request.topic} query variant ${request.variantIndex}.`,
+    sourceScore,
+    relevanceScore: sourceScore,
+    relevance_score: sourceScore,
+    relevanceReason: `Source relevance score ${sourceScore} for ${request.topic} master database candidate.`,
+    relevance_reason: `Source relevance score ${sourceScore} for ${request.topic} master database candidate.`,
     url,
     hash: identityHash,
     urlHash: articleUrlHash(url),
     source: sourceNameFromHost(sourceType),
     sourceId,
     sourceType,
-    allowedDomains: request.tavilyOptions?.includeDomains || [],
+    allowedDomains: request.sourceOptions?.includeDomains || [],
     sourceQuery: request.sourceQuery,
     fetched_at: new Date().toISOString(),
     publishedAt: articleDate.toISOString(),
@@ -878,8 +886,8 @@ function articleFromResult(row, request, stats) {
     rawData: {
       snippet: snippet.slice(0, 4000),
       sourceQuery: request.sourceQuery,
-      allowedDomains: request.tavilyOptions?.includeDomains || [],
-      tavilyScore
+      allowedDomains: request.sourceOptions?.includeDomains || [],
+      sourceScore
     }
   };
 }
@@ -903,8 +911,8 @@ function dedupeArticlesForAi(articles = []) {
     }
 
     duplicates += 1;
-    const existingScore = Number(existing.tavilyScore || existing.relevanceScore || 0);
-    const articleScore = Number(article.tavilyScore || article.relevanceScore || 0);
+    const existingScore = Number(existing.sourceScore || existing.relevanceScore || 0);
+    const articleScore = Number(article.sourceScore || article.relevanceScore || 0);
     if (articleScore > existingScore) {
       byIdentity.set(identityKey, article);
       byUrl.set(urlKey, article);
@@ -940,11 +948,73 @@ function bestCategory(articleCategory, ai) {
 function topCandidatesForAi(articles = []) {
   return [...articles]
     .sort((a, b) => {
-      const scoreDiff = Number(b.tavilyScore || b.relevanceScore || 0) - Number(a.tavilyScore || a.relevanceScore || 0);
+      const scoreDiff = Number(b.sourceScore || b.relevanceScore || 0) - Number(a.sourceScore || a.relevanceScore || 0);
       if (scoreDiff) return scoreDiff;
       return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''));
     })
     .slice(0, MAX_AI_CANDIDATES_PER_TOPIC);
+}
+
+function titleHostKey(title = '', host = '') {
+  const cleanTitle = text(title).toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
+  const cleanHost = text(host).toLowerCase().replace(/^www\./, '');
+  return cleanTitle && cleanHost ? `${cleanTitle}::${cleanHost}` : '';
+}
+
+function articleHost(article = {}) {
+  try {
+    return new URL(article.url || '').hostname.replace(/^www\./i, '').toLowerCase();
+  } catch (_error) {
+    return text(article.sourceType || article.source || '').toLowerCase().replace(/^www\./, '');
+  }
+}
+
+async function filterExistingArticleDuplicates(articles = []) {
+  if (!articles.length) return { articles, duplicates: 0 };
+  const identityRows = articles.map((article) => {
+    const normalizedUrl = normalizeUrl(article.url || '');
+    const urlHash = article.urlHash || article.hash || (normalizedUrl ? hashUrl(normalizedUrl) : '');
+    const host = article.sourceType || articleHost(article);
+    return {
+      article,
+      normalizedUrl,
+      urlHash,
+      titleHostKey: titleHostKey(article.title, host)
+    };
+  });
+  const urlHashes = unique(identityRows.map((row) => row.urlHash));
+  const urls = unique(identityRows.flatMap((row) => [row.article.url, row.normalizedUrl]));
+  const titles = unique(identityRows.map((row) => text(row.article.title)));
+  const sourceHosts = unique(identityRows.map((row) => articleHost(row.article)));
+  if (!urlHashes.length && !urls.length && !(titles.length && sourceHosts.length)) return { articles, duplicates: 0 };
+
+  const existingArticles = await Article.find({
+    $or: [
+      urlHashes.length ? { urlHash: { $in: urlHashes } } : null,
+      urls.length ? { url: { $in: urls } } : null,
+      titles.length && sourceHosts.length ? { title: { $in: titles }, sourceType: { $in: sourceHosts } } : null
+    ].filter(Boolean)
+  }).select('title url urlHash sourceType source').lean();
+
+  const existingHashes = new Set(existingArticles.map((article) => text(article.urlHash)).filter(Boolean));
+  const existingUrls = new Set(existingArticles.flatMap((article) => [article.url, normalizeUrl(article.url || '')]).map((url) => text(url)).filter(Boolean));
+  const existingTitleHosts = new Set(existingArticles.map((article) => titleHostKey(article.title, article.sourceType || articleHost(article))).filter(Boolean));
+
+  const next = [];
+  let duplicates = 0;
+  for (const row of identityRows) {
+    if (
+      existingHashes.has(row.urlHash)
+      || existingUrls.has(row.article.url)
+      || existingUrls.has(row.normalizedUrl)
+      || existingTitleHosts.has(row.titleHostKey)
+    ) {
+      duplicates += 1;
+      continue;
+    }
+    next.push(row.article);
+  }
+  return { articles: next, duplicates };
 }
 
 function bestSubcategory(category, ai) {
@@ -955,10 +1025,37 @@ function bestSubcategory(category, ai) {
   );
 }
 
+function allowedCategoriesForProfile(profile = {}) {
+  return new Set(
+    unique(list(profile.categories || profile.category))
+      .map((category) => normalizeCategory(category, ''))
+      .filter((category) => CATEGORIES[category])
+  );
+}
+
+function allowedSubcategoriesForProfile(profile = {}, category = '') {
+  const explicit = unique(list(profile.subcategoryOptions || profile.subcategories || profile.subcategory))
+    .map((subcategory) => cleanSubcategory(subcategory))
+    .filter(Boolean);
+  if (!explicit.length) return null;
+  return new Set(explicit.map((subcategory) => normalizeSubcategory(category, subcategory, '')).filter(Boolean));
+}
+
+function matchesSelectedTaxonomy(profile = {}, category = '', subcategory = '') {
+  if (profile.globalFetch) {
+    return Boolean(CATEGORIES[category] && normalizeSubcategory(category, subcategory, ''));
+  }
+  const allowedCategories = allowedCategoriesForProfile(profile);
+  if (allowedCategories.size && !allowedCategories.has(category)) return false;
+  const allowedSubcategories = allowedSubcategoriesForProfile(profile, category);
+  if (allowedSubcategories && allowedSubcategories.size && !allowedSubcategories.has(subcategory)) return false;
+  return true;
+}
+
 function resultFromArticle(article, topic, ai = {}) {
   const score = Math.max(
     0,
-    Math.min(100, parseInt(ai.relevance_score ?? article.relevanceScore ?? article.tavilyScore, 10) || 0)
+    Math.min(100, parseInt(ai.relevance_score ?? article.relevanceScore ?? article.sourceScore, 10) || 0)
   );
   const category = bestCategory(article.category || article.profile?.category, ai);
   const subcategory = bestSubcategory(category, ai);
@@ -991,7 +1088,7 @@ function resultFromArticle(article, topic, ai = {}) {
     rawData: compactRawData(article.rawData, {
       sourceQuery: article.sourceQuery || '',
       allowedDomains: article.allowedDomains || [],
-      tavilyScore: article.tavilyScore || null
+      sourceScore: article.sourceScore || null
     }),
     fetched_at: article.fetched_at || new Date().toISOString(),
     publishedAt: article.publishedAt || ''
@@ -1021,51 +1118,36 @@ async function runTopic(profile, topic, onProgress) {
   const systemSettings = await getSystemSettings();
   const aiConfig = { model: systemSettings.aiModel };
 
-  const requests = buildTopicQueries(profile, topic);
-  const domainSweepCount = requests.filter((request) => (
-    Array.isArray(request.tavilyOptions?.includeDomains)
-    && request.tavilyOptions.includeDomains.length === 1
-  )).length;
-  const allowedDomains = unique(requests.flatMap((request) => list(request.tavilyOptions?.includeDomains)));
+  const useMasterProvider = true;
   onProgress?.({
     step: `topic:${topic}:queries`,
-    message: `${topic} topic: built ${requests.length} search request${requests.length === 1 ? '' : 's'} using ${allowedDomains.length} allowed domain${allowedDomains.length === 1 ? '' : 's'}${allowedDomains.length ? `: ${allowedDomains.slice(0, 12).join(', ')}${allowedDomains.length > 12 ? ` +${allowedDomains.length - 12} more` : ''}` : ' (no default/custom domains found)'}${domainSweepCount ? `; ${domainSweepCount} single-domain request${domainSweepCount === 1 ? '' : 's'}` : ''}`
+    message: `${topic} topic: using scraper master database for country ${profile.country || 'all'} and last ${profile.days || 30} day${Number(profile.days || 30) === 1 ? '' : 's'}`
   });
   const articles = [];
   let searchErrors = 0;
   let rawCandidates = 0;
   const rejected = filterStats();
-  for (let i = 0; i < requests.length; i += 1) {
-    const request = requests[i];
+  try {
+    const rows = await masterArticleProvider.fetchMasterCandidates(profile, topic);
+    rawCandidates = rows.length;
+    articles.push(...rows);
     onProgress?.({
-      step: `topic:${topic}:search`,
-      message: `${topic} topic: searching variant ${i + 1}/${requests.length}: ${request.sourceQuery}`
+      step: `topic:${topic}:master`,
+      message: `${topic} topic: loaded ${rows.length} candidate${rows.length === 1 ? '' : 's'} from scraper master database`
     });
-    let rows = [];
-    try {
-      rows = await tavilyService.search(request.sourceQuery, request.tavilyOptions);
-    } catch (error) {
-      searchErrors += 1;
-      onProgress?.({
-        step: `topic:${topic}:search:error`,
-        message: `${topic} topic: variant ${i + 1}/${requests.length} failed: ${error.message}`
-      });
-      continue;
-    }
+  } catch (error) {
+    searchErrors += 1;
     onProgress?.({
-      step: `topic:${topic}:search`,
-      message: `${topic} topic: Tavily returned ${rows.length} result${rows.length === 1 ? '' : 's'} for variant ${i + 1}`
+      step: `topic:${topic}:master:error`,
+      message: `${topic} topic: master database candidate load failed: ${error.message}`
     });
-    rawCandidates += rows.length;
-    for (const row of rows) {
-      const article = articleFromResult(row, request, rejected);
-      if (article) articles.push(article);
-    }
   }
 
   onProgress?.({
     step: `topic:${topic}:process`,
-    message: `${topic} topic: processed ${rawCandidates} domain candidate${rawCandidates === 1 ? '' : 's'}; ${articles.length} passed hardcoded garbage checks; rejected missing:${rejected.missing}, date:${rejected.date}, content:${rejected.content}, source:${rejected.source}, type:${rejected.type}, score:${rejected.score}, pdf:${rejected.pdf}, sponsored:${rejected.sponsored}, static/topic:${rejected.topic}`
+    message: useMasterProvider
+      ? `${topic} topic: processed ${rawCandidates} master candidate${rawCandidates === 1 ? '' : 's'} for AI review`
+      : `${topic} topic: processed ${rawCandidates} domain candidate${rawCandidates === 1 ? '' : 's'}`
   });
 
   const deduped = dedupeArticlesForAi(articles);
@@ -1076,9 +1158,23 @@ async function runTopic(profile, topic, onProgress) {
     });
   }
 
-  const aiCandidates = topCandidatesForAi(deduped.articles);
-  const aiCandidateSkipped = Math.max(0, deduped.articles.length - aiCandidates.length);
-  if (aiCandidateSkipped) {
+  let candidatePool = deduped.articles;
+  let existingDuplicates = 0;
+  if (useMasterProvider && candidatePool.length) {
+    const filtered = await filterExistingArticleDuplicates(candidatePool);
+    candidatePool = filtered.articles;
+    existingDuplicates = filtered.duplicates;
+    if (existingDuplicates) {
+      onProgress?.({
+        step: `topic:${topic}:duplicate`,
+        message: `${topic} topic: skipped ${existingDuplicates} already saved master candidate${existingDuplicates === 1 ? '' : 's'} before AI review`
+      });
+    }
+  }
+
+  const aiCandidates = useMasterProvider ? candidatePool : topCandidatesForAi(candidatePool);
+  const aiCandidateSkipped = useMasterProvider ? 0 : Math.max(0, candidatePool.length - aiCandidates.length);
+  if (!useMasterProvider && aiCandidateSkipped) {
     onProgress?.({
       step: `topic:${topic}:ai:limit`,
       message: `${topic} topic: kept top ${aiCandidates.length} candidate${aiCandidates.length === 1 ? '' : 's'} for AI and skipped ${aiCandidateSkipped} lower-ranked candidate${aiCandidateSkipped === 1 ? '' : 's'} to reduce token use`
@@ -1094,14 +1190,7 @@ async function runTopic(profile, topic, onProgress) {
   let categoryRejected = 0;
   let scoreRejected = 0;
   const minStoreScore = minStoreScoreForProfile(profile);
-  for (const article of aiCandidates) {
-    let ai = {};
-    try {
-      ai = await aiService.classifyProfileRelevance({ article, profile, topic, aiConfig });
-    } catch (_err) {
-      ai = {};
-    }
-
+  const processAiResult = (article, ai = {}) => {
     if (ai.decision === 'IGNORE' || ai.category === 'IGNORE' || ai.subcategory === 'IGNORE') {
       aiIgnored += 1;
       pushSample(rejected.samples.aiIgnored, {
@@ -1112,15 +1201,15 @@ async function runTopic(profile, topic, onProgress) {
         score: Number(ai.relevance_score ?? ai.relevanceScore ?? 0),
         query: article.sourceQuery || ''
       });
-      continue;
+      return;
     }
 
     const resolvedCategory = bestCategory(article.category || article.profile?.category, ai);
     const resolvedSubcategory = bestSubcategory(resolvedCategory, ai);
-    if (!resolvedCategory || !resolvedSubcategory) {
+    if (!resolvedCategory || !resolvedSubcategory || !matchesSelectedTaxonomy(profile, resolvedCategory, resolvedSubcategory)) {
       categoryRejected += 1;
       pushSample(rejected.samples.rejected, {
-        reason: 'invalid-ai-category-or-subcategory',
+        reason: 'invalid-or-unselected-ai-category-or-subcategory',
         title: article.title,
         url: article.url,
         source: article.sourceType || article.source,
@@ -1128,13 +1217,13 @@ async function runTopic(profile, topic, onProgress) {
         subcategory: ai.subcategory || ai.sub_category || '',
         query: article.sourceQuery || ''
       });
-      continue;
+      return;
     }
 
     const rawScore = ai.relevance_score ?? ai.relevanceScore;
     const computedScore = (rawScore !== undefined && rawScore !== null && rawScore !== '')
       ? parseInt(rawScore, 10)
-      : Number(article.relevanceScore || article.tavilyScore || 60);
+      : Number(article.relevanceScore || article.sourceScore || 60);
 
     const result = resultFromArticle(article, topic, {
       ...ai,
@@ -1158,7 +1247,7 @@ async function runTopic(profile, topic, onProgress) {
         subcategory: result.subcategory,
         query: result.sourceQuery || ''
       });
-      continue;
+      return;
     }
 
     pushSample(rejected.samples.matched, {
@@ -1172,11 +1261,43 @@ async function runTopic(profile, topic, onProgress) {
       query: result.sourceQuery || ''
     });
     output.push(result);
+  };
+
+  for (let start = 0; start < aiCandidates.length; start += AI_CLASSIFICATION_BATCH_SIZE) {
+    const batch = aiCandidates.slice(start, start + AI_CLASSIFICATION_BATCH_SIZE);
+    onProgress?.({
+      step: `topic:${topic}:ai:batch`,
+      message: `${topic} topic: classifying AI batch ${Math.floor(start / AI_CLASSIFICATION_BATCH_SIZE) + 1}/${Math.ceil(aiCandidates.length / AI_CLASSIFICATION_BATCH_SIZE)} (${batch.length} candidate${batch.length === 1 ? '' : 's'})`
+    });
+
+    let batchResults = [];
+    try {
+      batchResults = await aiService.classifyProfileRelevanceBatch({ articles: batch, profile, topic, aiConfig });
+    } catch (_err) {
+      batchResults = [];
+    }
+
+    if (!Array.isArray(batchResults) || batchResults.length !== batch.length) {
+      for (const article of batch) {
+        let ai = {};
+        try {
+          ai = await aiService.classifyProfileRelevance({ article, profile, topic, aiConfig });
+        } catch (_err) {
+          ai = {};
+        }
+        processAiResult(article, ai);
+      }
+      continue;
+    }
+
+    for (let index = 0; index < batch.length; index += 1) {
+      processAiResult(batch[index], batchResults[index] || {});
+    }
   }
 
   onProgress?.({
     step: `topic:${topic}:done`,
-    message: `${topic} topic: kept ${output.length} result${output.length === 1 ? '' : 's'} after domain, duplicate, category, and score checks${aiIgnored ? `; ${aiIgnored} AI ignore${aiIgnored === 1 ? '' : 's'}` : ''}${categoryRejected ? `; ${categoryRejected} category mismatch reject${categoryRejected === 1 ? '' : 's'}` : ''}${scoreRejected ? `; ${scoreRejected} low-score reject${scoreRejected === 1 ? '' : 's'} (<${minStoreScore})` : ''}${searchErrors ? `; ${searchErrors} query variant${searchErrors === 1 ? '' : 's'} failed` : ''}`
+    message: `${topic} topic: kept ${output.length} result${output.length === 1 ? '' : 's'} after domain, duplicate, category, and score checks${aiIgnored ? `; ${aiIgnored} AI ignore${aiIgnored === 1 ? '' : 's'}` : ''}${categoryRejected ? `; ${categoryRejected} category mismatch reject${categoryRejected === 1 ? '' : 's'}` : ''}${scoreRejected ? `; ${scoreRejected} low-score reject${scoreRejected === 1 ? '' : 's'} (<${minStoreScore})` : ''}${searchErrors ? `; ${searchErrors} master provider load${searchErrors === 1 ? '' : 's'} failed` : ''}`
   });
   return {
     results: output,
@@ -1184,7 +1305,7 @@ async function runTopic(profile, topic, onProgress) {
       rawCandidates,
       passedFilters: articles.length,
       outputCount: output.length,
-      duplicates: deduped.duplicates,
+      duplicates: deduped.duplicates + existingDuplicates,
       rejected,
       aiIgnored,
       categoryRejected,
@@ -1240,7 +1361,7 @@ function buildBackendCallback(profile, topicItems) {
       rawData: compactRawData(d.rawData || d.raw, {
         sourceQuery: d.sourceQuery || '',
         allowedDomains: d.allowedDomains || [],
-        tavilyScore: d.tavilyScore || d.tavily_score || null
+        sourceScore: d.sourceScore || d.source_score || null
       }),
       fetched_at: d.fetched_at || new Date().toISOString(),
       publishedAt: d.publishedAt || ''
@@ -1352,7 +1473,7 @@ async function runProfileSearch(incoming = {}, options = {}) {
     error.code = 'FETCH_CANCELLED';
     throw error;
   };
-  if (!tavilyService.isEnabled()) throw new Error('TAVILY_API_KEY is required for code-based profile search');
+  const useMasterProvider = masterArticleProvider.isMasterProvider();
   throwIfCancelled();
   onProgress?.({ step: 'normalize', message: 'Normalizing profile input and selected topics' });
   const profile = normalizeProfileInput(incoming.body || incoming);

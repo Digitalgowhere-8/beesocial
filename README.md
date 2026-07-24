@@ -14,7 +14,7 @@ It is designed for production use with:
 - Frontend: React, Vite, Tailwind CSS
 - Backend: Node.js, Express, Mongoose
 - Database: MongoDB
-- Search: Tavily
+- Search: scraper master database
 - AI: OpenAI
 
 ## Structure
@@ -71,7 +71,9 @@ Optional integrations:
 
 ```env
 OPENAI_API_KEY=
-TAVILY_API_KEY=
+MASTER_ARTICLES_MONGO_URI=
+MASTER_ARTICLES_DB=master
+MASTER_ARTICLES_COLLECTION=master_articles
 ```
 
 ## Production notes

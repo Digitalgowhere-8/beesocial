@@ -4,7 +4,7 @@ import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 
 const CRIMSON = '#163A24';
 const EMPTY_SOURCES = { news: [], govt: [], competitor: [], evergreen: [] };
-const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
+const HIDDEN_CATEGORY_LABELS = new Set([]);
 
 function parseDateValue(value) {
   if (!value) return null;

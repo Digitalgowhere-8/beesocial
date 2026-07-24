@@ -100,8 +100,11 @@ function compactRawDataForArticle(item = {}, body = {}) {
   return {
     sourceQuery: item.source_query || item.sourceQuery || rawData.sourceQuery || raw.sourceQuery || body.query || '',
     queryCategory: item.queryCategory || rawData.queryCategory || raw.queryCategory || '',
-    tavilyScore: item.tavilyScore || item.tavily_score || rawData.tavilyScore || raw.tavilyScore || null,
+    sourceScore: item.sourceScore || item.source_score || rawData.sourceScore || raw.sourceScore || null,
     allowedDomains: resultAllowedDomains(item),
+    provider: item.provider || rawData.provider || raw.provider || '',
+    masterArticleId: item.masterArticleId || rawData.masterArticleId || raw.masterArticleId || '',
+    contentHash: item.contentHash || rawData.contentHash || raw.contentHash || '',
     snippet: String(item.snippet || item.content || rawData.snippet || raw.snippet || '').slice(0, 4000)
   };
 }
@@ -192,6 +195,7 @@ function defaultCountry() {
 }
 
 function isCrossCountySource(item = {}, body = {}) {
+  if (item.rawData?.provider === 'master' || item.provider === 'master' || body.provider === 'master') return false;
   const articleType = normalizeArticleType(item);
   if (!['news', 'govt', 'competitor', 'evergreen'].includes(articleType)) return false;
 
@@ -230,7 +234,7 @@ async function persistProfileResults(body = {}, options = {}) {
   };
 
   const articleHashForItem = (item) => {
-    const url = normalizeUrl(String(item.url || item.link || '').trim());
+    const url = String(item.url || item.link || '').trim();
     const rawHash = url
       ? hashUrl(url)
       : item.urlHash || item.hash || hashUrl(`${item.title || 'untitled'}:${item.source || item.sourceId || ''}:${item.publishedAt || ''}`);
@@ -243,7 +247,7 @@ async function persistProfileResults(body = {}, options = {}) {
   const incomingGovernmentByFingerprint = new Map();
   const storeFloor = minStoreScore(body);
   for (const item of dedupedItems) {
-    const score = Number(item.relevance_score ?? item.relevanceScore ?? item.tavilyScore ?? item.tavily_score ?? 0);
+    const score = Number(item.relevance_score ?? item.relevanceScore ?? item.sourceScore ?? item.source_score ?? 0);
     if (score < storeFloor) {
       filteredCounts.lowScore += 1;
       continue;
@@ -379,22 +383,24 @@ async function persistProfileResults(body = {}, options = {}) {
   }
 
   const ops = items.map((item) => {
-    const url = normalizeUrl(String(item.url || item.link || '').trim());
+    const url = String(item.url || item.link || '').trim();
     const { rawHash, storedHash } = articleHashForItem(item);
     const articleType = normalizeArticleType(item);
     const rawContent = String(item.rawContent || item.raw_content || item.rawData?.rawContent || item.raw?.rawContent || '').slice(0, 20000);
     const blogContext = String(item.blog_context || item.blogContext || item.rawData?.blogContext || item.raw?.blogContext || '').slice(0, 12000);
-    const tavilyAnswer = String(item.tavily_answer || item.tavilyAnswer || item.rawData?.tavilyAnswer || item.raw?.tavilyAnswer || '').slice(0, 4000);
+    const sourceAnswer = String(item.source_answer || item.sourceAnswer || item.rawData?.sourceAnswer || item.raw?.sourceAnswer || '').slice(0, 4000);
     const category = normalizeCategory(item.category, body.category);
     const subcategory = normalizeSubcategory(category, item.sub_category || item.subcategory, body.subcategory || body.sub_category);
     return {
       updateOne: {
         filter: { urlHash: storedHash },
         update: {
+          $set: {
+            url
+          },
           $setOnInsert: {
             title: String(item.title || '').slice(0, 500),
             summary: String(item.summary || item.ai_summary || item.aiSummary || rawContent || '').slice(0, 4000),
-            url,
             type: articleType,
             source: item.source || item.sourceName || 'profile-search',
             sourceId: item.sourceId || item.source || 'profile-search',
@@ -409,7 +415,7 @@ async function persistProfileResults(body = {}, options = {}) {
             aiSummary: String(item.ai_summary || item.aiSummary || item.summary || '').slice(0, 2000),
             rawContent,
             blogContext,
-            tavilyAnswer,
+            sourceAnswer,
             rawData: compactRawDataForArticle(item, body),
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
             fetchedAt: item.fetched_at ? new Date(item.fetched_at) : new Date(),

@@ -9,6 +9,8 @@ frontend/node_modules/
 .env.*.local
 backend/.env
 frontend/.env
+scraper/.env
+scraper/outputs/
 
 # Build outputs
 dist/
@@ -21,3 +23,7 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+.edge-edb-debug/
+__pycache__/
+scraper/.edge-edb-debug/
+scraper/__pycache__/

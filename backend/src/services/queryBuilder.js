@@ -23,7 +23,7 @@ const DEFAULT_TOPICS = (process.env.FETCH_TOPICS || 'news,govt,competitor,evergr
   .filter(Boolean);
 const DEFAULT_TARGET_PER_TOPIC = 150;
 const MAX_TARGET_PER_TOPIC = 150;
-const MAX_TAVILY_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_TAVILY_QUERY_LENGTH || 400) || 400));
+const MAX_SEARCH_QUERY_LENGTH = Math.max(100, Math.min(400, Number(process.env.MAX_SEARCH_QUERY_LENGTH || 400) || 400));
 const DEFAULT_COMPETITOR_QUERY_NAMES = [
   'Tricor',
   'Vistra',
@@ -183,7 +183,7 @@ function compactQuery(parts) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (query.length <= MAX_TAVILY_QUERY_LENGTH) return query;
+  if (query.length <= MAX_SEARCH_QUERY_LENGTH) return query;
 
   const words = query.split(' ');
   const trimmed = [];
@@ -191,13 +191,13 @@ function compactQuery(parts) {
 
   for (const word of words) {
     const nextLength = totalLength ? totalLength + 1 + word.length : word.length;
-    if (nextLength > MAX_TAVILY_QUERY_LENGTH) break;
+    if (nextLength > MAX_SEARCH_QUERY_LENGTH) break;
     trimmed.push(word);
     totalLength = nextLength;
   }
 
   if (trimmed.length) return trimmed.join(' ');
-  return query.slice(0, MAX_TAVILY_QUERY_LENGTH).trim();
+  return query.slice(0, MAX_SEARCH_QUERY_LENGTH).trim();
 }
 
 function cleanMarketTerms(country, value) {
@@ -564,8 +564,8 @@ function buildProfileSearchPayload(profile = {}, extra = {}) {
   if (customQueryOverride) payload.customQueryOverride = customQueryOverride;
   if (competitors.length) payload.competitors = competitors;
   if (scope.categoryOptions.length) payload.subcategoryOptions = scope.categoryOptions;
-  if (profile.minTavilyScore !== undefined && profile.minTavilyScore !== null && profile.minTavilyScore !== '') {
-    payload.minTavilyScore = Math.max(0, Math.min(100, Number(profile.minTavilyScore) || 0));
+  if (profile.minsourceScore !== undefined && profile.minsourceScore !== null && profile.minsourceScore !== '') {
+    payload.minsourceScore = Math.max(0, Math.min(100, Number(profile.minsourceScore) || 0));
   }
   if (profile.minStoreScore !== undefined && profile.minStoreScore !== null && profile.minStoreScore !== '') {
     payload.minStoreScore = Math.max(0, Math.min(100, Number(profile.minStoreScore) || 0));

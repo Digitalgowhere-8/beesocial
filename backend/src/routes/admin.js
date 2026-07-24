@@ -768,9 +768,37 @@ router.get('/super/overview', requireRole('super_admin'), asyncHandler(async (_r
   });
 }));
 
-router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_req, res) => {
-  const since = startOfMonth();
-  const match = { occurredAt: { $gte: since } };
+function analyticsWindow(range = 'month') {
+  const now = new Date();
+  const selected = ['today', 'week', 'month', 'year'].includes(String(range)) ? String(range) : 'month';
+  const since = new Date(now);
+  if (selected === 'today') since.setHours(0, 0, 0, 0);
+  if (selected === 'week') {
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - 6);
+  }
+  if (selected === 'month') return { range: selected, since: startOfMonth(), until: now, bucketFormat: '%Y-%m-%d' };
+  if (selected === 'year') {
+    since.setMonth(0, 1);
+    since.setHours(0, 0, 0, 0);
+  }
+  return { range: selected, since, until: now, bucketFormat: selected === 'year' ? '%Y-%m' : '%Y-%m-%d' };
+}
+
+function previousAnalyticsWindow(since, until) {
+  const span = Math.max(24 * 60 * 60 * 1000, until.getTime() - since.getTime());
+  return {
+    since: new Date(since.getTime() - span),
+    until: since
+  };
+}
+
+router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (req, res) => {
+  const window = analyticsWindow(req.query.range);
+  const { since } = window;
+  const match = { occurredAt: { $gte: since, $lte: window.until } };
+  const previousWindow = previousAnalyticsWindow(window.since, window.until);
+  const previousMatch = { occurredAt: { $gte: previousWindow.since, $lt: previousWindow.until } };
 
   const [
     uniqueVisitors,
@@ -784,7 +812,10 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
     pageRows,
     trendRows,
     roleRows,
-    sessionRows
+    sessionRows,
+    searchRows,
+    filterRows,
+    previousRows
   ] = await Promise.all([
     AnalyticsEvent.distinct('visitorId', match),
     AnalyticsEvent.distinct('sessionId', match),
@@ -842,7 +873,7 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
       {
         $group: {
           _id: {
-            day: { $dateToString: { date: '$occurredAt', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
+            day: { $dateToString: { date: '$occurredAt', format: window.bucketFormat, timezone: 'Asia/Kolkata' } },
             type: '$type'
           },
           count: { $sum: 1 },
@@ -876,6 +907,52 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
           totalSessions: { $sum: 1 }
         }
       }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, type: 'search', 'metadata.kind': 'keyword', label: { $nin: ['', null] } } },
+      {
+        $group: {
+          _id: { keyword: { $toLower: '$label' }, section: { $ifNull: ['$section', 'Unknown'] } },
+          searches: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' },
+          users: { $addToSet: '$userId' },
+          lastSearchedAt: { $max: '$occurredAt' }
+        }
+      },
+      { $project: { keyword: '$_id.keyword', section: '$_id.section', searches: 1, visitors: { $size: '$visitors' }, users: { $size: '$users' }, lastSearchedAt: 1, _id: 0 } },
+      { $sort: { searches: -1, visitors: -1, lastSearchedAt: -1 } },
+      { $limit: 12 }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: { ...match, type: 'search', 'metadata.kind': 'filter', label: { $nin: ['', null] } } },
+      {
+        $group: {
+          _id: { filter: '$metadata.field', value: '$label', section: { $ifNull: ['$section', 'Unknown'] } },
+          uses: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' },
+          users: { $addToSet: '$userId' },
+          lastUsedAt: { $max: '$occurredAt' }
+        }
+      },
+      { $project: { filter: '$_id.filter', value: '$_id.value', section: '$_id.section', uses: 1, visitors: { $size: '$visitors' }, users: { $size: '$users' }, lastUsedAt: 1, _id: 0 } },
+      { $sort: { uses: -1, visitors: -1, lastUsedAt: -1 } },
+      { $limit: 12 }
+    ]),
+    AnalyticsEvent.aggregate([
+      { $match: previousMatch },
+      {
+        $group: {
+          _id: null,
+          visitors: { $addToSet: '$visitorId' },
+          sessions: { $addToSet: '$sessionId' },
+          pageViews: { $sum: { $cond: [{ $eq: ['$type', 'page_view'] }, 1, 0] } },
+          clicks: { $sum: { $cond: [{ $eq: ['$type', 'click'] }, 1, 0] } },
+          sectionViews: { $sum: { $cond: [{ $eq: ['$type', 'section_view'] }, 1, 0] } },
+          searches: { $sum: { $cond: [{ $eq: ['$type', 'search'] }, 1, 0] } },
+          durationMs: { $sum: '$durationMs' }
+        }
+      },
+      { $project: { visitors: { $size: '$visitors' }, sessions: { $size: '$sessions' }, pageViews: 1, clicks: 1, sectionViews: 1, searches: 1, durationMs: 1, _id: 0 } }
     ])
   ]);
 
@@ -883,13 +960,15 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
   const avgEventDurationMs = Math.round(Number(engagementRows[0]?.avgDurationMs || 0));
   const sessionStats = sessionRows[0] || {};
   const dailyMap = new Map();
-  const today = new Date();
+  const today = window.until;
   const days = Math.max(1, Math.floor((today - since) / (24 * 60 * 60 * 1000)) + 1);
-  for (let i = 0; i < days; i += 1) {
+  const bucketCount = window.range === 'year' ? today.getMonth() + 1 : days;
+  for (let i = 0; i < bucketCount; i += 1) {
     const date = new Date(since);
-    date.setDate(since.getDate() + i);
-    const key = date.toISOString().slice(0, 10);
-    dailyMap.set(key, { day: key, pageViews: 0, clicks: 0, sectionViews: 0, engagementMs: 0, visitors: 0 });
+    if (window.range === 'year') date.setMonth(i, 1);
+    else date.setDate(since.getDate() + i);
+    const key = window.range === 'year' ? date.toISOString().slice(0, 7) : date.toISOString().slice(0, 10);
+    dailyMap.set(key, { day: key, pageViews: 0, clicks: 0, sectionViews: 0, searches: 0, engagementMs: 0, visitors: 0 });
   }
   trendRows.forEach((row) => {
     const day = row._id?.day;
@@ -898,6 +977,7 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
     if (row._id.type === 'page_view') current.pageViews = row.count;
     if (row._id.type === 'click') current.clicks = row.count;
     if (row._id.type === 'section_view') current.sectionViews = row.count;
+    if (row._id.type === 'search') current.searches = row.count;
     current.engagementMs += Number(row.durationMs || 0);
     current.visitors = Math.max(current.visitors, Array.isArray(row.visitors) ? row.visitors.length : 0);
     dailyMap.set(day, current);
@@ -915,9 +995,22 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
     };
   });
 
+  const previous = previousRows[0] || {};
+  const growth = {
+    visitors: pct(uniqueVisitors.length - Number(previous.visitors || 0), Number(previous.visitors || 0)),
+    pageViews: pct(pageViews - Number(previous.pageViews || 0), Number(previous.pageViews || 0)),
+    clicks: pct(clicks - Number(previous.clicks || 0), Number(previous.clicks || 0)),
+    searches: pct(searchRows.reduce((sum, row) => sum + Number(row.searches || 0), 0) - Number(previous.searches || 0), Number(previous.searches || 0)),
+    engagement: pct(totalDurationMs - Number(previous.durationMs || 0), Number(previous.durationMs || 0))
+  };
+
   res.json({
     days,
+    range: window.range,
     since,
+    until: window.until,
+    previousSince: previousWindow.since,
+    previousUntil: previousWindow.until,
     totals: {
       visitors: uniqueVisitors.length,
       sessions: uniqueSessions.length,
@@ -929,10 +1022,15 @@ router.get('/super/analytics', requireRole('super_admin'), asyncHandler(async (_
       avgEventDurationMs,
       clickThroughRate: pct(clicks, pageViews),
       engagementRate: pct(sessionStats.engagedSessions || 0, sessionStats.totalSessions || uniqueSessions.length),
-      bounceRate: pct(sessionStats.bouncedSessions || 0, sessionStats.totalSessions || uniqueSessions.length)
+      bounceRate: pct(sessionStats.bouncedSessions || 0, sessionStats.totalSessions || uniqueSessions.length),
+      searches: searchRows.reduce((sum, row) => sum + Number(row.searches || 0), 0),
+      filterUses: filterRows.reduce((sum, row) => sum + Number(row.uses || 0), 0)
     },
+    growth,
     sections: sectionWithRates,
     clicks: clickRows,
+    searches: searchRows,
+    filters: filterRows,
     pages: pageRows,
     roles: roleRows,
     trend: Array.from(dailyMap.values())

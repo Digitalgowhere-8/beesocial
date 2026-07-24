@@ -24,7 +24,7 @@ function articleDescription(item = {}) {
   const rawData = safeItem.rawData && typeof safeItem.rawData === 'object' ? safeItem.rawData : {};
   const value = (
     rawData.blogContext ||
-    rawData.tavilyAnswer ||
+    rawData.sourceAnswer ||
     safeItem.summary ||
     safeItem.aiSummary ||
     ''

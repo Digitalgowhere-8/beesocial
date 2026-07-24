@@ -7,15 +7,17 @@ import { APP_EVENT_AUTH_CHANGED, APP_EVENT_CONTENT_CHANGED } from '../utils/appE
 import GuidedOnboarding from './GuidedOnboarding';
 import ThemeToggle from './ThemeToggle';
 import {
-  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, PenLine, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban
+  LayoutDashboard, User as UserIcon, LogOut, ChevronLeft, Bell, Newspaper, BookOpenText, PenLine, Crown, FileText, Globe2, Users, Database, KeyRound, X, Ban, Server
 } from 'lucide-react';
 
 const CRIMSON = '#163A24';
 const DARK_RED = '#0E2618';
+const SCRAPER_STATUS_INTERVAL_MS = 4000;
 const SUPER_ADMIN_SECTIONS = [
   { key: 'platform', label: 'Overview', icon: Crown },
   { key: 'articles', label: 'Articles', icon: FileText },
   { key: 'fetch', label: 'Fetch', icon: Globe2 },
+  { key: 'scraper', label: 'Scraper', icon: Server },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'plans', label: 'Plans', icon: Database },
   { key: 'settings', label: 'Settings', icon: KeyRound }
@@ -185,6 +187,20 @@ const compactBadgeCount = (count) => {
   if (!Number.isFinite(value) || value <= 0) return '';
   return value > 99 ? '99+' : String(value);
 };
+
+function scraperApiBaseUrl() {
+  return String(import.meta.env.VITE_SCRAPER_API_BASE_URL || '').trim().replace(/\/+$/, '');
+}
+
+async function scraperApi(path, options) {
+  const baseUrl = scraperApiBaseUrl();
+  if (!baseUrl) return null;
+  const response = await fetch(`${baseUrl}${path}`, options);
+  const text = await response.text();
+  const data = text.trim() ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.reason || data.error || `Scraper API failed: ${response.status}`);
+  return data;
+}
 
 const isContentRepositoryNotificationKey = (key) => (
   String(key || '').startsWith('blog:') || String(key || '').startsWith('linkedin:')
@@ -400,6 +416,7 @@ export default function Layout({ children, headerActions = null }) {
   const [notifications, setNotifications] = useState(() => readNotificationState(user?._id));
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [scraperStatus, setScraperStatus] = useState(null);
   const notificationsRef = useRef(null);
   const mobileNotificationsRef = useRef(null);
   const mobileProfileMenuRef = useRef(null);
@@ -419,6 +436,7 @@ export default function Layout({ children, headerActions = null }) {
     ? (Date.now() - userCreatedTime) <= ONBOARDING_NEW_USER_WINDOW_MS
     : false;
   const generationLocked = genProgress?.status === 'running';
+  const scraperRunning = isSuperAdmin && scraperStatus?.running === true;
   const showGenerationLockMessage = useCallback(() => {
     window.alert(GENERATION_NAV_LOCK_MESSAGE);
   }, []);
@@ -457,6 +475,39 @@ export default function Layout({ children, headerActions = null }) {
   useEffect(() => {
     setAvatar(user?.avatar || '');
   }, [user?.avatar]);
+
+  const refreshScraperStatus = useCallback(async () => {
+    if (!isSuperAdmin) {
+      setScraperStatus(null);
+      return;
+    }
+    try {
+      const nextStatus = await scraperApi('/api/run-status');
+      setScraperStatus(nextStatus || null);
+    } catch {
+      setScraperStatus(null);
+    }
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setScraperStatus(null);
+      return undefined;
+    }
+    refreshScraperStatus();
+    const timer = window.setInterval(refreshScraperStatus, SCRAPER_STATUS_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [isSuperAdmin, refreshScraperStatus]);
+
+  const stopGlobalScraper = useCallback(async () => {
+    try {
+      await scraperApi('/api/stop', { method: 'POST' });
+    } catch {
+      // Ignore transient failures and refresh the status below.
+    } finally {
+      await refreshScraperStatus();
+    }
+  }, [refreshScraperStatus]);
 
   const saveNotifications = useCallback((nextStateOrUpdater) => {
     setNotifications((current) => {
@@ -854,6 +905,13 @@ export default function Layout({ children, headerActions = null }) {
           icon: Globe2,
           onClick: () => navigateIfNeeded('/admin?section=fetch'),
           active: location.pathname.startsWith('/admin') && currentAdminSection === 'fetch'
+        },
+        {
+          key: 'scraper',
+          label: 'Scraper',
+          icon: Server,
+          onClick: () => navigateIfNeeded('/admin?section=scraper'),
+          active: location.pathname.startsWith('/admin') && currentAdminSection === 'scraper'
         },
         {
           key: 'users',
@@ -1254,6 +1312,45 @@ export default function Layout({ children, headerActions = null }) {
                     }}
                     className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
                     title="Stop generation"
+                  >
+                    <Ban size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {scraperRunning && (
+              <div className={`fixed ${
+                runProgress && ['queued', 'running'].includes(runProgress.status)
+                  ? (genProgress && genProgress.status === 'running' ? 'bottom-52 md:bottom-36' : 'bottom-36 md:bottom-20')
+                  : (genProgress && genProgress.status === 'running' ? 'bottom-36 md:bottom-20' : 'bottom-20 md:bottom-6')
+              } right-4 sm:right-6 z-50 animate-fade-in-up`}>
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => navigateIfNeeded('/admin?section=scraper')}
+                    className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-brand-crimson"
+                    title="Open scraper"
+                  >
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-20"></span>
+                    <Server size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateIfNeeded('/admin?section=scraper')}
+                    className="flex min-w-0 flex-col text-left"
+                    title="Open scraper"
+                  >
+                    <span className="truncate text-[12px] font-black text-gray-800">Scraper Running</span>
+                    <span className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                      {scraperStatus.currentSource || scraperStatus.params?.onlyTopics || 'Collecting articles...'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopGlobalScraper}
+                    className="ml-1 rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition-all hover:bg-red-100 hover:text-red-600"
+                    title="Stop scraper"
                   >
                     <Ban size={14} />
                   </button>

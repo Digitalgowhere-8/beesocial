@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import Filters from '../components/Filters';
 import ArticleCard from '../components/ArticleCard';
 import Loader, { Skeleton } from '../components/Loader';
+import ScraperDashboard from './scraper/ScraperDashboard';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -32,6 +33,23 @@ const PLAN_BADGE = {
   premium:    'bg-gradient-to-r from-amber-100 to-yellow-50 text-amber-800 ring-1 ring-amber-200/50 shadow-sm'
 };
 
+function scraperApiBaseUrl() {
+  return String(import.meta.env.VITE_SCRAPER_API_BASE_URL || '').trim().replace(/\/+$/, '');
+}
+
+async function loadScraperSourceCatalog() {
+  const baseUrl = scraperApiBaseUrl();
+  if (!baseUrl) return {};
+  try {
+    const response = await fetch(`${baseUrl}/api/config`);
+    if (!response.ok) return {};
+    const data = await response.json();
+    return data.catalog?.sourceCatalog || {};
+  } catch {
+    return {};
+  }
+}
+
 function formatPlanLabel(planId, dbPlans = []) {
   const normalized = String(planId || '').trim().toLowerCase();
   const dbPlan = Array.isArray(dbPlans) ? dbPlans.find((plan) => String(plan?.planId || '').toLowerCase() === normalized) : null;
@@ -44,6 +62,12 @@ function formatPlanLabel(planId, dbPlans = []) {
 }
 
 const PAID_PLAN_IDS = ['growth', 'scale', 'enterprise', 'premium'];
+const ANALYTICS_RANGES = [
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'year', label: 'Year' }
+];
 
 const MEMBER_ACCESS_OPTIONS = [
   { key: 'canFetch', label: 'Fetch' },
@@ -65,6 +89,7 @@ const SUPER_ADMIN_TABS = [
   { key: 'platform', label: 'Platform', icon: Crown, hint: 'Global health and activity' },
   { key: 'articles', label: 'Articles', icon: FileText, hint: 'Review and moderate content' },
   { key: 'fetch',    label: 'Fetch',    icon: Globe2, hint: 'Shared intelligence workflows' },
+  { key: 'scraper',  label: 'Scraper',  icon: Server, hint: 'Standalone scraper control' },
   { key: 'users',    label: 'Users',    icon: ShieldCheck, hint: 'Companies, members and access' },
   { key: 'plans',    label: 'Plans',    icon: Database, hint: 'Limits, pricing and upgrades' },
   { key: 'settings', label: 'Settings', icon: KeyRound, hint: 'Platform controls and AI config' },
@@ -80,9 +105,14 @@ const SUPER_ADMIN_SUBTABS = {
     { key: 'library', label: 'Article Library' }
   ],
   fetch: [
-    { key: 'setup', label: 'Fetch Settings' },
+    { key: 'setup', label: 'Fetch Settings' }
+  ],
+  scraper: [
+    { key: 'scraper', label: 'Scraper' },
     { key: 'sources', label: 'Country Sources' },
-    { key: 'trust', label: 'Source Trust' }
+    { key: 'trust', label: 'Source Trust' },
+    { key: 'articles', label: 'Global Articles' },
+    { key: 'analysis', label: 'Analysis' }
   ],
   users: [
     { key: 'add', label: 'Add User' },
@@ -435,6 +465,7 @@ export default function AdminPanel() {
               {tab === 'platform' && <SuperAdminPlatform key={`platform-${superAdminRefreshKey}`} activeSubTab={subTab} dbPlans={dbPlans} />}
               {tab === 'articles' && <ArticlesTab key={`articles-${superAdminRefreshKey}`} />}
               {tab === 'fetch' && <SuperAdminFetchTab key={`fetch-${superAdminRefreshKey}`} activeSubTab={subTab} />}
+              {tab === 'scraper' && <SuperAdminScraperTab key={`scraper-${superAdminRefreshKey}`} activeSubTab={subTab} />}
               {tab === 'users' && <UsersTab key={`users-${superAdminRefreshKey}`} dbPlans={dbPlans} activeSubTab={subTab} />}
               {tab === 'plans' && <PlanBuilderTab key={`plans-${superAdminRefreshKey}`} dbPlans={dbPlans} loadDbPlans={loadDbPlans} />}
               {tab === 'settings' && (subTab === 'mail'
@@ -485,6 +516,13 @@ function SuperAdminWorkspace({
   );
 }
 
+function SuperAdminScraperTab({ activeSubTab = 'scraper' }) {
+  if (activeSubTab === 'sources' || activeSubTab === 'trust') {
+    return <SuperAdminFetchTab activeSubTab={activeSubTab} sourceOwner="scraper" />;
+  }
+  return <ScraperDashboard activeTab={activeSubTab} />;
+}
+
 // =============== SUPER ADMIN PLATFORM ===============
 
 function parsePlanPrice(value) {
@@ -501,6 +539,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
   const [cleaningAnalytics, setCleaningAnalytics] = useState(false);
   const [cleanupNotice, setCleanupNotice] = useState('');
   const [expandedPlatformRunId, setExpandedPlatformRunId] = useState('');
+  const [analyticsRange, setAnalyticsRange] = useState('month');
 
   const loadDatabaseHealth = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setRefreshingHealth(true);
@@ -519,7 +558,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     try {
       const [overviewRes, analyticsRes, dbHealthRes] = await Promise.all([
         api.get('/admin/super/overview'),
-        api.get('/admin/super/analytics'),
+        api.get(`/admin/super/analytics?range=${analyticsRange}`),
         api.get('/admin/super/database-health')
       ]);
       superAdminPlatformCache.overview = overviewRes.data;
@@ -531,7 +570,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [analyticsRange]);
 
   useEffect(() => {
     load({ silent: Boolean(superAdminPlatformCache.overview && superAdminPlatformCache.analytics) });
@@ -588,7 +627,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
       const { data } = await api.delete('/admin/super/analytics/cleanup');
       setCleanupNotice(data.message || 'Analytics cleanup completed.');
       setDbHealth(data.health || null);
-      const analyticsRes = await api.get('/admin/super/analytics');
+      const analyticsRes = await api.get(`/admin/super/analytics?range=${analyticsRange}`);
       setAnalytics(analyticsRes.data);
     } catch (e) {
       setCleanupNotice(e.response?.data?.message || e.message || 'Analytics cleanup failed.');
@@ -735,8 +774,20 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
             <h3 className="text-xl font-black tracking-tight text-gray-900">Visitor behaviour and engagement</h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl bg-gray-50 p-1 ring-1 ring-gray-200">
+              {ANALYTICS_RANGES.map((range) => (
+                <button
+                  key={range.key}
+                  type="button"
+                  onClick={() => setAnalyticsRange(range.key)}
+                  className={`min-h-[32px] rounded-lg px-3 text-[10px] font-black uppercase tracking-wider transition ${analyticsRange === range.key ? 'bg-white text-brand-crimson shadow-sm ring-1 ring-brand-crimson/10' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  {range.label}
+                </button>
+              ))}
+            </div>
             <div className="inline-flex w-fit rounded-xl border border-brand-crimson/10 bg-brand-pink/20 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-brand-crimson shadow-sm">
-              {analyticsSince ? `Month to date since ${analyticsSince.toLocaleDateString()}` : 'Month to date'}
+              {analyticsSince ? `${analyticsRange} since ${analyticsSince.toLocaleDateString()}` : analyticsRange}
             </div>
             <button
               type="button"
@@ -773,8 +824,10 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
           <AnalyticsKpi icon={TrendingUp} label="Bounce rate" value={`${traffic.bounceRate || 0}%`} detail="Low is better" color="text-gray-700" bg="bg-gray-50" />
         </div>
 
+        <BusinessAnalyticsSummary analytics={analytics} />
+
         <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-          <AnalyticsTrend data={analytics.trend || []} />
+          <AnalyticsTrend data={analytics.trend || []} range={analyticsRange} />
           <AnalyticsSectionTable rows={analytics.sections || []} />
         </div>
 
@@ -799,6 +852,7 @@ function SuperAdminPlatform({ activeSubTab = 'overview', dbPlans = [] }) {
               suffix: 'views'
             }))}
           />
+          <SearchDemandPanel analytics={analytics} />
           <div className="space-y-5">
             <BusinessInsightPanel analytics={analytics} />
             <DatabaseHealthPanel
@@ -1056,16 +1110,71 @@ function AnalyticsKpi({ icon: Icon, label, value, detail, color, bg }) {
   );
 }
 
-function AnalyticsTrend({ data }) {
-  const max = Math.max(...(data || []).map((row) => Math.max(row.pageViews || 0, row.clicks || 0)), 1);
-  const visible = (data || []).slice(-10);
+function growthLabel(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric === 0) return '0%';
+  return `${numeric > 0 ? '+' : ''}${numeric}%`;
+}
+
+function BusinessAnalyticsSummary({ analytics }) {
+  const totals = analytics?.totals || {};
+  const growth = analytics?.growth || {};
+  const topKeyword = analytics?.searches?.[0];
+  const topSection = analytics?.sections?.[0];
+  const weakSection = (analytics?.sections || []).find((row) => Number(row.views || 0) >= 5 && Number(row.clickRate || 0) < 3);
+  const metrics = [
+    { label: 'Traffic growth', value: growthLabel(growth.pageViews), detail: `${compactNumber(totals.pageViews || 0)} page views`, tone: Number(growth.pageViews || 0) >= 0 ? 'emerald' : 'rose' },
+    { label: 'Visitor growth', value: growthLabel(growth.visitors), detail: `${compactNumber(totals.visitors || 0)} unique visitors`, tone: Number(growth.visitors || 0) >= 0 ? 'emerald' : 'rose' },
+    { label: 'Search demand', value: growthLabel(growth.searches), detail: `${compactNumber(totals.searches || 0)} keyword searches`, tone: Number(growth.searches || 0) >= 0 ? 'emerald' : 'rose' },
+    { label: 'Engagement lift', value: growthLabel(growth.engagement), detail: formatDuration(totals.totalEngagedMs), tone: Number(growth.engagement || 0) >= 0 ? 'emerald' : 'rose' }
+  ];
+  const nextBestAction = topKeyword
+    ? `Build content, feed shortcuts, and saved-search presets around "${topKeyword.keyword}".`
+    : weakSection
+      ? `Fix "${weakSection.section}" because attention is present but clicks are weak.`
+      : topSection
+        ? `Use "${topSection.section}" as the primary placement for important business actions.`
+        : 'Collect more search and engagement data to unlock recommendations.';
+
+  const tones = {
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    rose: 'bg-rose-50 text-rose-700 ring-rose-100'
+  };
+
+  return (
+    <div className="mt-5 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Business pulse</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">How the platform is moving</h4>
+        </div>
+        <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs font-bold leading-relaxed text-gray-600 ring-1 ring-gray-100 lg:max-w-md">
+          {nextBestAction}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((item) => (
+          <div key={item.label} className="rounded-lg bg-gray-50 p-3 ring-1 ring-gray-100">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-400">{item.label}</div>
+            <div className={`inline-flex rounded-lg px-2 py-1 text-sm font-black ring-1 ${tones[item.tone]}`}>{item.value}</div>
+            <div className="mt-2 truncate text-xs font-semibold text-gray-500">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsTrend({ data, range = 'month' }) {
+  const max = Math.max(...(data || []).map((row) => Math.max(row.pageViews || 0, row.clicks || 0, row.searches || 0)), 1);
+  const visible = (data || []).slice(range === 'year' ? -12 : -14);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-1">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">Daily trend</div>
-          <h4 className="text-base font-black tracking-tight text-gray-900">Views vs clicks</h4>
+          <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{range === 'year' ? 'Monthly trend' : 'Daily trend'}</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Views, clicks and search</h4>
         </div>
         <Activity size={18} className="text-brand-crimson" />
       </div>
@@ -1073,11 +1182,13 @@ function AnalyticsTrend({ data }) {
         {visible.map((row) => {
           const viewHeight = Math.max(6, ((row.pageViews || 0) / max) * 100);
           const clickHeight = Math.max(4, ((row.clicks || 0) / max) * 100);
+          const searchHeight = Math.max(4, ((row.searches || 0) / max) * 100);
           return (
             <div key={row.day} className="flex min-w-0 flex-1 flex-col items-center gap-2">
               <div className="flex h-36 w-full items-end justify-center gap-1 rounded-lg bg-gray-50 px-1 py-2">
                 <span className="w-2 rounded-t bg-brand-crimson/70" style={{ height: `${viewHeight}%` }} title={`${row.pageViews || 0} page views`} />
                 <span className="w-2 rounded-t bg-amber-400" style={{ height: `${clickHeight}%` }} title={`${row.clicks || 0} clicks`} />
+                <span className="w-2 rounded-t bg-blue-400" style={{ height: `${searchHeight}%` }} title={`${row.searches || 0} searches`} />
               </div>
               <span className="truncate text-[9px] font-black uppercase text-gray-400">{String(row.day || '').slice(5)}</span>
             </div>
@@ -1088,6 +1199,7 @@ function AnalyticsTrend({ data }) {
       <div className="mt-4 flex items-center gap-4 text-[10px] font-black uppercase tracking-wider text-gray-400">
         <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded bg-brand-crimson/70" /> Views</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded bg-amber-400" /> Clicks</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded bg-blue-400" /> Search</span>
       </div>
     </div>
   );
@@ -1158,12 +1270,81 @@ function AnalyticsList({ title, icon: Icon, rows }) {
   );
 }
 
+function SearchDemandPanel({ analytics }) {
+  const keywords = Array.isArray(analytics?.searches) ? analytics.searches : [];
+  const filters = Array.isArray(analytics?.filters) ? analytics.filters : [];
+  const topKeyword = keywords[0];
+  const maxSearches = Math.max(...keywords.map((row) => row.searches || 0), 1);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Search demand</div>
+          <h4 className="text-base font-black tracking-tight text-gray-900">Keywords people look for</h4>
+        </div>
+        <Search size={18} className="text-brand-crimson" />
+      </div>
+
+      {topKeyword ? (
+        <div className="mb-4 rounded-lg bg-brand-pink/20 p-3 ring-1 ring-brand-crimson/10">
+          <div className="text-[10px] font-black uppercase tracking-wider text-brand-crimson">Top intent</div>
+          <div className="mt-1 truncate text-lg font-black text-gray-900">{topKeyword.keyword}</div>
+          <div className="mt-1 text-xs font-semibold text-gray-500">
+            {compactNumber(topKeyword.searches)} searches by {compactNumber(topKeyword.visitors)} visitors
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-2.5">
+        {keywords.slice(0, 6).map((row, index) => (
+          <div key={`${row.keyword}-${index}`} className="rounded-lg bg-gray-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-gray-800">{row.keyword}</div>
+                <div className="truncate text-[11px] font-semibold text-gray-400">{row.section || 'Unknown section'}</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-sm font-black text-gray-900">{compactNumber(row.searches)}</div>
+                <div className="text-[9px] font-black uppercase text-gray-400">searches</div>
+              </div>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-brand-crimson" style={{ width: `${Math.max(6, ((row.searches || 0) / maxSearches) * 100)}%` }} />
+            </div>
+          </div>
+        ))}
+        {!keywords.length && <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm font-bold text-gray-400">Keyword searches will appear after users search or filter.</div>}
+      </div>
+
+      {filters.length ? (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-400">Popular filters</div>
+          <div className="flex flex-wrap gap-2">
+            {filters.slice(0, 5).map((row, index) => (
+              <span key={`${row.filter}-${row.value}-${index}`} className="max-w-full truncate rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] font-black text-gray-600 ring-1 ring-gray-100">
+                {row.filter}: {row.value} ({compactNumber(row.uses)})
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function BusinessInsightPanel({ analytics }) {
   const totals = analytics?.totals || {};
   const topSection = analytics?.sections?.[0];
   const topClick = analytics?.clicks?.[0];
   const topPage = analytics?.pages?.[0];
+  const topKeyword = analytics?.searches?.[0];
+  const topFilter = analytics?.filters?.[0];
+  const weakSection = (analytics?.sections || []).find((row) => Number(row.views || 0) >= 5 && Number(row.clickRate || 0) < 3);
   const insights = [
+    topKeyword ? `"${topKeyword.keyword}" is the strongest search demand. Create matching content, saved filters, or feed shortcuts around it.` : 'Keyword demand will appear after users search inside filters.',
+    topFilter ? `${topFilter.filter || 'Filter'} = "${topFilter.value}" is repeatedly used. Consider making it a default segment or quick chip.` : 'Filter usage will show which segments users care about most.',
+    weakSection ? `"${weakSection.section}" gets attention but low clicks (${weakSection.clickRate || 0}%). Improve CTA copy or place the next action closer.` : 'Low-conversion section warnings will appear once enough views are tracked.',
     topSection ? `People spend the most time on "${topSection.section}", so use it for the strongest business content.` : 'Dwell-time insights will appear after tracked section views.',
     topClick ? `"${topClick.label}" is the most clicked action; keep it visible and test stronger placement.` : 'Click insights need more user activity.',
     topPage ? `${topPage.path} is the most visited page; prioritize improvements and conversion actions there.` : 'Page popularity will appear after visits.',
@@ -1434,7 +1615,7 @@ function ArticlesTab({ ownerOnly = false }) {
 
 // =============== SUPER ADMIN FETCH ===============
 
-function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
+function SuperAdminFetchTab({ activeSubTab = 'setup', sourceOwner = 'fetch' }) {
   const { runProgress, setRunProgress } = useAuth();
   const [profileMeta, setProfileMeta] = useState(null);
   const [config, setConfig] = useState(null);
@@ -1458,20 +1639,23 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   const browserTimezones = useMemo(() => getBrowserTimezones(), []);
 
   const load = useCallback(async () => {
-    const [meta, cfg, stat, logs] = await Promise.all([
+    const [meta, cfg, stat, logs, scraperSourceCatalog] = await Promise.all([
       api.get('/articles/meta/filters'),
       api.get('/admin/super/fetch/config'),
       api.get('/admin/super/fetch/status'),
-      api.get('/admin/logs', { params: { limit: 1 } })
+      api.get('/admin/logs', { params: { limit: 1 } }),
+      sourceOwner === 'scraper' ? loadScraperSourceCatalog() : Promise.resolve({})
     ]);
     setProfileMeta(meta.data);
     if (!hasLocalEditsRef.current) {
       setConfig(cfg.data.config);
     }
-    setSourceCatalog(cfg.data.sourceCatalog || {});
+    setSourceCatalog(sourceOwner === 'scraper' && Object.keys(scraperSourceCatalog || {}).length
+      ? scraperSourceCatalog
+      : (cfg.data.sourceCatalog || {}));
     setStatus(stat.data);
     setLastLog(logs.data.items?.[0] || null);
-  }, []);
+  }, [sourceOwner]);
 
   useEffect(() => {
     load().catch((e) => setMsg(`Error: ${e.message}`));
@@ -1490,18 +1674,22 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   }, [runProgress?.status, load]);
 
   const countries = profileMeta?.fetchCountries || [];
-  const selectedCountries = Array.isArray(config?.countries) ? config.countries : [];
+  const selectedCountries = Array.isArray(config?.countries)
+    ? config.countries.filter((country) => countries.includes(country))
+    : [];
   const selectedTopics = Array.isArray(config?.topics) && config.topics.length ? config.topics : TOPIC_OPTIONS.map((topic) => topic.key);
   const customSourceCountries = Object.keys(config?.sourceDomainsByCountry || {});
+  const visibleCustomSourceCountries = customSourceCountries.filter((country) => selectedCountries.includes(country));
   const sourceCountries = Array.from(new Set([
     ...countries,
     ...Object.keys(sourceCatalog || {}),
-    ...customSourceCountries,
+    ...selectedCountries,
+    ...visibleCustomSourceCountries,
     ...draftCountries
   ])).sort((a, b) => a.localeCompare(b));
   const fetchSetupCountries = Array.from(new Set([
     ...countries,
-    ...customSourceCountries
+    ...selectedCountries
   ])).sort((a, b) => a.localeCompare(b));
   const isBusy = Boolean(status.running) || running || (runProgress && ['running', 'queued'].includes(runProgress.status));
   const scheduleEnabled = Boolean(config?.schedule?.enabled);
@@ -1533,6 +1721,26 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               message: 'Platform fetch queued from scheduler.'
             }
           ]
+        }
+      : null
+  );
+  const latestRunProgress = effectiveRunProgress || (
+    lastLog
+      ? {
+          runId: String(lastLog._id || ''),
+          logId: String(lastLog._id || ''),
+          status: lastLog.status || 'unknown',
+          step: lastLog.status || 'complete',
+          percent: lastLog.status === 'running' ? 50 : 100,
+          startedAt: lastLog.startedAt,
+          finishedAt: lastLog.finishedAt,
+          messages: Array.isArray(lastLog.progressMessages) && lastLog.progressMessages.length
+            ? lastLog.progressMessages
+            : [{
+                at: lastLog.finishedAt || lastLog.startedAt || new Date().toISOString(),
+                step: lastLog.status || 'complete',
+                message: lastLog.notes || `Fetch ${lastLog.status || 'complete'}`
+              }]
         }
       : null
   );
@@ -1707,6 +1915,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
   const selectedSourceCustom = config?.sourceDomainsByCountry?.[sourceCountry]?.[sourceType] || [];
   const selectedSourceEffective = Array.from(new Set([...(selectedSourceDefaults || []), ...(selectedSourceCustom || [])]));
   const showFetchActivity = managerTab === 'setup';
+  const isScraperSourceManager = sourceOwner === 'scraper' && managerTab !== 'setup';
 
   const addSourceEntries = useCallback((rawValue) => {
     if (!sourceCountry) {
@@ -1758,9 +1967,13 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               <Globe2 size={18} />
             </span>
             <div className="min-w-0">
-              <div className="eyebrow mb-1 text-brand-crimson/80">Shared fetch</div>
-              <h3 className="text-xl font-black tracking-tight text-gray-900">Platform Intelligence Fetch</h3>
-              <p className="mt-1 text-sm text-gray-500">Super admin runs once; fetched results become visible across all admins and users.</p>
+              <div className="eyebrow mb-1 text-brand-crimson/80">{isScraperSourceManager ? 'Scraper sources' : 'Shared fetch'}</div>
+              <h3 className="text-xl font-black tracking-tight text-gray-900">{isScraperSourceManager ? 'Scraper Source Management' : 'Platform Intelligence Fetch'}</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {isScraperSourceManager
+                  ? 'Manage countries, source domains, and trust levels used by the scraper master database.'
+                  : 'Super admin runs once; fetched results become visible across all admins and users.'}
+              </p>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
@@ -1798,9 +2011,13 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff,_#f8fafc_60%,_#fff1f2)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="max-w-2xl">
-                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">Country Sources</div>
-                    <h4 className="mt-2 text-[28px] font-black leading-tight tracking-[-0.03em] text-slate-950">Manage country sources</h4>
-                    <p className="mt-2 text-[15px] leading-7 text-slate-500">Choose a country, select the source type, add domains in bulk, and remove any incorrect source with one click.</p>
+                    <div className="text-[11px] font-black uppercase tracking-[0.28em] text-brand-crimson/75">{isScraperSourceManager ? 'Scraper Source Registry' : 'Country Sources'}</div>
+                    <h4 className="mt-2 text-[28px] font-black leading-tight tracking-[-0.03em] text-slate-950">{isScraperSourceManager ? 'Manage scraper countries and sources' : 'Manage country sources'}</h4>
+                    <p className="mt-2 text-[15px] leading-7 text-slate-500">
+                      {isScraperSourceManager
+                        ? 'Choose a scraper country, select the source type, add crawl domains in bulk, and remove incorrect sources before the next scrape.'
+                        : 'Choose a country, select the source type, add domains in bulk, and remove any incorrect source with one click.'}
+                    </p>
                   </div>
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div className="rounded-2xl border border-white bg-white/90 px-4 py-3 shadow-sm">
@@ -1830,7 +2047,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                       />
                     </FetchField>
                     <div className="mt-3 text-xs font-medium leading-6 text-slate-500">
-                      Countries added here will also be available in the Fetch Settings tab.
+                      Countries added here will be available for scraper runs and master database collection.
                     </div>
                   </div>
 
@@ -1950,7 +2167,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
                         </div>
                       </div>
                       <div className="admin-source-list-panel rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Final fetch sources</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">{isScraperSourceManager ? 'Final scrape sources' : 'Final fetch sources'}</div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {selectedSourceEffective.length ? selectedSourceEffective.map((domain) => (
                             <span
@@ -1994,7 +2211,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
               </div>
             </div>
           ) : (
-            <SourceTrustRulesPanel />
+            <SourceTrustRulesPanel sourceOwner={sourceOwner} />
           )}
         </div>
 
@@ -2022,7 +2239,7 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
             </select>
           </FetchField>
           <FetchField label="Minimum score">
-            <input type="number" min="0" max="100" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.minTavilyScore ?? ''} onChange={(e) => update('minTavilyScore', e.target.value)} placeholder="AI default" />
+            <input type="number" min="0" max="100" className="admin-super-fetch-field-control input min-h-[44px] rounded-xl" value={config.minsourceScore ?? ''} onChange={(e) => update('minsourceScore', e.target.value)} placeholder="AI default" />
           </FetchField>
         </div>
 
@@ -2117,22 +2334,22 @@ function SuperAdminFetchTab({ activeSubTab = 'setup' }) {
         )}
 
         {msg && <div className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-600 ring-1 ring-gray-100">{msg}</div>}
-        {showFetchActivity && effectiveRunProgress && (
-          <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
+        {showFetchActivity && latestRunProgress && (
+          <div className="admin-live-progress-card mt-4 rounded-lg border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="eyebrow mb-1">Live process</div>
-                <h4 className="text-base font-black tracking-tight text-gray-900">{effectiveRunProgress.status === 'success' ? 'Fetch complete' : effectiveRunProgress.status === 'failed' ? 'Fetch failed' : 'Fetch running'}</h4>
+                <h4 className="text-base font-black tracking-tight text-gray-900">{latestRunProgress.status === 'success' ? 'Fetch complete' : latestRunProgress.status === 'failed' ? 'Fetch failed' : latestRunProgress.status === 'partial' ? 'Fetch partial' : 'Fetch running'}</h4>
               </div>
-              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{effectiveRunProgress.step || effectiveRunProgress.status}</span>
+              <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 ring-1 ring-blue-100">{latestRunProgress.step || latestRunProgress.status}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-              <div className={`h-full rounded-full transition-all ${effectiveRunProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`} style={{ width: `${Math.max(5, Math.min(100, Number(effectiveRunProgress.percent || 35)))}%` }} />
+            <div className="admin-live-progress-track h-2 overflow-hidden rounded-full">
+              <div className={`admin-live-progress-fill h-full rounded-full transition-all ${latestRunProgress.status === 'failed' ? 'is-failed' : ''}`} style={{ width: `${Math.max(5, Math.min(100, Number(latestRunProgress.percent || 35)))}%` }} />
             </div>
             <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-              {(effectiveRunProgress.messages || []).slice(-14).map((item, index) => (
-                <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
-                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-crimson" />
+              {(latestRunProgress.messages || []).slice(-14).map((item, index) => (
+                <div key={`${item.at}-${index}`} className="admin-live-progress-event flex gap-2 rounded-md px-3 py-2">
+                  <span className="admin-live-progress-dot mt-1 h-2 w-2 shrink-0 rounded-full" />
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>
                     <div className="text-sm font-medium leading-relaxed text-gray-700">{item.message}</div>
@@ -2858,7 +3075,7 @@ export function FetchTab({ embedded = false }) {
         )}
 
         {effectiveRunProgress && (
-          <div className="mt-4 rounded-lg border border-gray-100 bg-white p-4 ring-1 ring-gray-50">
+          <div className="admin-live-progress-card mt-4 rounded-lg border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="eyebrow mb-1">Live process</div>
@@ -2874,17 +3091,17 @@ export function FetchTab({ embedded = false }) {
                 {effectiveRunProgress.step || effectiveRunProgress.status}
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+            <div className="admin-live-progress-track h-2 overflow-hidden rounded-full">
               <div
-                className={`h-full rounded-full transition-all ${effectiveRunProgress.status === 'failed' ? 'bg-red-500' : 'bg-brand-crimson'}`}
+                className={`admin-live-progress-fill h-full rounded-full transition-all ${effectiveRunProgress.status === 'failed' ? 'is-failed' : ''}`}
                 style={{ width: `${Math.max(5, Math.min(100, Number(effectiveRunProgress.percent || 35)))}%` }}
               />
             </div>
             <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
               {(effectiveRunProgress.messages || []).slice(-14).map((item, index) => (
-                <div key={`${item.at}-${index}`} className="flex gap-2 rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-100">
-                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                    effectiveRunProgress.status === 'failed' && index === (effectiveRunProgress.messages || []).slice(-14).length - 1 ? 'bg-red-500' : 'bg-brand-crimson'
+                <div key={`${item.at}-${index}`} className="admin-live-progress-event flex gap-2 rounded-md px-3 py-2">
+                  <span className={`admin-live-progress-dot mt-1 h-2 w-2 shrink-0 rounded-full ${
+                    effectiveRunProgress.status === 'failed' && index === (effectiveRunProgress.messages || []).slice(-14).length - 1 ? 'is-failed' : ''
                   }`} />
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">{item.step || 'process'}</div>
@@ -3060,23 +3277,31 @@ function cleanList(value) {
     .filter(Boolean);
 }
 
-function normalizeSourceDomain(value) {
-  const domain = String(value || '')
-    .trim()
-    .replace(/^https?:\/\//i, '')
+function normalizeSourceEntry(value) {
+  const raw = String(value || '').trim();
+  if (!raw || /\s/.test(raw)) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      if (!url.hostname.includes('.')) return '';
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      return '';
+    }
+  }
+  const domain = raw
     .replace(/^www\./i, '')
     .split(/[/?#]/)[0]
     .toLowerCase();
-  if (!domain || !domain.includes('.') || /\s/.test(domain)) return '';
-  if (!/^[a-z0-9.-]+$/.test(domain)) return '';
+  if (!domain || !domain.includes('.') || !/^[a-z0-9.-]+$/.test(domain)) return '';
   return domain;
 }
 
 function parseSourceDomains(value) {
   return Array.from(new Set(
     String(value || '')
-      .split(/[\n,\s]+/)
-      .map(normalizeSourceDomain)
+      .split(/[\n,]+/)
+      .map(normalizeSourceEntry)
       .filter(Boolean)
   ));
 }
@@ -5556,7 +5781,7 @@ function SourceTrustCard({ item, onDragStart, onMove }) {
   );
 }
 
-function SourceTrustRulesPanel() {
+function SourceTrustRulesPanel({ sourceOwner = 'fetch' }) {
   const [sourceTrustRegistry, setSourceTrustRegistry] = useState([]);
   const [sourceTrustSearch, setSourceTrustSearch] = useState('');
   const [draggedTrustKey, setDraggedTrustKey] = useState('');
@@ -5640,6 +5865,7 @@ function SourceTrustRulesPanel() {
   };
 
   const visibleSourceTrustCount = sourceTrustGroups.high.length + sourceTrustGroups.moderate.length + sourceTrustGroups.low.length;
+  const isScraperSourceManager = sourceOwner === 'scraper';
 
   if (loadingTrust) return <Loader />;
 
@@ -5648,8 +5874,12 @@ function SourceTrustRulesPanel() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <div className="eyebrow mb-1">Source Trust</div>
-          <h3 className="text-xl font-black tracking-tight text-gray-900">Source Credibility Mapping</h3>
-          <p className="mt-1 text-sm font-medium text-gray-500">Set source trust levels used during fetch, scoring, and article display.</p>
+          <h3 className="text-xl font-black tracking-tight text-gray-900">{isScraperSourceManager ? 'Scraper Source Trust' : 'Source Credibility Mapping'}</h3>
+          <p className="mt-1 text-sm font-medium text-gray-500">
+            {isScraperSourceManager
+              ? 'Set trust levels for domains used by the scraper master database and downstream article display.'
+              : 'Set source trust levels used during fetch, scoring, and article display.'}
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">

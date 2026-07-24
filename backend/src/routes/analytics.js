@@ -5,7 +5,7 @@ const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-const ALLOWED_TYPES = new Set(['page_view', 'click', 'section_view', 'engagement']);
+const ALLOWED_TYPES = new Set(['page_view', 'click', 'section_view', 'engagement', 'search']);
 const MAX_BATCH = 30;
 
 function cleanText(value, max = 180) {

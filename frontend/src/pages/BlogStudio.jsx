@@ -27,7 +27,7 @@ const CONTENT_STUDIO_CACHE_VERSION = 'v2';
 const STUDIO_PAGE_SIZE = 12;
 const GENERATED_DRAFT_RETRY_COUNT = 10;
 const GENERATED_DRAFT_RETRY_DELAY_MS = 500;
-const HIDDEN_CATEGORY_LABELS = new Set(['Competitor Intelligence']);
+const HIDDEN_CATEGORY_LABELS = new Set([]);
 
 function visibleCategoryTree(configuredTree = {}, dataTree = {}) {
   const allowed = Object.keys(configuredTree || {}).filter((category) => !HIDDEN_CATEGORY_LABELS.has(category));
@@ -156,10 +156,9 @@ const DEFAULT_LINKEDIN_FORM = {
   tone: 'professional',
   audience: '',
   length: 'medium',
-  hookStyle: 'proof',
+  hookStyle: 'auto',
   framework: 'auto',
   topicTier: 'auto',
-  emotionalJob: 'auto',
   takeaway: '',
   includeHashtags: true,
   includeCTA: true,
@@ -178,7 +177,6 @@ function linkedinGenerationOptions(form = {}) {
     hookStyle: form.hookStyle || DEFAULT_LINKEDIN_FORM.hookStyle,
     framework: form.framework || DEFAULT_LINKEDIN_FORM.framework,
     topicTier: form.topicTier || DEFAULT_LINKEDIN_FORM.topicTier,
-    emotionalJob: form.emotionalJob || DEFAULT_LINKEDIN_FORM.emotionalJob,
     takeaway: form.takeaway || '',
     includeHashtags: form.includeHashtags !== false,
     includeCTA: form.includeCTA !== false,
@@ -586,7 +584,6 @@ export default function BlogStudio() {
       hashtags: Array.isArray(generated.hashtags) ? generated.hashtags : [],
       framework: generated.framework || '',
       topicTier: generated.topicTier || '',
-      emotionalJob: generated.emotionalJob || '',
       sourceSnapshot: generated.sourceSnapshot || {},
       options: generated.options || linkedinForm
     };
@@ -1283,7 +1280,6 @@ export default function BlogStudio() {
         hashtags: Array.isArray(source.hashtags) ? source.hashtags : [],
         framework: source.framework || '',
         topicTier: source.topicTier || '',
-        emotionalJob: source.emotionalJob || '',
         sourceSnapshot: source.sourceSnapshot || {},
         options: source.options || linkedinForm
       };
@@ -3056,6 +3052,7 @@ function LinkedInStudio({
                 value={linkedinForm.hookStyle}
                 onChange={(value) => update('hookStyle', value)}
                 options={[
+                  ['auto', 'Auto select'],
                   ['proof', 'Proof-led'],
                   ['warning', 'Warning-led'],
                   ['contrarian', 'Contrarian'],
@@ -3089,20 +3086,6 @@ function LinkedInStudio({
                   ['Practical', 'Practical - decision-useful'],
                   ['Narrow', 'Narrow - authority'],
                   ['Niche', 'Niche - conversion']
-                ]}
-              />
-              <SelectField
-                label="Emotional Job"
-                value={linkedinForm.emotionalJob}
-                onChange={(value) => update('emotionalJob', value)}
-                options={[
-                  ['auto', 'Auto select'],
-                  ['Inspire', 'Inspire'],
-                  ['Educate', 'Educate'],
-                  ['Urgency', 'Urgency'],
-                  ['Reassure', 'Reassure'],
-                  ['Provoke', 'Provoke'],
-                  ['Convert', 'Convert']
                 ]}
               />
               <Field label="Rule of One Takeaway">
@@ -3525,7 +3508,7 @@ function SocialOutputDrawer({
 function PanelHeader({ icon: Icon, title, subtitle }) {
   return (
     <div className="flex items-center gap-3 border-b border-gray-200/50 px-5 py-4 bg-white/60 backdrop-blur">
-      <span className="content-studio-panel-header-icon flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-crimson to-brand-hoverred text-white shadow-sm">
+      <span className="content-studio-panel-header-icon flex h-9 w-9 items-center justify-center rounded-lg bg-brand-crimson text-white shadow-sm">
         <Icon size={16} />
       </span>
       <div className="min-w-0">

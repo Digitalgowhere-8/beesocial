@@ -43,7 +43,7 @@ export default function Login() {
     try {
       const auth = await login(form.email, form.password);
       const defaultPath = auth?.user?.role === 'super_admin' ? '/admin' : '/dashboard';
-      navigate(auth?.isFirstLogin && auth?.user?.role !== 'super_admin' ? '/profile' : defaultPath, { replace: true });
+      navigate(defaultPath, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

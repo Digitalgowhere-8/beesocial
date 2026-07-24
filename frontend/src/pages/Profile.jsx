@@ -325,7 +325,7 @@ export default function Profile() {
                   {avatar ? (
                     <img src={avatar} className="profile-avatar h-24 w-24 rounded-3xl object-cover shadow-sm ring-4 ring-gray-50" alt="Profile" />
                   ) : (
-                    <div className="profile-avatar flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-crimson to-brand-hoverred text-3xl font-black text-white shadow-sm ring-4 ring-gray-50">
+                    <div className="profile-avatar flex h-24 w-24 items-center justify-center rounded-3xl bg-[#173614] text-3xl font-black text-white shadow-sm ring-4 ring-gray-100">
                       {initials}
                     </div>
                   )}

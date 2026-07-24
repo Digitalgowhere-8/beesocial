@@ -357,26 +357,14 @@ const linkedinOptionsSchema = Joi.object({
     'drive_engagement',
     'event_announcement',
     'promote_service',
-    'client_advisory',
-    // Legacy aliases kept so older saved forms/posts still validate.
-    'thought_leadership',
-    'client_alert',
-    'market_insight',
-    'educational',
-    'lead_generation'
+    'client_advisory'
   ).default('build_authority'),
   tone: Joi.string().valid('professional', 'conversational', 'authoritative', 'friendly', 'educational', 'persuasive', 'technical', 'thought_leadership').default('professional'),
   audience: Joi.string().allow('').max(220).default(''),
   length: Joi.string().valid('short', 'medium', 'long').default('medium'),
-  hookStyle: Joi.string().valid('proof', 'warning', 'contrarian', 'personal_story', 'insight', 'question', 'stat', 'story').default('proof'),
+  hookStyle: Joi.string().valid('auto', 'proof', 'warning', 'contrarian', 'personal_story', 'insight', 'question', 'stat').default('auto'),
   framework: Joi.string().valid('auto', 'SLAY', 'PAS', 'PRA', 'POV', '5-Line Mirror', 'AIDA').default('auto'),
   topicTier: Joi.string().valid('auto', 'Broad', 'Practical', 'Narrow', 'Niche').default('auto'),
-  emotionalJob: Joi.string().valid('auto', 'Inspire', 'Educate', 'Urgency', 'Reassure', 'Provoke', 'Convert').default('auto'),
-  // Legacy fields are accepted for existing saved drafts, but the simplified UI no longer sends them.
-  personaProfile: Joi.string().allow('').max(500),
-  icpPainPoints: Joi.string().allow('').max(2000),
-  marketReality: Joi.string().allow('').max(2000),
-  proofElement: Joi.string().allow('').max(500),
   takeaway: Joi.string().allow('').max(500),
   includeHashtags: Joi.boolean().default(true),
   includeCTA: Joi.boolean().default(true),
@@ -399,7 +387,6 @@ const socialPostCreateSchema = Joi.object({
   hashtags: Joi.array().items(Joi.string().max(80)).default([]),
   framework: Joi.string().allow('').max(80),
   topicTier: Joi.string().allow('').max(80),
-  emotionalJob: Joi.string().allow('').max(80),
   sourceSnapshot: Joi.object().unknown(true).default({}),
   options: Joi.object().unknown(true).default({})
 });
@@ -820,8 +807,7 @@ router.post('/social-posts/:id/revise', protect, requireBlogAdmin, asyncHandler(
         postText: revised.postText || post.postText || '',
         hashtags: revised.hashtags || post.hashtags || [],
         framework: revised.framework || post.framework || '',
-        topicTier: revised.topicTier || post.topicTier || '',
-        emotionalJob: revised.emotionalJob || post.emotionalJob || ''
+        topicTier: revised.topicTier || post.topicTier || ''
       }
     });
   }
@@ -833,8 +819,7 @@ router.post('/social-posts/:id/revise', protect, requireBlogAdmin, asyncHandler(
       postText: revised.postText || post.postText || '',
       hashtags: revised.hashtags || post.hashtags || [],
       framework: revised.framework || post.framework || '',
-      topicTier: revised.topicTier || post.topicTier || '',
-      emotionalJob: revised.emotionalJob || post.emotionalJob || ''
+      topicTier: revised.topicTier || post.topicTier || ''
     } },
     { new: true }
   ).lean();
@@ -873,6 +858,86 @@ router.delete('/social-posts/:id', protect, requireBlogAdmin, asyncHandler(async
     id: String(item._id)
   });
   res.json({ message: 'Deleted', id: req.params.id });
+}));
+
+// ── Social Post Review Comments ──────────────────────────────────────────────
+
+router.post('/social-posts/:id/comments', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const { error, value } = reviewCommentSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const post = await SocialPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!post) return res.status(404).json({ message: 'Social post not found' });
+
+  post.reviewComments.push({
+    text: value.text,
+    selectedText: value.selectedText || '',
+    beforeText: value.beforeText || '',
+    afterText: value.afterText || '',
+    authorId: req.user._id,
+    authorName: req.user.name || req.user.email || 'Reviewer',
+    createdAt: new Date()
+  });
+  await post.save();
+
+  const item = post.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'commented',
+    id: String(item._id)
+  });
+  res.status(201).json({ item, comment: item.reviewComments[item.reviewComments.length - 1] });
+}));
+
+router.patch('/social-posts/:id/comments/:commentId', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const { error, value } = reviewCommentUpdateSchema.validate(req.body || {});
+  if (error) return res.status(400).json({ message: error.message });
+
+  const post = await SocialPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!post) return res.status(404).json({ message: 'Social post not found' });
+
+  const comment = post.reviewComments.id(req.params.commentId);
+  if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+  const canEdit = isBlogAdmin(req.user) || String(comment.authorId || '') === String(req.user._id);
+  if (!canEdit) return res.status(403).json({ message: 'You can only update your own comments.' });
+
+  if (typeof value.text === 'string') comment.text = value.text;
+  if (typeof value.resolved === 'boolean') {
+    comment.resolved = value.resolved;
+    comment.resolvedAt = value.resolved ? new Date() : null;
+  }
+  await post.save();
+
+  const item = post.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'comment-updated',
+    id: String(item._id)
+  });
+  res.json({ item, comment: item.reviewComments.find((c) => String(c._id) === String(req.params.commentId)) });
+}));
+
+router.delete('/social-posts/:id/comments/:commentId', protect, requireContentRepository, asyncHandler(async (req, res) => {
+  const post = await SocialPost.findOne({ _id: req.params.id, ...tenantQuery(req.user) });
+  if (!post) return res.status(404).json({ message: 'Social post not found' });
+
+  const comment = post.reviewComments.id(req.params.commentId);
+  if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+  const canDelete = isBlogAdmin(req.user) || String(comment.authorId || '') === String(req.user._id);
+  if (!canDelete) return res.status(403).json({ message: 'You can only delete your own comments.' });
+
+  comment.deleteOne();
+  await post.save();
+
+  const item = post.toObject();
+  publishTenantEvent(String(tenantAdminId(req.user)), 'content', {
+    scope: 'social',
+    action: 'comment-deleted',
+    id: String(item._id)
+  });
+  res.json({ item, deletedCommentId: req.params.commentId });
 }));
 
 router.get('/:id', protect, requireContentRepository, asyncHandler(async (req, res) => {
