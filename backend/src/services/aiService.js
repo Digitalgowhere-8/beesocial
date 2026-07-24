@@ -68,22 +68,22 @@ function wordsToMaxTokens(words, fallbackTokens) {
 
 function blogWordTarget(style = {}) {
   const length = String(style.length || 'medium').toLowerCase();
-  if (length === 'short') return 800;
-  if (length === 'long') return 2500;
+  if (length === 'short') return 1200;
+  if (length === 'long') return 3000;
   if (length === 'custom') {
     const match = String(style.customLength || '').match(/\d[\d,]*/);
-    const custom = match ? Number(match[0].replace(/,/g, '')) : 1500;
-    return Math.round(clampNumber(custom, 1500, 500, 3000));
+    const custom = match ? Number(match[0].replace(/,/g, '')) : 2000;
+    return Math.round(clampNumber(custom, 2000, 800, 5000));
   }
-  return 1500;
+  return 2000;
 }
 
 function blogLengthInstruction(style = {}) {
   const length = String(style.length || 'medium').toLowerCase();
   if (length === 'custom' && style.customLength) return `Custom length requested by user: ${style.customLength}.`;
-  if (length === 'short') return 'Short blog target: approximately 800 words.';
-  if (length === 'long') return 'Long blog target: approximately 2,500 words.';
-  return 'Medium blog target: approximately 1,500 words.';
+  if (length === 'short') return 'Short blog target: approximately 1,200 words minimum.';
+  if (length === 'long') return 'Long blog target: minimum 3,000 words. Write a comprehensive, in-depth blog. Do not stop early.';
+  return 'Medium blog target: approximately 2,000 words minimum.';
 }
 
 const BEESOCIAL_BRAND_GUIDELINES = [
@@ -163,7 +163,7 @@ const ASCENTIUM_BLOG_GENERATION_RULES = [
   'For legal, tax, regulatory, immigration, employment, or compliance topics, use advisory wording and avoid definitive advice.',
   '',
   '# LENGTH',
-  'Follow the selected length exactly: Short 500-800 words, Medium 800-1,500 words, Long 1,500-3,000 words. For custom length, use the exact requested length.',
+  'Follow the selected length exactly. Minimum word counts are: Short = 1,200 words, Medium = 2,000 words, Long = 3,000 words minimum. For custom length, use the exact requested length. Do not stop writing early — reach the target word count.',
   '',
   '# OUTPUT REQUIREMENTS',
   'Return ONLY valid JSON. Do not wrap JSON in markdown. Do not include explanations, notes, or comments.',
