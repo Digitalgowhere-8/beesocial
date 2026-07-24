@@ -926,12 +926,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = int(os.getenv("SCRAPER_DASHBOARD_PORT", "8091"))
+    host = "0.0.0.0"
+    port = int(os.environ.get("PORT", os.getenv("SCRAPER_DASHBOARD_PORT", "8091")))
     ensure_scheduler_started()
-    server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
-    print(f"Scraper API running at http://127.0.0.1:{port}")
-    print("Open the main frontend Super Admin > Scraper tab to use the dashboard.")
-    print("Press Ctrl+C to stop.")
+    server = ThreadingHTTPServer((host, port), DashboardHandler)
+    print(f"Scraper API listening on {host}:{port}")
+    print("Scraper service started successfully.")
     server.serve_forever()
 
 
